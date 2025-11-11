@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RMLCanteen — Order</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/order.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ RMLCanteen</div>
+    <nav class="nav">
+      <a href="order.html" class="active">Menu</a>
+      <a href="orders.html">My Orders</a>
+      <a href="profile.html">Profile</a>
+      <a href="#" onclick="logoutUser()">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="menu-section">
+      <h2 class="headline">Menu</h2>
+
+      <div class="card">
+        <h4>🍛 Student Budget Meals</h4>
+        <div id="budgetContainer" class="items-grid"></div>
+
+        <h4 style="margin-top:16px;">🍔 Foods</h4>
+        <div id="foodsContainer" class="items-grid"></div>
+
+        <h4 style="margin-top:16px;">🥤 Drinks</h4>
+        <div id="drinksContainer" class="items-grid"></div>
+      </div>
+    </section>
+
+    <section class="cart-section card">
+      <h3>🛒 Cart</h3>
+      <div id="cartList" class="cart-list"></div>
+
+      <div class="cart-total">
+        <div>Subtotal: ₱<span id="subtotal">0.00</span></div>
+        <div>Delivery Fee: ₱<span id="deliveryFee">10.00</span></div>
+        <div style="margin-top:8px;font-weight:700;">Grand Total: ₱<span id="grandTotal">0.00</span></div>
+      </div>
+
+      <h4 style="margin-top:12px;">Delivery Details</h4>
+      <label class="input-label">Full Name</label>
+      <input id="delName" type="text" placeholder="Full name">
+
+      <label class="input-label">Contact Number</label>
+      <input id="delContact" type="text" placeholder="09XXXXXXXXX">
+
+      <label class="input-label">Address / Location</label>
+      <textarea id="delAddress" placeholder="Block, Building, Street, Barangay"></textarea>
+
+      <div style="margin-top:10px;display:flex;gap:10px;">
+        <button class="btn" onclick="showConfirmBox()">Confirm Order</button>
+        <button class="btn ghost" onclick="clearCart()">Clear Cart</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      ensureLoggedIn('user');
+      loadMenuToPage();
+      renderCart();
+    });
+
+    function showConfirmBox(){
+      const name = document.getElementById('delName').value.trim();
+      const contact = document.getElementById('delContact').value.trim();
+      const address = document.getElementById('delAddress').value.trim();
+      const cart = getCart();
+      if(cart.length === 0) return alert('Cart is empty.');
+      if(!name || !contact || !address) return alert('Please fill in all delivery details.');
+      const subtotal = calcSubtotal();
+      const grand = subtotal + DELIVERY_FEE;
+      if(!confirm(`Confirm order?\n\nName: ${name}\nContact: ${contact}\nAddress: ${address}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nPlace order now?`)) return;
+      placeOrder(name, contact, address);
+    }
+  </script>
+</body>
+</html>
+

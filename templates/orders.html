@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RMLCanteen — My Orders</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/orders.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ RMLCanteen</div>
+    <nav class="nav">
+      <a href="order.html">Menu</a>
+      <a href="orders.html" class="active">My Orders</a>
+      <a href="profile.html">Profile</a>
+      <a href="#" onclick="logoutUser()">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2 class="headline">My Orders</h2>
+    <div id="ordersList" class="orders-list"></div>
+    <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      ensureLoggedIn('user');
+      renderUserOrders();
+    });
+  </script>
+</body>
+</html>

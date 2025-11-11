@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard — RMLCanteen</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ RMLCanteen Admin</div>
+    <nav class="nav">
+      <a href="#" onclick="logoutUser()">🚪 Logout</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Statistics Dashboard -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="content-card">
+      <div class="tab-buttons">
+        <button id="tabOrders" class="active" onclick="switchTab('orders')">
+          📦 Orders <span class="tab-badge" id="ordersBadge">0</span>
+        </button>
+        <button id="tabMenu" onclick="switchTab('menu')">
+          🍽️ Menu Management
+        </button>
+      </div>
+
+      <!-- ORDER STATUS UPDATE TAB -->
+      <section id="ordersSection" class="tab-content active">
+        <h2>📦 Order Management</h2>
+        
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <input 
+            type="text" 
+            class="search-input" 
+            id="searchInput" 
+            placeholder="🔍 Search by name, contact, or order ID..." 
+            oninput="filterOrders()"
+          >
+          <select class="filter-select" id="statusFilter" onchange="filterOrders()">
+            <option value="all">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="Preparing">Preparing</option>
+            <option value="Out for Delivery">Out for Delivery</option>
+            <option value="Delivered">Delivered</option>
+          </select>
+          <button class="btn small print" onclick="printOrders()">🖨️ Print</button>
+        </div>
+
+        <div id="ordersList"></div>
+      </section>
+
+      <!-- MENU TAB -->
+      <section id="menuSection" class="tab-content">
+        <h2>🍽️ Menu Availability Management</h2>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          Manage which items are currently available or sold out. Changes will be reflected immediately for customers.
+        </p>
+        <div id="adminMenuList"></div>
+        <button class="btn" style="margin-top:20px;" onclick="resetAllSoldOut()">
+          ✅ Restore All Items to Available
+        </button>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    // Global state for filtering
+    let allOrders = [];
+    let filteredOrders = [];
+
+    /* -------- Statistics Dashboard -------- */
+    async function renderStats() {
+      const orders = allOrders;
+      const stats = {
+        total: orders.length,
+        pending: orders.filter(o => o.status === 'Pending').length,
+        preparing: orders.filter(o => o.status === 'Preparing').length,
+        delivery: orders.filter(o => o.status === 'Out for Delivery').length,
+        delivered: orders.filter(o => o.status === 'Delivered').length,
+        revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0)
+      };
+
+      const statsGrid = document.getElementById('statsGrid');
+      if (!statsGrid) return;
+
+      statsGrid.innerHTML = `
+        <div class="stat-card total">
+          <div class="stat-label">📊 Total Orders</div>
+          <div class="stat-number">${stats.total}</div>
+        </div>
+        <div class="stat-card pending">
+          <div class="stat-label">⏳ Pending</div>
+          <div class="stat-number">${stats.pending}</div>
+        </div>
+        <div class="stat-card preparing">
+          <div class="stat-label">👨‍🍳 Preparing</div>
+          <div class="stat-number">${stats.preparing}</div>
+        </div>
+        <div class="stat-card delivery">
+          <div class="stat-label">🚚 Out for Delivery</div>
+          <div class="stat-number">${stats.delivery}</div>
+        </div>
+        <div class="stat-card delivered">
+          <div class="stat-label">✅ Delivered</div>
+          <div class="stat-number">${stats.delivered}</div>
+        </div>
+        <div class="stat-card total">
+          <div class="stat-label">💰 Total Revenue</div>
+          <div class="stat-number">₱${stats.revenue.toFixed(2)}</div>
+        </div>
+      `;
+
+      // Update badge
+      const badge = document.getElementById('ordersBadge');
+      if (badge) badge.textContent = stats.total;
+    }
+
+    /* -------- Tab Switching -------- */
+    function switchTab(tab) {
+      document.getElementById('tabOrders').classList.remove('active');
+      document.getElementById('tabMenu').classList.remove('active');
+      document.getElementById('ordersSection').classList.remove('active');
+      document.getElementById('menuSection').classList.remove('active');
+
+      if (tab === 'orders') {
+        document.getElementById('tabOrders').classList.add('active');
+        document.getElementById('ordersSection').classList.add('active');
+        renderAdminOrders();
+      } else {
+        document.getElementById('tabMenu').classList.add('active');
+        document.getElementById('menuSection').classList.add('active');
+        renderAdminMenuList();
+      }
+    }
+
+    /* -------- Render Orders (API) -------- */
+    async function renderAdminOrders() {
+      try {
+        const response = await fetch('/orders');
+        const orders = await response.json();
+        allOrders = orders.reverse();
+        filteredOrders = [...allOrders];
+        renderStats();
+        displayOrders();
+      } catch(error) {
+        console.error('Error loading orders:', error);
+        document.getElementById('ordersList').innerHTML = '<p class="muted">Failed to load orders</p>';
+      }
+    }
+
+    function displayOrders() {
+      const container = document.getElementById('ordersList');
+      if (!container) return;
+
+      if (filteredOrders.length === 0) {
+        const hasFilters = document.getElementById('searchInput')?.value || 
+                          document.getElementById('statusFilter')?.value !== 'all';
+        if (hasFilters) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🔍</div>
+              <div class="empty-state-text">No orders match your search criteria</div>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📦</div>
+              <div class="empty-state-text">No orders yet</div>
+            </div>
+          `;
+        }
+        return;
+      }
+
+      container.innerHTML = filteredOrders.map((o, displayIdx) => {
+        const actualIdx = allOrders.indexOf(o);
+        let badgeClass = "";
+        switch (o.status) {
+          case "Pending": badgeClass = "status-pending"; break;
+          case "Preparing": badgeClass = "status-preparing"; break;
+          case "Out for Delivery": badgeClass = "status-delivery"; break;
+          case "Delivered": badgeClass = "status-delivered"; break;
+          default: badgeClass = "status-pending";
+        }
+
+        const buyerName = o.fullname || o.name || "N/A";
+        const buyerContact = o.contact || o.number || "N/A";
+        const buyerAddress = o.location || o.address || "N/A";
+        const orderDate = new Date(o.created_at || Date.now()).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        // Parse items if it's a string (from database)
+        const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+
+        return `
+          <div class="order-card" data-order-id="${o.id}">
+            <div class="order-header">
+              <div>
+                <div class="order-id">Order #${o.id}</div>
+                <div class="order-date">${orderDate}</div>
+              </div>
+              <span class="status-badge ${badgeClass}">${o.status}</span>
+            </div>
+
+            <div class="buyer-info">
+              <p><strong>👤 Customer:</strong> ${buyerName}</p>
+              <p><strong>📞 Contact:</strong> ${buyerContact}</p>
+              <p><strong>📍 Address:</strong> ${buyerAddress}</p>
+            </div>
+
+            <div class="order-items">
+              <strong>📋 Items:</strong><br>
+              ${items.map(it => `• ${it.name} × ${it.qty} (₱${(Number(it.price) * Number(it.qty)).toFixed(2)})`).join('<br>')}
+            </div>
+
+            <div class="order-total">
+              💰 Total: ₱${Number(o.total).toFixed(2)}
+            </div>
+
+            <div class="status-buttons">
+              <select class="status-select" onchange="updateOrderStatus(${o.id}, this.value)">
+                <option disabled ${!o.status ? 'selected' : ''}>Change Status</option>
+                <option value="Pending" ${o.status === 'Pending' ? 'selected' : ''}>⏳ Pending</option>
+                <option value="Preparing" ${o.status === 'Preparing' ? 'selected' : ''}>👨‍🍳 Preparing</option>
+                <option value="Out for Delivery" ${o.status === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
+                <option value="Delivered" ${o.status === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
+              </select>
+              <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
+              <button class="btn delete small" onclick="deleteOrder(${o.id})">🗑️ Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /* -------- Filter Orders -------- */
+    function filterOrders() {
+      const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+      const statusFilter = document.getElementById('statusFilter')?.value || 'all';
+
+      filteredOrders = allOrders.filter(o => {
+        const buyerName = (o.fullname || o.name || '').toLowerCase();
+        const buyerContact = (o.contact || o.number || '').toLowerCase();
+        const orderId = (o.id || '').toLowerCase();
+        
+        const matchesSearch = !searchTerm || 
+          buyerName.includes(searchTerm) || 
+          buyerContact.includes(searchTerm) ||
+          orderId.includes(searchTerm);
+        
+        const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
+
+        return matchesSearch && matchesStatus;
+      });
+
+      displayOrders();
+    }
+
+    /* -------- Update Status (API) -------- */
+    async function updateOrderStatus(orderId, status) {
+      if (!confirm(`Change order status to "${status}"?`)) return;
+      
+      try {
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: status })
+        });
+
+        if (response.ok) {
+          alert('✅ Order status updated!');
+          await renderAdminOrders();
+          filterOrders();
+        } else {
+          alert('Failed to update order status');
+        }
+      } catch(error) {
+        console.error('Error updating order:', error);
+        alert('Failed to update order status');
+      }
+    }
+
+    /* -------- Delete Order (Note: API endpoint not implemented yet) -------- */
+    async function deleteOrder(orderId) {
+      if (!confirm(`⚠️ Are you sure you want to delete Order #${orderId}?\n\nThis action cannot be undone.`)) return;
+      
+      alert('Delete order functionality coming soon!');
+      // TODO: Implement DELETE /orders/{id} endpoint in server.py
+    }
+
+    /* -------- Print Functions -------- */
+    function printOrders() {
+      if (filteredOrders.length === 0) {
+        alert('No orders to print');
+        return;
+      }
+      window.print();
+    }
+
+    function printSingleOrder(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) return;
+      
+      const buyerName = order.fullname || order.name || "N/A";
+      const buyerContact = order.contact || order.number || "N/A";
+      const buyerAddress = order.location || order.address || "N/A";
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Order #${order.id} - RMLCanteen</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #8B4513; }
+            .info { margin: 10px 0; }
+            .items { margin: 20px 0; border-top: 2px solid #ccc; padding-top: 10px; }
+            .total { font-size: 1.2em; font-weight: bold; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <h1>🍽️ RMLCanteen - Order Receipt</h1>
+          <div class="info"><strong>Order #:</strong> ${order.id}</div>
+          <div class="info"><strong>Date:</strong> ${new Date(order.created_at || Date.now()).toLocaleString()}</div>
+          <div class="info"><strong>Status:</strong> ${order.status}</div>
+          <hr>
+          <h3>Customer Information</h3>
+          <div class="info"><strong>Name:</strong> ${buyerName}</div>
+          <div class="info"><strong>Contact:</strong> ${buyerContact}</div>
+          <div class="info"><strong>Address:</strong> ${buyerAddress}</div>
+          <div class="items">
+            <h3>Order Items</h3>
+            ${items.map(it => `<div>• ${it.name} × ${it.qty} - ₱${(Number(it.price) * Number(it.qty)).toFixed(2)}</div>`).join('')}
+          </div>
+          <div class="total">Total Amount: ₱${Number(order.total).toFixed(2)}</div>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+
+    /* -------- Restore Menu -------- */
+    function resetAllSoldOut() {
+      if (confirm('🔄 Restore all menu items to available?\n\nThis will make all items purchasable again.')) {
+        saveSoldOutItems([]);
+        renderAdminMenuList();
+        alert('✅ All items are now available!');
+      }
+    }
+
+    /* -------- Initialize -------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      ensureLoggedIn('admin');
+      renderStats();
+      renderAdminOrders();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+/* ===== User Orders Page Styles ===== */
+
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.order-card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--primary);
+  transition: all 0.3s ease;
+}
+
+.order-card:hover {
+  transform: translateX(4px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.order-status {
+  font-weight: 600;
+  color: var(--primary);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Status colors */
+.status-Pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-Preparing {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-Out {
+  background: #cce5ff;
+  color: #004085;
+}
+
+.status-Delivered {
+  background: #d4edda;
+  color: #155724;
+}
+
+/* Empty state */
+#noOrders {
+  padding: 60px 20px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+/* Order card content */
+.order-card .muted.small {
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .order-card {
+    padding: 16px;
+  }
+}
+
+

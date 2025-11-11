@@ -1,0 +1,81 @@
+/* ===== Order Page Styles ===== */
+
+main.container {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  max-width: 1200px;
+}
+
+.menu-section { 
+  flex: 2; 
+}
+
+.cart-section { 
+  flex: 1; 
+  position: sticky; 
+  top: 90px; 
+  align-self: flex-start; 
+}
+
+.items-grid { 
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+}
+
+.item.card { 
+  text-align: center; 
+  border: 1px solid #eee; 
+  transition: 0.2s; 
+  min-height: 120px; 
+  display: flex; 
+  flex-direction: column; 
+  justify-content: space-between; 
+  padding: 14px; 
+}
+
+.item.sold { 
+  opacity: 0.55; 
+  filter: grayscale(0.05); 
+}
+
+.sold-label { 
+  color: #c0392b; 
+  font-weight: 700; 
+  margin-top: 6px; 
+}
+
+.cart-section h3 { 
+  color: var(--primary); 
+  font-weight: 600; 
+  border-bottom: 2px solid var(--accent); 
+  padding-bottom: 6px; 
+  margin-bottom: 12px; 
+}
+
+.cart-total { 
+  background: #fff8f1; 
+  padding: 12px; 
+  border-radius: var(--radius); 
+  margin-top: 10px; 
+}
+
+input.qty { 
+  width: 70px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid #ddd; 
+}
+
+/* Responsive for Order Page */
+@media (max-width: 768px) {
+  main.container {
+    flex-direction: column;
+  }
+  
+  .cart-section {
+    position: static;
+    width: 100%;
+  }
+}
+
+

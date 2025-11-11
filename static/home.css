@@ -1,0 +1,62 @@
+/* ===== Home Page Styles ===== */
+
+.home-container {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(180deg, #fffaf3 0%, #f7f3ef 100%);
+  animation: fadeIn 1s ease-in;
+}
+
+.home-container h1 {
+  color: #7b4b17;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.home-container p {
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.6;
+  font-size: 1.1rem;
+  color: #4b2e05;
+}
+
+.home-btn {
+  margin-top: 2rem;
+  background-color: #7b4b17;
+  color: #fff;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.home-btn:hover {
+  background-color: #a46a2e;
+  transform: scale(1.05);
+}
+
+.coffee-emoji {
+  font-size: 3rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+footer {
+  margin-top: 3rem;
+  color: #7b4b17;
+  font-size: 0.9rem;
+}
+
+

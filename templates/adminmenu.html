@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard — RMLCanteen</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/adminmenu.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🧾 Admin Dashboard</div>
+    <nav class="nav">
+      <a href="#" onclick="logoutUser()">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="tab-buttons">
+      <button id="tabOrders" class="active" onclick="switchTab('orders')">📦 Orders</button>
+      <button id="tabMenu" onclick="switchTab('menu')">🍽️ Menu (Sold Out / Available)</button>
+    </div>
+
+    <!-- Orders Dashboard -->
+    <section id="ordersSection" class="tab-content active">
+      <h2>Pending / Completed Orders</h2>
+      <div id="ordersList" class="orders-list"></div>
+    </section>
+
+    <!-- Menu Dashboard -->
+    <section id="menuSection" class="tab-content">
+      <h2>Menu Availability</h2>
+      <div id="adminMenuList"></div>
+      <button class="btn ghost" style="margin-top:20px;" onclick="resetAllSoldOut()">Restore All to Available</button>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    // --- Tab Switcher ---
+    function switchTab(tab) {
+      document.getElementById('tabOrders').classList.remove('active');
+      document.getElementById('tabMenu').classList.remove('active');
+      document.getElementById('ordersSection').classList.remove('active');
+      document.getElementById('menuSection').classList.remove('active');
+
+      if (tab === 'orders') {
+        document.getElementById('tabOrders').classList.add('active');
+        document.getElementById('ordersSection').classList.add('active');
+        renderAdminOrders();
+      } else {
+        document.getElementById('tabMenu').classList.add('active');
+        document.getElementById('menuSection').classList.add('active');
+        renderAdminMenuList();
+      }
+    }
+
+    // --- Restore all items ---
+    function resetAllSoldOut(){
+      if(confirm('Restore all menu items to available?')){
+        saveSoldOutItems([]);
+        renderAdminMenuList();
+        alert('✅ All items are now available!');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      ensureLoggedIn('admin');
+      renderAdminOrders();
+    });
+  </script>
+</body>
+</html>

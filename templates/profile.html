@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RMLCanteen — Profile</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/profile.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ RMLCanteen</div>
+    <nav class="nav">
+      <a href="order.html">Menu</a>
+      <a href="orders.html">My Orders</a>
+      <a href="profile.html" class="active">Profile</a>
+      <a href="#" onclick="logoutUser()">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2 class="headline">My Profile</h2>
+
+    <section class="card">
+      <label class="input-label">Full name</label>
+      <input id="profileName" type="text">
+
+      <label class="input-label">Email (readonly)</label>
+      <input id="profileEmail" type="email" readonly>
+
+      <label class="input-label">New Password (leave blank to keep current)</label>
+      <input id="profilePass" type="password" placeholder="New password">
+
+      <div style="margin-top:10px">
+        <button class="btn" onclick="saveProfile()">Save</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      ensureLoggedIn();
+      loadProfilePage();
+    });
+  </script>
+</body>
+</html>
