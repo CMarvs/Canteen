@@ -465,8 +465,9 @@ function orderCardHtmlForUser(o){
       </div>
       <div style="margin-top:8px">${itemsText}</div>
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:space-between;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
+        ${canCancel ? `<button class="btn delete small" onclick="cancelUserOrder(${o.id})">❌ Cancel Order</button>` : ''}
       </div>
     </div>
   `;
@@ -480,6 +481,59 @@ function statusBadgeHtml(status){
     'Delivered': `<span class="order-status status-Delivered">Delivered</span>`
   };
   return map[status] || `<span class="order-status">${status}</span>`;
+}
+
+/* ---------- Cancel User Order ---------- */
+async function cancelUserOrder(orderId) {
+  const cur = getCurrent();
+  if (!cur) {
+    alert('Please login first');
+    location.href = 'index.html';
+    return;
+  }
+
+  if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/orders/${orderId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: cur.id })
+    });
+
+    // Read response
+    let responseData = null;
+    try {
+      const responseText = await response.text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch(parseError) {
+      console.log('Response parse note:', parseError);
+    }
+
+    if (!response.ok) {
+      // Handle error response
+      const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
+      alert(`Failed to cancel order: ${errorMessage}`);
+      return;
+    }
+
+    // Success - show message and refresh
+    alert('✅ Order cancelled successfully! Stock has been restored.');
+    
+    // Refresh orders list
+    try {
+      await renderUserOrders();
+    } catch(refreshError) {
+      console.error('Error refreshing orders after cancel:', refreshError);
+    }
+  } catch(error) {
+    console.error('Error cancelling order:', error);
+    alert('Failed to cancel order. Please check your connection and try again.');
+  }
 }
 
 /* ---------- Old Admin Menu Editor (removed - now handled in admin.html) ---------- */

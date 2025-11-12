@@ -600,29 +600,49 @@ async def update_order(oid: int, request: Request):
     finally:
         conn.close()
 
-# --- Admin: Delete/Cancel order ---
+# --- Delete/Cancel order (Users can cancel their own, Admins can cancel any) ---
 @app.delete("/orders/{oid}")
-async def delete_order(oid: int):
+async def delete_order(oid: int, request: Request):
+    # Try to get user_id from request body if provided (for user cancellations)
+    user_id = None
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            body = await request.body()
+            if body:
+                data = json.loads(body.decode())
+                user_id = data.get("user_id")
+    except:
+        pass  # If no body or parsing fails, user_id remains None (admin cancellation)
+    
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # Check if order exists and get full order data (including items)
-        cur.execute("SELECT id, status, items FROM orders WHERE id=%s", (oid,))
+        # Check if order exists and get full order data (including items and user_id)
+        cur.execute("SELECT id, status, items, user_id FROM orders WHERE id=%s", (oid,))
         order = cur.fetchone()
         if not order:
             raise HTTPException(404, f"Order {oid} not found")
         
-        # Get status (handle both dict and tuple responses)
+        # Get order data (handle both dict and tuple responses)
         if isinstance(order, dict):
             order_status = order.get("status")
             order_items = order.get("items")
+            order_user_id = order.get("user_id")
         else:
             order_status = order[1] if len(order) > 1 else None
             order_items = order[2] if len(order) > 2 else None
+            order_user_id = order[3] if len(order) > 3 else None
         
         # Only allow cancellation if status is Pending
         if order_status != "Pending":
             raise HTTPException(400, f"Cannot cancel order. Only orders with 'Pending' status can be cancelled. Current status: {order_status}")
+        
+        # If user_id is provided, verify the order belongs to that user
+        # (This allows users to cancel their own orders, admins can cancel any by not providing user_id)
+        if user_id is not None:
+            if order_user_id != user_id:
+                raise HTTPException(403, "You can only cancel your own orders")
         
         # Restore stock for all items in the order
         if order_items:
