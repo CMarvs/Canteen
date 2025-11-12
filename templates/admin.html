@@ -1248,7 +1248,12 @@
         });
 
         if (response.ok) {
-          alert(`✅ User ${isApproved ? 'approved' : 'rejected'} successfully!`);
+          const result = await response.json();
+          if (result.deleted) {
+            alert(`✅ User rejected and removed successfully!`);
+          } else {
+            alert(`✅ User ${isApproved ? 'approved' : 'rejected'} successfully!`);
+          }
           await renderAdminUsers();
         } else {
           const errorData = await response.json();
