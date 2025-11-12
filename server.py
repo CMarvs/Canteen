@@ -109,7 +109,13 @@ def safe_file_response(path: str):
         if os.path.exists(full_path):
             with open(full_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            return HTMLResponse(content=content)
+            # Add no-cache headers to prevent browser caching
+            headers = {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+            return HTMLResponse(content=content, headers=headers)
         else:
             print(f"❌ File not found: {full_path}")
             return JSONResponse(status_code=404, content={"error": "File not found", "path": path})
