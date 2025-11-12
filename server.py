@@ -261,30 +261,44 @@ async def login(request: Request):
             raise HTTPException(400, "Invalid credentials")
         
         # Check if user is approved (admin accounts are always approved)
+        # First, ensure all existing admin accounts are approved
         if isinstance(user, dict):
-            is_approved = user.get("is_approved")
             role = user.get("role")
+            is_approved = user.get("is_approved")
+            user_id = user.get("id")
         else:
-            # Handle tuple response - need to get column index
-            # Get column names to find correct index
+            # Handle tuple response - get column names to find correct index
             col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
             try:
+                id_idx = col_names.index('id') if 'id' in col_names else 0
                 role_idx = col_names.index('role') if 'role' in col_names else 4
                 is_approved_idx = col_names.index('is_approved') if 'is_approved' in col_names else 6
+                user_id = user[id_idx] if len(user) > id_idx else None
                 role = user[role_idx] if len(user) > role_idx else None
-                is_approved = user[is_approved_idx] if len(user) > is_approved_idx else True
+                is_approved = user[is_approved_idx] if len(user) > is_approved_idx else None
             except:
                 # Fallback to default positions
+                user_id = user[0] if len(user) > 0 else None
                 role = user[4] if len(user) > 4 else None
-                is_approved = user[6] if len(user) > 6 else True
+                is_approved = user[6] if len(user) > 6 else None
         
         # Admin accounts are always approved - check role first
         if role == 'admin':
+            # Auto-approve admin if not already approved (fix for existing admins)
+            if is_approved is False or is_approved == 0 or is_approved is None:
+                try:
+                    cur.execute("UPDATE users SET is_approved = TRUE WHERE id = %s AND role = 'admin'", (user_id,))
+                    conn.commit()
+                    # Update the user dict/tuple for return
+                    if isinstance(user, dict):
+                        user['is_approved'] = True
+                except:
+                    pass  # Continue even if update fails
             # Admin can always login regardless of approval status
             return user
         
         # Regular users need approval
-        if is_approved is False or is_approved == 0:
+        if is_approved is False or is_approved == 0 or is_approved is None:
             raise HTTPException(403, "Account pending admin approval. Please wait for approval.")
         
         return user
@@ -908,5 +922,29 @@ async def approve_user(user_id: int, request: Request):
     except Exception as e:
         print(f"❌ Approve user error: {e}")
         raise HTTPException(500, f"Failed to update user approval: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Reset: Delete all users (for development/testing) ---
+@app.delete("/reset/users")
+async def reset_all_users():
+    """
+    WARNING: This endpoint deletes ALL users and orders from the database.
+    Use with caution! Only for development/testing.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Delete orders first (they reference users via foreign key)
+        cur.execute("DELETE FROM orders")
+        orders_deleted = cur.rowcount
+        # Then delete all users
+        cur.execute("DELETE FROM users")
+        users_deleted = cur.rowcount
+        conn.commit()
+        return {"ok": True, "message": f"Deleted {orders_deleted} order(s) and {users_deleted} user(s). You can now register as the first admin."}
+    except Exception as e:
+        print(f"Reset users error: {e}")
+        raise HTTPException(500, f"Failed to reset users: {str(e)}")
     finally:
         conn.close()
