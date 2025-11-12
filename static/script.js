@@ -158,8 +158,22 @@ async function addToCartById(id, qty = 1){
     return alert('Sorry — this item is sold out.');
   }
   
+  // Check stock quantity
+  const quantity = item.quantity || 0;
+  if(quantity === 0) {
+    return alert('Sorry — this item is out of stock.');
+  }
+  
   const cart = getCart();
   const row = cart.find(r => r.id === id || r.id.toString() === id.toString());
+  const currentCartQty = row ? row.qty : 0;
+  const newTotalQty = currentCartQty + qty;
+  
+  // Check if adding this quantity would exceed available stock
+  if(newTotalQty > quantity) {
+    return alert(`Sorry — only ${quantity} item(s) available in stock. You already have ${currentCartQty} in your cart.`);
+  }
+  
   if(row) {
     row.qty += qty;
   } else {
@@ -175,7 +189,20 @@ async function addToCartById(id, qty = 1){
   renderCart();
 }
 
-function updateCartQty(id, newQty){
+async function updateCartQty(id, newQty){
+  // Ensure menu is loaded to check stock
+  if (!MENU_CACHE) {
+    await fetchMenuItems();
+  }
+  
+  const item = getMenuById(id);
+  if(item) {
+    const quantity = item.quantity || 0;
+    if(newQty > quantity) {
+      return alert(`Sorry — only ${quantity} item(s) available in stock.`);
+    }
+  }
+  
   let cart = getCart();
   if(newQty <= 0) cart = cart.filter(x => x.id !== id);
   else cart = cart.map(x => x.id === id ? {...x, qty: Number(newQty)} : x);
@@ -226,12 +253,12 @@ function renderCart(){
   if(gEl) gEl.innerText = grand.toFixed(2);
 }
 
-function promptEditQty(id, currentQty){
+async function promptEditQty(id, currentQty){
   const val = prompt('Enter new quantity:', currentQty);
   if(val === null) return;
   const n = Number(val);
   if(isNaN(n) || n <= 0) return alert('Invalid quantity');
-  updateCartQty(id, n);
+  await updateCartQty(id, n);
 }
 
 /* ---------- Menu Rendering ---------- */
@@ -270,17 +297,24 @@ async function loadMenuToPage(){
 
 function itemCardHtml(i){
   const isSold = i.is_available === false;
+  const quantity = i.quantity || 0;
+  const stockText = quantity > 0 ? `📦 ${quantity} available` : '⚠️ Out of Stock';
+  const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
+  const isOutOfStock = quantity === 0 || isSold;
+  const stockBadgeStyle = `display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
+  
   return `
-    <div class="item card ${isSold ? 'sold' : ''}">
+    <div class="item card ${isOutOfStock ? 'sold' : ''}">
       <div>
         <h4 style="margin:0 0 6px 0;">${i.name}</h4>
-        <div class="muted">₱${Number(i.price).toFixed(2)}</div>
+        <div class="muted" style="font-size: 1rem; margin-bottom: 6px;">₱${Number(i.price).toFixed(2)}</div>
+        <div style="${stockBadgeStyle}">${stockText}</div>
       </div>
-      <div style="margin-top:8px;">
-        ${isSold ? `<div class="sold-label">SOLD OUT</div>` : `
+      <div style="margin-top:12px;">
+        ${isOutOfStock ? `<div class="sold-label">SOLD OUT</div>` : `
           <div style="display:flex;gap:8px;align-items:center;justify-content:center;">
-            <input class="qty" type="number" id="q_${i.id}" value="1" min="1">
-            <button class="btn small" onclick="addToCartWithQty(${i.id})">Add</button>
+            <input class="qty" type="number" id="q_${i.id}" value="1" min="1" max="${quantity}" style="width: 60px; text-align: center;">
+            <button class="btn small" onclick="addToCartWithQty(${i.id})">Add to Cart</button>
           </div>
         `}
       </div>
@@ -315,7 +349,7 @@ async function placeOrder(name, contact, address, idProofBase64 = null){
     return !menuItem || menuItem.is_available === false;
   });
   if(blocked.length > 0) {
-    alert('Some items in your cart are sold out. Please remove them first.');
+    alert('Some items in your cart are sold out or out of stock. Please remove them or adjust quantities first.');
     return;
   }
 

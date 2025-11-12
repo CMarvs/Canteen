@@ -57,7 +57,7 @@
         <!-- Add New Item Form -->
         <div class="card" style="margin-bottom: 20px; background: #fff8f1;">
           <h3 style="margin-top: 0;">➕ Add New Menu Item</h3>
-          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
+          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
             <div>
               <label class="input-label">Item Name</label>
               <input type="text" id="newItemName" placeholder="e.g., Chicken Adobo" style="width: 100%;">
@@ -73,6 +73,10 @@
                 <option value="foods">Foods</option>
                 <option value="drinks">Drinks</option>
               </select>
+            </div>
+            <div>
+              <label class="input-label">Stock Quantity</label>
+              <input type="number" id="newItemQuantity" placeholder="0" min="0" value="0" style="width: 100%;">
             </div>
             <button class="btn" onclick="addMenuItem()" style="height: fit-content;">Add Item</button>
           </div>
@@ -486,18 +490,31 @@
           
           const itemsHtml = items.map(item => {
             const isAvailable = item.is_available !== false;
+            const quantity = item.quantity || 0;
+            const stockStatus = quantity > 0 ? `📦 ${quantity} in stock` : '⚠️ Out of Stock';
+            const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
+            const stockBadgeStyle = `display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
             return `
-              <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'};">
+              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
                 <div style="flex: 1;">
-                  <strong>${item.name}</strong>
-                  <div style="color: var(--muted); font-size: 0.9rem;">₱${Number(item.price).toFixed(2)}</div>
+                  <strong style="font-size: 1.1rem;">${item.name}</strong>
+                  <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
+                  <div style="${stockBadgeStyle}">${stockStatus}</div>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})">
-                    ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
-                  </button>
-                  <button class="btn small" onclick="editMenuItem(${item.id}, '${item.name}', ${item.price}, '${item.category}')">Edit</button>
-                  <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
+                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
+                  <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                    <input type="number" id="stock_${item.id}" value="${quantity}" min="0" 
+                           style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
+                           onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
+                    <button class="btn small" onclick="updateStockQuantity(${item.id})" style="flex: 1;">Update Stock</button>
+                  </div>
+                  <div style="display: flex; gap: 6px; width: 100%;">
+                    <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1;">
+                      ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
+                    </button>
+                    <button class="btn small" onclick="editMenuItem(${item.id}, '${item.name}', ${item.price}, '${item.category}', ${quantity})" style="flex: 1;">Edit</button>
+                    <button class="btn delete small" onclick="deleteMenuItem(${item.id})" style="flex: 1;">Delete</button>
+                  </div>
                 </div>
               </div>
             `;
@@ -520,16 +537,21 @@
       const name = document.getElementById('newItemName')?.value.trim();
       const price = parseFloat(document.getElementById('newItemPrice')?.value);
       const category = document.getElementById('newItemCategory')?.value || 'foods';
+      const quantity = parseInt(document.getElementById('newItemQuantity')?.value || '0') || 0;
 
       if (!name || !price || price <= 0) {
         return alert('Please enter a valid name and price.');
+      }
+
+      if (quantity < 0) {
+        return alert('Stock quantity cannot be negative.');
       }
 
       try {
         const response = await fetch('/menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, price, category, is_available: true })
+          body: JSON.stringify({ name, price, category, is_available: true, quantity })
         });
 
         // Read response
@@ -547,6 +569,7 @@
           alert('✅ Menu item added successfully!');
           document.getElementById('newItemName').value = '';
           document.getElementById('newItemPrice').value = '';
+          document.getElementById('newItemQuantity').value = '0';
           await renderAdminMenuList();
         } else {
           // Try to get error message
@@ -573,7 +596,7 @@
       }
     }
 
-    async function editMenuItem(id, currentName, currentPrice, currentCategory) {
+    async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity) {
       const name = prompt('Enter new name:', currentName);
       if (name === null) return;
       
@@ -592,11 +615,19 @@
         return alert('Invalid category. Must be: budget, foods, or drinks');
       }
 
+      const quantityStr = prompt('Enter stock quantity:', currentQuantity || 0);
+      if (quantityStr === null) return;
+      const quantity = parseInt(quantityStr) || 0;
+      
+      if (quantity < 0) {
+        return alert('Stock quantity cannot be negative.');
+      }
+
       try {
         const response = await fetch(`/menu/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), price, category })
+          body: JSON.stringify({ name: name.trim(), price, category, quantity })
         });
 
         if (response.ok) {
@@ -629,6 +660,41 @@
       } catch(error) {
         console.error('Error updating availability:', error);
         alert('Failed to update availability. Please try again.');
+      }
+    }
+
+    async function updateStockQuantity(id) {
+      const input = document.getElementById(`stock_${id}`);
+      if (!input) return;
+      
+      const quantity = parseInt(input.value) || 0;
+      if (quantity < 0) {
+        alert('Stock quantity cannot be negative.');
+        input.focus();
+        return;
+      }
+
+      try {
+        // Update both quantity and availability in a single call
+        const updateAvailability = quantity > 0;
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            quantity: quantity,
+            is_available: updateAvailability 
+          })
+        });
+
+        if (response.ok) {
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update stock: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating stock:', error);
+        alert('Failed to update stock. Please try again.');
       }
     }
 

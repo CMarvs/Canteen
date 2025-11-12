@@ -63,6 +63,7 @@ def ensure_menu_table_exists():
                     price NUMERIC(10, 2) NOT NULL,
                     category TEXT NOT NULL DEFAULT 'foods',
                     is_available BOOLEAN DEFAULT TRUE,
+                    quantity INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
@@ -72,6 +73,22 @@ def ensure_menu_table_exists():
             print("[SUCCESS] menu_items table created successfully!")
         else:
             print("[INFO] menu_items table already exists")
+            # Check if quantity column exists, if not add it
+            try:
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'menu_items' AND column_name = 'quantity'
+                """)
+                has_quantity = cur.fetchone() is not None
+                
+                if not has_quantity:
+                    print("[INFO] Adding quantity column to menu_items table...")
+                    cur.execute("ALTER TABLE menu_items ADD COLUMN quantity INTEGER DEFAULT 0;")
+                    conn.commit()
+                    print("[SUCCESS] quantity column added successfully!")
+            except Exception as col_error:
+                print(f"[WARNING] Could not check/add quantity column: {col_error}")
     except Exception as e:
         print(f"[ERROR] Error ensuring menu table exists: {e}")
         conn.rollback()
@@ -263,6 +280,28 @@ async def place_order(request: Request):
         except Exception as col_error:
             print(f"[WARNING] Could not check/add id_proof column: {col_error}")
         
+        # Decrement stock for ordered items
+        items = data.get("items", [])
+        for item in items:
+            item_id = item.get("id")
+            qty_ordered = item.get("qty", 0)
+            if item_id and qty_ordered > 0:
+                try:
+                    # Get current quantity
+                    cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
+                    result = cur.fetchone()
+                    if result:
+                        current_qty = result.get("quantity") or 0
+                        new_qty = max(0, current_qty - qty_ordered)  # Don't go below 0
+                        # Update quantity
+                        cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
+                        # If quantity reaches 0, mark as unavailable
+                        if new_qty == 0:
+                            cur.execute("UPDATE menu_items SET is_available = FALSE WHERE id = %s", (item_id,))
+                except Exception as stock_error:
+                    print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
+                    # Continue with order placement even if stock update fails
+        
         # Insert order with id_proof
         id_proof = data.get("id_proof")
         cur.execute("""
@@ -271,7 +310,7 @@ async def place_order(request: Request):
             RETURNING *;
         """, (
             data.get("user_id"), data.get("fullname"), data.get("contact"),
-            data.get("location"), json.dumps(data.get("items")), data.get("total"),
+            data.get("location"), json.dumps(items), data.get("total"),
             id_proof
         ))
         conn.commit()
@@ -336,16 +375,20 @@ async def add_menu_item(request: Request):
         cur = conn.cursor()
         category = data.get("category", "foods")
         is_available = data.get("is_available", True)
+        quantity = data.get("quantity", 0)
+        if quantity is None:
+            quantity = 0
         
         cur.execute("""
-            INSERT INTO menu_items (name, price, category, is_available)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO menu_items (name, price, category, is_available, quantity)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING *
         """, (
             data.get("name"),
             data.get("price"),
             category,
-            is_available
+            is_available,
+            quantity
         ))
         conn.commit()
         result = cur.fetchone()
@@ -361,14 +404,15 @@ async def add_menu_item(request: Request):
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO menu_items (name, price, category, is_available)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO menu_items (name, price, category, is_available, quantity)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING *
             """, (
                 data.get("name"),
                 data.get("price"),
                 data.get("category", "foods"),
-                data.get("is_available", True)
+                data.get("is_available", True),
+                data.get("quantity", 0) or 0
             ))
             conn.commit()
             result = cur.fetchone()
@@ -439,6 +483,9 @@ async def update_menu_item(item_id: int, request: Request):
         if "is_available" in data:
             updates.append("is_available = %s")
             params.append(data.get("is_available"))
+        if "quantity" in data:
+            updates.append("quantity = %s")
+            params.append(data.get("quantity"))
         
         if not updates:
             raise HTTPException(400, "No fields to update")
