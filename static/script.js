@@ -346,7 +346,24 @@ async function placeOrder(name, contact, address){
   }
   
   const cart = getCart();
-  if(cart.length === 0) return alert('Cart is empty');
+  if(cart.length === 0) {
+    alert('Cart is empty');
+    return;
+  }
+
+  // Validate full name: must have at least 3 words (First, Middle, Last)
+  const nameWords = name.trim().split(/\s+/).filter(word => word.length > 0);
+  if(nameWords.length < 3) {
+    alert('Please enter your full name: First Name, Middle Name, and Last Name (at least 3 words).');
+    return;
+  }
+
+  // Validate contact number: must be exactly 11 digits
+  const contactDigits = contact.replace(/\D/g, ''); // Remove non-digits
+  if(contactDigits.length !== 11) {
+    alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+    return;
+  }
 
   // Check if any items in cart are sold out (validate against current menu)
   if (!MENU_CACHE) {
@@ -370,9 +387,9 @@ async function placeOrder(name, contact, address){
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: cur.id,
-        fullname: name,
-        contact: contact,
-        location: address,
+        fullname: name.trim(),
+        contact: contactDigits, // Use validated digits-only contact (already validated above)
+        location: address.trim(),
         items: cart,
         total: total,
       })
@@ -541,14 +558,17 @@ async function editUserOrder(orderId) {
         
         <form id="editUserOrderForm" onsubmit="saveUserOrderEdit(event, ${orderId})">
           <div style="margin-bottom: 16px;">
-            <label class="input-label">Full Name</label>
+            <label class="input-label">Full Name (First Middle Last)</label>
             <input type="text" id="editUserFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
+                   placeholder="First Name Middle Name Last Name"
                    required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
           </div>
           
           <div style="margin-bottom: 16px;">
-            <label class="input-label">Contact Number</label>
-            <input type="text" id="editUserContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+            <label class="input-label">Contact Number (11 digits)</label>
+            <input type="tel" id="editUserContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+                   placeholder="09XXXXXXXXX" maxlength="11" pattern="[0-9]{11}"
+                   oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)"
                    required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
           </div>
           
@@ -633,6 +653,22 @@ async function saveUserOrderEdit(event, orderId) {
     return;
   }
   
+  // Validate full name: must have at least 3 words (First, Middle, Last)
+  const nameWords = fullname.split(/\s+/).filter(word => word.length > 0);
+  if(nameWords.length < 3) {
+    alert('Please enter full name: First Name, Middle Name, and Last Name (at least 3 words).');
+    document.getElementById('editUserFullname').focus();
+    return;
+  }
+  
+  // Validate contact number: must be exactly 11 digits
+  const contactDigits = contact.replace(/\D/g, ''); // Remove non-digits
+  if(contactDigits.length !== 11) {
+    alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+    document.getElementById('editUserContact').focus();
+    return;
+  }
+  
   // Collect items with quantities
   const items = [];
   let total = 0;
@@ -668,9 +704,9 @@ async function saveUserOrderEdit(event, orderId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: cur.id,
-        fullname: fullname,
-        contact: contact,
-        location: location,
+        fullname: fullname.trim(),
+        contact: contactDigits, // Use validated digits-only contact
+        location: location.trim(),
         items: items,
         total: total
       })

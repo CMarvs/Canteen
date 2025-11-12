@@ -45,11 +45,12 @@
       </div>
 
       <h4 style="margin-top:12px;">Delivery Details</h4>
-      <label class="input-label">Full Name</label>
-      <input id="delName" type="text" placeholder="Full name">
+      <label class="input-label">Full Name (First Middle Last)</label>
+      <input id="delName" type="text" placeholder="First Name Middle Name Last Name" pattern="[A-Za-z\s]{3,}" title="Please enter your full name (First, Middle, Last Name)">
 
-      <label class="input-label">Contact Number</label>
-      <input id="delContact" type="text" placeholder="09XXXXXXXXX">
+      <label class="input-label">Contact Number (11 digits)</label>
+      <input id="delContact" type="tel" placeholder="09XXXXXXXXX" maxlength="11" pattern="[0-9]{11}" title="Contact number must be exactly 11 digits" 
+             oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
 
       <label class="input-label">Address / Location</label>
       <textarea id="delAddress" placeholder="Block, Building, Street, Barangay"></textarea>
@@ -85,13 +86,40 @@
       const contact = document.getElementById('delContact').value.trim();
       const address = document.getElementById('delAddress').value.trim();
       const cart = getCart();
-      if(cart.length === 0) return alert('Cart is empty.');
-      if(!name || !contact || !address) return alert('Please fill in all delivery details.');
+      
+      if(cart.length === 0) {
+        alert('Cart is empty.');
+        return;
+      }
+      
+      if(!name || !contact || !address) {
+        alert('Please fill in all delivery details.');
+        return;
+      }
+      
+      // Validate full name: must have at least 3 words (First, Middle, Last)
+      const nameWords = name.split(/\s+/).filter(word => word.length > 0);
+      if(nameWords.length < 3) {
+        alert('Please enter your full name: First Name, Middle Name, and Last Name (at least 3 words).');
+        document.getElementById('delName').focus();
+        return;
+      }
+      
+      // Validate contact number: must be exactly 11 digits
+      const contactDigits = contact.replace(/\D/g, ''); // Remove non-digits
+      if(contactDigits.length !== 11) {
+        alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+        document.getElementById('delContact').focus();
+        return;
+      }
+      
+      // Update contact to digits only
+      const validContact = contactDigits;
       
       const subtotal = calcSubtotal();
       const grand = subtotal + DELIVERY_FEE;
-      if(!confirm(`Confirm order?\n\nName: ${name}\nContact: ${contact}\nAddress: ${address}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nPlace order now?`)) return;
-      placeOrder(name, contact, address);
+      if(!confirm(`Confirm order?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nPlace order now?`)) return;
+      placeOrder(name, validContact, address);
     }
   </script>
 </body>
