@@ -27,6 +27,9 @@
         <button id="tabMenu" onclick="switchTab('menu')">
           🍽️ Menu Management
         </button>
+        <button id="tabUsers" onclick="switchTab('users')">
+          👥 User Management <span class="tab-badge" id="usersBadge">0</span>
+        </button>
       </div>
 
       <!-- ORDER STATUS UPDATE TAB -->
@@ -83,6 +86,16 @@
         </div>
         
         <div id="adminMenuList"></div>
+      </section>
+
+      <!-- USER MANAGEMENT TAB -->
+      <section id="usersSection" class="tab-content">
+        <h2>👥 User Management</h2>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          Review and approve user registrations. Users must be approved before they can login.
+        </p>
+        
+        <div id="usersList"></div>
       </section>
     </div>
   </main>
@@ -144,17 +157,23 @@
     function switchTab(tab) {
       document.getElementById('tabOrders').classList.remove('active');
       document.getElementById('tabMenu').classList.remove('active');
+      document.getElementById('tabUsers').classList.remove('active');
       document.getElementById('ordersSection').classList.remove('active');
       document.getElementById('menuSection').classList.remove('active');
+      document.getElementById('usersSection').classList.remove('active');
 
       if (tab === 'orders') {
         document.getElementById('tabOrders').classList.add('active');
         document.getElementById('ordersSection').classList.add('active');
         renderAdminOrders();
-      } else {
+      } else if (tab === 'menu') {
         document.getElementById('tabMenu').classList.add('active');
         document.getElementById('menuSection').classList.add('active');
         renderAdminMenuList();
+      } else if (tab === 'users') {
+        document.getElementById('tabUsers').classList.add('active');
+        document.getElementById('usersSection').classList.add('active');
+        renderAdminUsers();
       }
     }
 
@@ -297,7 +316,7 @@
           buyerName.includes(searchTerm) || 
           buyerContact.includes(searchTerm) ||
           orderId.includes(searchTerm);
-
+        
         return matchesSearch;
       });
 
@@ -1024,6 +1043,170 @@
         console.error('Error deleting menu item:', error);
         alert('Failed to delete menu item. Please try again.');
       }
+    }
+
+    /* -------- User Management Functions -------- */
+    async function renderAdminUsers() {
+      try {
+        const response = await fetch('/users');
+        const users = await response.json();
+        
+        const usersArea = document.getElementById('usersList');
+        if (!usersArea) return;
+
+        // Separate users by approval status
+        const pendingUsers = users.filter(u => (u.is_approved === false || u.is_approved === 0) && u.role !== 'admin');
+        const approvedUsers = users.filter(u => (u.is_approved === true || u.is_approved === 1) && u.role !== 'admin');
+        const adminUsers = users.filter(u => u.role === 'admin');
+
+        // Update badge
+        const badge = document.getElementById('usersBadge');
+        if (badge) badge.textContent = pendingUsers.length;
+
+        let html = '';
+
+        // Pending Users Section
+        if (pendingUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #ff9800;">
+              <h3 style="margin: 0 0 16px 0; color: #ff9800;">⏳ Pending Approval (${pendingUsers.length})</h3>
+              ${pendingUsers.map(user => {
+                const isApproved = user.is_approved === true || user.is_approved === 1;
+                return `
+                  <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: #fff8f1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                      <div style="flex: 1;">
+                        <strong style="font-size: 1.1rem;">${user.name || 'N/A'}</strong>
+                        <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">${user.email || 'N/A'}</div>
+                        ${user.id_proof ? `
+                        <div style="margin-top: 12px;">
+                          <strong>📷 ID Proof:</strong>
+                          <div style="margin-top: 8px;">
+                            <img src="${user.id_proof}" alt="ID Proof" 
+                                 class="user-id-proof-thumbnail"
+                                 style="max-width: 200px; max-height: 150px; border-radius: 8px; border: 2px solid #8b4513; cursor: pointer;"
+                                 data-user-id="${user.id}">
+                          </div>
+                          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
+                            Click image to view full size
+                          </p>
+                        </div>
+                        ` : '<div style="margin-top: 8px; color: #f44336;">⚠️ No ID Proof provided</div>'}
+                      </div>
+                      <div style="display: flex; gap: 8px; align-items: flex-start;">
+                        <button class="btn small" onclick="approveUser(${user.id}, true)" style="background: #4caf50; color: white;">✅ Approve</button>
+                        <button class="btn delete small" onclick="approveUser(${user.id}, false)">❌ Reject</button>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="card" style="margin-bottom: 20px; text-align: center; padding: 40px; color: var(--muted);">
+              ✅ No pending user approvals
+            </div>
+          `;
+        }
+
+        // Approved Users Section
+        if (approvedUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px;">
+              <h3 style="margin: 0 0 16px 0;">✅ Approved Users (${approvedUsers.length})</h3>
+              ${approvedUsers.map(user => `
+                <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
+                  <div style="flex: 1;">
+                    <strong>${user.name || 'N/A'}</strong>
+                    <div style="color: var(--muted); font-size: 0.9rem;">${user.email || 'N/A'}</div>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">Approved</span>
+                    <button class="btn delete small" onclick="approveUser(${user.id}, false)">Revoke</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        usersArea.innerHTML = html;
+
+        // Set up ID proof image click handlers
+        document.querySelectorAll('.user-id-proof-thumbnail').forEach(img => {
+          img.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const user = users.find(u => u.id == userId);
+            if (user && user.id_proof) {
+              showUserIdProofModal(user.id_proof, user.name);
+            }
+          });
+        });
+      } catch(error) {
+        console.error('Error loading users:', error);
+        document.getElementById('usersList').innerHTML = '<p class="muted">Failed to load users</p>';
+      }
+    }
+
+    async function approveUser(userId, isApproved) {
+      const action = isApproved ? 'approve' : 'reject';
+      if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+
+      try {
+        const response = await fetch(`/users/${userId}/approve`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_approved: isApproved })
+        });
+
+        if (response.ok) {
+          alert(`✅ User ${isApproved ? 'approved' : 'rejected'} successfully!`);
+          await renderAdminUsers();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to ${action} user: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error(`Error ${action}ing user:`, error);
+        alert(`Failed to ${action} user. Please try again.`);
+      }
+    }
+
+    function showUserIdProofModal(imageSrc, userName) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      `;
+      
+      modal.innerHTML = `
+        <div style="position: relative; max-width: 90%; max-height: 90%; background: white; border-radius: 12px; padding: 20px;">
+          <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
+                  style="position: absolute; top: 10px; right: 10px; background: #8b4513; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+          <h3 style="margin: 0 0 16px 0; color: #8b4513;">ID Proof - ${userName}</h3>
+          <img src="${imageSrc}" alt="ID Proof" style="max-width: 100%; max-height: 70vh; border-radius: 8px; border: 2px solid #8b4513;">
+          <p style="margin-top: 12px; font-size: 0.9rem; color: #666; text-align: center;">Click outside or press × to close</p>
+        </div>
+      `;
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+      
+      document.body.appendChild(modal);
     }
 
     /* -------- Initialize -------- */

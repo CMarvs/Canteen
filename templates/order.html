@@ -54,25 +54,6 @@
       <label class="input-label">Address / Location</label>
       <textarea id="delAddress" placeholder="Block, Building, Street, Barangay"></textarea>
 
-      <label class="input-label" style="margin-top:16px;">📷 ID Proof (Required for verification)</label>
-      <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
-        <div id="idProofPreview" style="display: none; margin-bottom: 12px;">
-          <img id="idProofImage" src="" alt="ID Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8b4513;">
-          <div style="margin-top: 8px;">
-            <button type="button" class="btn small ghost" onclick="clearIdProof()">Remove Photo</button>
-          </div>
-        </div>
-        <div id="idProofCapture" style="display: block;">
-          <input type="file" id="idProofFile" accept="image/*" capture="environment" style="display: none;" onchange="handleIdProofCapture(event)">
-          <button type="button" class="btn small" onclick="document.getElementById('idProofFile').click()">
-            📷 Take Photo / Upload ID
-          </button>
-          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
-            Take a photo of your ID for verification
-          </p>
-        </div>
-      </div>
-
       <div style="margin-top:10px;display:flex;gap:10px;">
         <button class="btn" onclick="showConfirmBox()">Confirm Order</button>
         <button class="btn ghost" onclick="clearCart()">Clear Cart</button>
@@ -96,44 +77,8 @@
         if(delName) delName.value = '';
         if(delContact) delContact.value = '';
         if(delAddress) delAddress.value = '';
-        clearIdProof();
       }
     });
-
-    let idProofBase64 = null;
-
-    function handleIdProofCapture(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        idProofBase64 = e.target.result;
-        document.getElementById('idProofImage').src = idProofBase64;
-        document.getElementById('idProofPreview').style.display = 'block';
-        document.getElementById('idProofCapture').style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function clearIdProof() {
-      idProofBase64 = null;
-      document.getElementById('idProofFile').value = '';
-      document.getElementById('idProofPreview').style.display = 'none';
-      document.getElementById('idProofCapture').style.display = 'block';
-    }
 
     function showConfirmBox(){
       const name = document.getElementById('delName').value.trim();
@@ -142,12 +87,11 @@
       const cart = getCart();
       if(cart.length === 0) return alert('Cart is empty.');
       if(!name || !contact || !address) return alert('Please fill in all delivery details.');
-      if(!idProofBase64) return alert('Please take/upload an ID proof photo for verification.');
       
       const subtotal = calcSubtotal();
       const grand = subtotal + DELIVERY_FEE;
       if(!confirm(`Confirm order?\n\nName: ${name}\nContact: ${contact}\nAddress: ${address}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nPlace order now?`)) return;
-      placeOrder(name, contact, address, idProofBase64);
+      placeOrder(name, contact, address);
     }
   </script>
 </body>

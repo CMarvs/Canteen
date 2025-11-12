@@ -170,15 +170,57 @@ async def register(request: Request):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        
+        # Check if id_proof column exists, if not add it
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'id_proof'
+            """)
+            has_id_proof = cur.fetchone() is not None
+            
+            if not has_id_proof:
+                print("[INFO] Adding id_proof column to users table...")
+                cur.execute("ALTER TABLE users ADD COLUMN id_proof TEXT;")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add id_proof column: {col_error}")
+        
+        # Check if is_approved column exists, if not add it
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'is_approved'
+            """)
+            has_is_approved = cur.fetchone() is not None
+            
+            if not has_is_approved:
+                print("[INFO] Adding is_approved column to users table...")
+                cur.execute("ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT FALSE;")
+                # Set existing users (except admin) as approved
+                cur.execute("UPDATE users SET is_approved = TRUE WHERE role != 'admin' OR role IS NULL;")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add is_approved column: {col_error}")
+        
         cur.execute("SELECT 1 FROM users WHERE email=%s", (data.get("email"),))
         if cur.fetchone():
             raise HTTPException(400, "Email already registered")
+        
+        id_proof = data.get("id_proof")
+        if not id_proof:
+            raise HTTPException(400, "ID proof is required for registration")
+        
         cur.execute(
-            "INSERT INTO users(name,email,password,role) VALUES(%s,%s,%s,'user')",
-            (data.get("name"), data.get("email"), data.get("password"))
+            "INSERT INTO users(name,email,password,role,id_proof,is_approved) VALUES(%s,%s,%s,'user',%s,FALSE)",
+            (data.get("name"), data.get("email"), data.get("password"), id_proof)
         )
         conn.commit()
-        return {"ok": True, "message": "User registered successfully"}
+        return {"ok": True, "message": "User registered successfully. Account pending admin approval."}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Registration error: {e}")
         raise HTTPException(500, f"Registration failed: {str(e)}")
@@ -199,7 +241,24 @@ async def login(request: Request):
         user = cur.fetchone()
         if not user:
             raise HTTPException(400, "Invalid credentials")
+        
+        # Check if user is approved (admin accounts are always approved)
+        if isinstance(user, dict):
+            is_approved = user.get("is_approved")
+            role = user.get("role")
+        else:
+            # Handle tuple response - need to get column index
+            # Assuming: id, name, email, password, role, id_proof, is_approved
+            role = user[4] if len(user) > 4 else None
+            is_approved = user[6] if len(user) > 6 else True  # Default to True if column doesn't exist
+        
+        # Admin accounts are always approved
+        if role != 'admin' and (is_approved is False or is_approved == 0):
+            raise HTTPException(403, "Account pending admin approval. Please wait for approval.")
+        
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Login error: {e}")
         raise HTTPException(500, f"Login failed: {str(e)}")
@@ -302,16 +361,14 @@ async def place_order(request: Request):
                     print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
                     # Continue with order placement even if stock update fails
         
-        # Insert order with id_proof
-        id_proof = data.get("id_proof")
+        # Insert order (id_proof no longer required - it's stored in user account)
         cur.execute("""
-            INSERT INTO orders(user_id,fullname,contact,location,items,total,id_proof)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO orders(user_id,fullname,contact,location,items,total)
+            VALUES (%s,%s,%s,%s,%s,%s)
             RETURNING *;
         """, (
             data.get("user_id"), data.get("fullname"), data.get("contact"),
-            data.get("location"), json.dumps(items), data.get("total"),
-            id_proof
+            data.get("location"), json.dumps(items), data.get("total")
         ))
         conn.commit()
         return {"ok": True, "message": "Order placed successfully"}
@@ -745,5 +802,53 @@ async def delete_order(oid: int, request: Request):
         import traceback
         traceback.print_exc()
         raise HTTPException(500, f"Failed to cancel order: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Admin: Get all users ---
+@app.get("/users")
+def get_users():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, email, role, is_approved, id_proof FROM users ORDER BY id DESC")
+        return cur.fetchall()
+    except Exception as e:
+        print(f"❌ Get users error: {e}")
+        raise HTTPException(500, f"Failed to get users: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Admin: Approve/Reject user ---
+@app.put("/users/{user_id}/approve")
+async def approve_user(user_id: int, request: Request):
+    data = await request.json()
+    is_approved = data.get("is_approved", True)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, role FROM users WHERE id=%s", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(404, f"User {user_id} not found")
+        
+        # Don't allow changing admin approval status
+        if isinstance(user, dict):
+            role = user.get("role")
+        else:
+            role = user[1] if len(user) > 1 else None
+        
+        if role == 'admin':
+            raise HTTPException(400, "Cannot change approval status of admin accounts")
+        
+        cur.execute("UPDATE users SET is_approved=%s WHERE id=%s RETURNING *", (is_approved, user_id))
+        conn.commit()
+        result = cur.fetchone()
+        return {"ok": True, "message": f"User {'approved' if is_approved else 'rejected'} successfully", "user": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Approve user error: {e}")
+        raise HTTPException(500, f"Failed to update user approval: {str(e)}")
     finally:
         conn.close()

@@ -24,7 +24,29 @@
       <label class="input-label">Confirm Password</label>
       <input id="regConfirmPass" type="password" placeholder="Re-enter password">
 
+      <label class="input-label" style="margin-top:16px;">📷 ID Proof (Required for account verification)</label>
+      <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
+        <div id="idProofPreview" style="display: none; margin-bottom: 12px;">
+          <img id="idProofImage" src="" alt="ID Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8b4513;">
+          <div style="margin-top: 8px;">
+            <button type="button" class="btn small ghost" onclick="clearIdProof()">Remove Photo</button>
+          </div>
+        </div>
+        <div id="idProofCapture" style="display: block;">
+          <input type="file" id="idProofFile" accept="image/*" capture="environment" style="display: none;" onchange="handleIdProofCapture(event)">
+          <button type="button" class="btn small" onclick="document.getElementById('idProofFile').click()">
+            📷 Take Photo / Upload ID
+          </button>
+          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
+            Upload a photo of your ID for account verification. Your account will be reviewed by admin.
+          </p>
+        </div>
+      </div>
+
       <button class="btn mt-8" onclick="registerUser()">Register</button>
+      <p class="center mt-4 muted" style="font-size: 0.85rem;">
+        ⏳ Your account will be reviewed by admin before you can login.
+      </p>
 
       <p class="center mt-8 muted">
         Already registered? <a href="index.html" class="link">Login</a>
@@ -38,6 +60,86 @@
       const el = document.getElementById(id);
       el.type = el.type === 'password' ? 'text' : 'password';
     }
+
+    let idProofBase64 = null;
+
+    function handleIdProofCapture(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        idProofBase64 = e.target.result;
+        document.getElementById('idProofImage').src = idProofBase64;
+        document.getElementById('idProofPreview').style.display = 'block';
+        document.getElementById('idProofCapture').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearIdProof() {
+      idProofBase64 = null;
+      document.getElementById('idProofFile').value = '';
+      document.getElementById('idProofPreview').style.display = 'none';
+      document.getElementById('idProofCapture').style.display = 'block';
+    }
+
+    // Override registerUser to include ID proof
+    const originalRegisterUser = window.registerUser;
+    window.registerUser = async function() {
+      if (!idProofBase64) {
+        return alert('Please upload an ID proof photo for account verification.');
+      }
+      
+      const name = (document.getElementById('regName')?.value || '').trim();
+      const email = (document.getElementById('regEmail')?.value || '').trim().toLowerCase();
+      const pass = (document.getElementById('regPass')?.value || '').trim();
+      const confirmPass = (document.getElementById('regConfirmPass')?.value || '').trim();
+
+      if(!name || !email || !pass) {
+        return alert('Please fill all fields.');
+      }
+
+      if(pass.length < 4) {
+        return alert('Password must be at least 4 characters.');
+      }
+
+      if(pass !== confirmPass) {
+        return alert('❌ Passwords do not match! Please try again.');
+      }
+
+      try {
+        const response = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password: pass, id_proof: idProofBase64 })
+        });
+
+        const data = await response.json();
+        
+        if(response.ok) {
+          alert('✅ Registration successful! Your account is pending admin approval. You will be notified once approved.');
+          location.href = 'index.html';
+        } else {
+          alert(data.detail || 'Registration failed');
+        }
+      } catch(error) {
+        console.error('Registration error:', error);
+        alert('Registration failed. Please try again.');
+      }
+    };
   </script>
 </body>
 </html>

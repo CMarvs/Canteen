@@ -44,6 +44,8 @@ async function registerUser(){
     return alert('❌ Passwords do not match! Please try again.');
   }
 
+  // ID proof is handled in register.html script
+  // This function is overridden there to include ID proof
   try {
     const response = await fetch(`${API_BASE}/register`, {
       method: 'POST',
@@ -82,6 +84,12 @@ async function loginUser(){
     const data = await response.json();
     
     if(response.ok) {
+      // Check if user is approved
+      if(data.is_approved === false || data.is_approved === 0) {
+        alert('⏳ Your account is pending admin approval. Please wait for approval before logging in.');
+        return;
+      }
+      
       // Save user session locally
       saveCurrent({ 
         id: data.id, 
@@ -329,7 +337,7 @@ async function addToCartWithQty(id){
 }
 
 /* ---------- Order Placement (API) ---------- */
-async function placeOrder(name, contact, address, idProofBase64 = null){
+async function placeOrder(name, contact, address){
   const cur = getCurrent();
   if(!cur) { 
     alert('Please login'); 
@@ -367,7 +375,6 @@ async function placeOrder(name, contact, address, idProofBase64 = null){
         location: address,
         items: cart,
         total: total,
-        id_proof: idProofBase64
       })
     });
 
@@ -379,18 +386,9 @@ async function placeOrder(name, contact, address, idProofBase64 = null){
       const delName = document.getElementById('delName');
       const delContact = document.getElementById('delContact');
       const delAddress = document.getElementById('delAddress');
-      const idProofFile = document.getElementById('idProofFile');
       if(delName) delName.value = '';
       if(delContact) delContact.value = '';
       if(delAddress) delAddress.value = '';
-      if(idProofFile) {
-        idProofFile.value = '';
-        // Clear ID proof preview if exists
-        const preview = document.getElementById('idProofPreview');
-        const capture = document.getElementById('idProofCapture');
-        if(preview) preview.style.display = 'none';
-        if(capture) capture.style.display = 'block';
-      }
       
       // Re-render cart to show it's empty
       if(typeof renderCart === 'function') {
