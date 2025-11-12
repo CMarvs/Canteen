@@ -275,7 +275,6 @@
                 <option value="Delivered" ${o.status === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
               </select>
               ${o.status === 'Pending' ? `
-                <button class="btn small" onclick="editOrder(${o.id})" style="background: #2196F3; color: white;">✏️ Edit</button>
                 <button class="btn delete small" onclick="cancelOrder(${o.id})">❌ Cancel</button>
               ` : ''}
               <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
