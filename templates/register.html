@@ -43,6 +43,25 @@
         </div>
       </div>
 
+      <label class="input-label" style="margin-top:16px;">🤳 Selfie Proof (Required for identity verification)</label>
+      <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
+        <div id="selfieProofPreview" style="display: none; margin-bottom: 12px;">
+          <img id="selfieProofImage" src="" alt="Selfie Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #2196F3;">
+          <div style="margin-top: 8px;">
+            <button type="button" class="btn small ghost" onclick="clearSelfieProof()">Remove Photo</button>
+          </div>
+        </div>
+        <div id="selfieProofCapture" style="display: block;">
+          <input type="file" id="selfieProofFile" accept="image/*" capture="user" style="display: none;" onchange="handleSelfieProofCapture(event)">
+          <button type="button" class="btn small" onclick="document.getElementById('selfieProofFile').click()">
+            🤳 Take Selfie
+          </button>
+          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
+            Take a selfie to verify your identity. Admin will compare this with your ID proof.
+          </p>
+        </div>
+      </div>
+
       <button class="btn mt-8" onclick="registerUser()">Register</button>
       <p class="center mt-4 muted" style="font-size: 0.85rem;" id="regMessage">
         ⏳ Your account will be reviewed by admin before you can login.
@@ -72,11 +91,14 @@
             msgEl.innerHTML = '👑 You will be the first admin! No approval needed.';
             msgEl.style.color = '#4caf50';
           }
-          // Make ID proof optional - update label text
+          // Make ID proof and selfie optional - update label text
           const labels = document.querySelectorAll('.input-label');
           labels.forEach(label => {
             if (label.textContent.includes('ID Proof')) {
               label.innerHTML = '📷 ID Proof (Optional for first admin)';
+            }
+            if (label.textContent.includes('Selfie Proof')) {
+              label.innerHTML = '🤳 Selfie Proof (Optional for first admin)';
             }
           });
         }
@@ -86,6 +108,7 @@
     });
 
     let idProofBase64 = null;
+    let selfieProofBase64 = null;
 
     function handleIdProofCapture(event) {
       const file = event.target.files[0];
@@ -118,6 +141,39 @@
       document.getElementById('idProofFile').value = '';
       document.getElementById('idProofPreview').style.display = 'none';
       document.getElementById('idProofCapture').style.display = 'block';
+    }
+
+    function handleSelfieProofCapture(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        selfieProofBase64 = e.target.result;
+        document.getElementById('selfieProofImage').src = selfieProofBase64;
+        document.getElementById('selfieProofPreview').style.display = 'block';
+        document.getElementById('selfieProofCapture').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearSelfieProof() {
+      selfieProofBase64 = null;
+      document.getElementById('selfieProofFile').value = '';
+      document.getElementById('selfieProofPreview').style.display = 'none';
+      document.getElementById('selfieProofCapture').style.display = 'block';
     }
 
     // Override registerUser to include ID proof
@@ -166,11 +222,21 @@
         return alert('Please upload an ID proof photo for account verification.');
       }
 
+      if (requiresIdProof && !selfieProofBase64) {
+        return alert('Please take a selfie for identity verification.');
+      }
+
       try {
         const response = await fetch('/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password: pass, id_proof: idProofBase64 || null })
+          body: JSON.stringify({ 
+            name, 
+            email, 
+            password: pass, 
+            id_proof: idProofBase64 || null,
+            selfie_proof: selfieProofBase64 || null
+          })
         });
 
         const data = await response.json();

@@ -1078,20 +1078,41 @@
                       <div style="flex: 1;">
                         <strong style="font-size: 1.1rem;">${user.name || 'N/A'}</strong>
                         <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">${user.email || 'N/A'}</div>
-                        ${user.id_proof ? `
-                        <div style="margin-top: 12px;">
-                          <strong>📷 ID Proof:</strong>
-                          <div style="margin-top: 8px;">
-                            <img src="${user.id_proof}" alt="ID Proof" 
-                                 class="user-id-proof-thumbnail"
-                                 style="max-width: 200px; max-height: 150px; border-radius: 8px; border: 2px solid #8b4513; cursor: pointer;"
-                                 data-user-id="${user.id}">
+                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" class="proof-comparison-grid">
+                          ${user.id_proof ? `
+                          <div>
+                            <strong>📷 ID Proof:</strong>
+                            <div style="margin-top: 8px;">
+                              <img src="${user.id_proof}" alt="ID Proof" 
+                                   class="user-id-proof-thumbnail"
+                                   style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #8b4513; cursor: pointer;"
+                                   data-user-id="${user.id}"
+                                   data-proof-type="id">
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                              Click to view full size
+                            </p>
                           </div>
-                          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
-                            Click image to view full size
-                          </p>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No ID Proof</div></div>'}
+                          ${user.selfie_proof ? `
+                          <div>
+                            <strong>🤳 Selfie Proof:</strong>
+                            <div style="margin-top: 8px;">
+                              <img src="${user.selfie_proof}" alt="Selfie Proof" 
+                                   class="user-selfie-proof-thumbnail"
+                                   style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #2196F3; cursor: pointer;"
+                                   data-user-id="${user.id}"
+                                   data-proof-type="selfie">
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                              Click to view full size
+                            </p>
+                          </div>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No Selfie Proof</div></div>'}
                         </div>
-                        ` : '<div style="margin-top: 8px; color: #f44336;">⚠️ No ID Proof provided</div>'}
+                        <div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 6px; font-size: 0.85rem; color: #1976d2;">
+                          💡 <strong>Compare:</strong> Verify that the ID and selfie belong to the same person
+                        </div>
                       </div>
                       <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
                         <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
@@ -1143,13 +1164,18 @@
 
         usersArea.innerHTML = html;
 
-        // Set up ID proof image click handlers
-        document.querySelectorAll('.user-id-proof-thumbnail').forEach(img => {
+        // Set up ID proof and selfie proof image click handlers
+        document.querySelectorAll('.user-id-proof-thumbnail, .user-selfie-proof-thumbnail').forEach(img => {
           img.addEventListener('click', function() {
             const userId = this.dataset.userId;
+            const proofType = this.dataset.proofType;
             const user = users.find(u => u.id == userId);
-            if (user && user.id_proof) {
-              showUserIdProofModal(user.id_proof, user.name);
+            if (user) {
+              if (proofType === 'id' && user.id_proof) {
+                showUserProofModal(user.id_proof, user.name, 'ID Proof');
+              } else if (proofType === 'selfie' && user.selfie_proof) {
+                showUserProofModal(user.selfie_proof, user.name, 'Selfie Proof');
+              }
             }
           });
         });
@@ -1215,7 +1241,7 @@
       }
     }
 
-    function showUserIdProofModal(imageSrc, userName) {
+    function showUserProofModal(imageSrc, userName, proofType) {
       const modal = document.createElement('div');
       modal.style.cssText = `
         position: fixed;
@@ -1231,12 +1257,15 @@
         padding: 20px;
       `;
       
+      const borderColor = proofType === 'ID Proof' ? '#8b4513' : '#2196F3';
+      const icon = proofType === 'ID Proof' ? '📷' : '🤳';
+      
       modal.innerHTML = `
         <div style="position: relative; max-width: 90%; max-height: 90%; background: white; border-radius: 12px; padding: 20px;">
           <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
-                  style="position: absolute; top: 10px; right: 10px; background: #8b4513; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
-          <h3 style="margin: 0 0 16px 0; color: #8b4513;">ID Proof - ${userName}</h3>
-          <img src="${imageSrc}" alt="ID Proof" style="max-width: 100%; max-height: 70vh; border-radius: 8px; border: 2px solid #8b4513;">
+                  style="position: absolute; top: 10px; right: 10px; background: ${borderColor}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+          <h3 style="margin: 0 0 16px 0; color: ${borderColor};">${icon} ${proofType} - ${userName}</h3>
+          <img src="${imageSrc}" alt="${proofType}" style="max-width: 100%; max-height: 70vh; border-radius: 8px; border: 2px solid ${borderColor};">
           <p style="margin-top: 12px; font-size: 0.9rem; color: #666; text-align: center;">Click outside or press × to close</p>
         </div>
       `;

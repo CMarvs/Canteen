@@ -477,6 +477,9 @@ select.status-select:focus {
     flex: 1;
     min-width: 120px;
   }
+  .proof-comparison-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 

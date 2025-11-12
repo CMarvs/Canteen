@@ -187,6 +187,22 @@ async def register(request: Request):
         except Exception as col_error:
             print(f"[WARNING] Could not check/add id_proof column: {col_error}")
         
+        # Check if selfie_proof column exists, if not add it
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'selfie_proof'
+            """)
+            has_selfie_proof = cur.fetchone() is not None
+            
+            if not has_selfie_proof:
+                print("[INFO] Adding selfie_proof column to users table...")
+                cur.execute("ALTER TABLE users ADD COLUMN selfie_proof TEXT;")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add selfie_proof column: {col_error}")
+        
         # Check if is_approved column exists, if not add it
         try:
             cur.execute("""
@@ -221,19 +237,23 @@ async def register(request: Request):
             user_role = 'admin'
             is_approved = True
             id_proof = data.get("id_proof")  # Optional for first admin
+            selfie_proof = data.get("selfie_proof")  # Optional for first admin
             message = "Admin account created successfully! You can now login."
         else:
             # Subsequent users need approval
             user_role = 'user'
             is_approved = False
             id_proof = data.get("id_proof")
+            selfie_proof = data.get("selfie_proof")
             if not id_proof:
                 raise HTTPException(400, "ID proof is required for registration")
+            if not selfie_proof:
+                raise HTTPException(400, "Selfie proof is required for registration")
             message = "User registered successfully. Account pending admin approval."
         
         cur.execute(
-            "INSERT INTO users(name,email,password,role,id_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s)",
-            (data.get("name"), data.get("email"), data.get("password"), user_role, id_proof, is_approved)
+            "INSERT INTO users(name,email,password,role,id_proof,selfie_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+            (data.get("name"), data.get("email"), data.get("password"), user_role, id_proof, selfie_proof, is_approved)
         )
         conn.commit()
         return {"ok": True, "message": message}
@@ -856,7 +876,7 @@ def get_users():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, name, email, role, is_approved, id_proof FROM users ORDER BY id DESC")
+        cur.execute("SELECT id, name, email, role, is_approved, id_proof, selfie_proof FROM users ORDER BY id DESC")
         return cur.fetchall()
     except Exception as e:
         print(f"❌ Get users error: {e}")
