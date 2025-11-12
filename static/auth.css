@@ -127,13 +127,57 @@
 
 /* Responsive */
 @media (max-width: 480px) {
+  /* Small phones */
+  .auth-wrap {
+    padding: 10px;
+  }
+  
   .auth-card {
-    padding: 30px 20px;
+    padding: 24px 16px;
     margin: 10px;
+    border-radius: 12px;
   }
   
   .auth-card h2 {
     font-size: 1.3rem;
+    margin-bottom: 20px;
+  }
+  
+  .auth-card .input-label {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  
+  .auth-card input[type="text"],
+  .auth-card input[type="email"],
+  .password-row input {
+    padding: 12px !important;
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    min-height: 44px; /* Better touch target */
+  }
+  
+  .password-row button {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+  }
+  
+  .auth-card .btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 320px) {
+  /* Very small phones */
+  .auth-card {
+    padding: 20px 12px;
+    margin: 5px;
+  }
+  
+  .auth-card h2 {
+    font-size: 1.2rem;
   }
 }
 

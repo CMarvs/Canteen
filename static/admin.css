@@ -383,13 +383,100 @@ select.status-select:focus {
 }
 
 /* Responsive */
+@media (max-width: 480px) {
+  /* Small phones */
+  main { 
+    padding: 10px; 
+    margin: 10px auto; 
+  }
+  .stats-grid { 
+    grid-template-columns: 1fr; 
+    gap: 10px;
+  }
+  .stat-card {
+    padding: 12px;
+  }
+  .stat-number {
+    font-size: 1.5rem;
+  }
+  .tab-buttons { 
+    flex-direction: column; 
+    gap: 8px;
+  }
+  .tab-buttons button { 
+    min-width: 100%; 
+    padding: 12px;
+    font-size: 14px;
+  }
+  .filter-bar { 
+    flex-direction: column; 
+    gap: 8px;
+  }
+  .search-input, 
+  .filter-select { 
+    width: 100%; 
+    padding: 10px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  .order-card {
+    padding: 12px;
+  }
+  .order-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .status-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  .status-buttons select,
+  .status-buttons .btn {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .buyer-info {
+    padding: 10px;
+    font-size: 0.85rem;
+  }
+  .order-items {
+    font-size: 0.9rem;
+  }
+}
+
 @media (max-width: 768px) {
-  main { padding: 15px; margin: 15px auto; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .tab-buttons { flex-direction: column; }
-  .tab-buttons button { min-width: 100%; }
-  .filter-bar { flex-direction: column; }
-  .search-input, .filter-select { width: 100%; }
+  /* Tablets */
+  main { 
+    padding: 15px; 
+    margin: 15px auto; 
+  }
+  .stats-grid { 
+    grid-template-columns: repeat(2, 1fr); 
+    gap: 12px;
+  }
+  .tab-buttons { 
+    flex-direction: column; 
+    gap: 10px;
+  }
+  .tab-buttons button { 
+    min-width: 100%; 
+  }
+  .filter-bar { 
+    flex-direction: column; 
+    gap: 10px;
+  }
+  .search-input, 
+  .filter-select { 
+    width: 100%; 
+  }
+  .status-buttons {
+    flex-wrap: wrap;
+  }
+  .status-buttons select,
+  .status-buttons .btn {
+    flex: 1;
+    min-width: 120px;
+  }
 }
 
 

@@ -66,7 +66,30 @@
 }
 
 /* Responsive */
+@media (max-width: 480px) {
+  /* Small phones */
+  .order-card {
+    padding: 12px;
+    border-left-width: 3px;
+  }
+  .order-status {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    display: block;
+    width: fit-content;
+    margin-top: 8px;
+  }
+  .order-card .muted.small {
+    font-size: 0.8rem;
+  }
+  #noOrders {
+    padding: 40px 15px;
+    font-size: 1rem;
+  }
+}
+
 @media (max-width: 768px) {
+  /* Tablets */
   .order-card {
     padding: 16px;
   }

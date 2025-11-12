@@ -60,7 +60,42 @@
 }
 
 /* Responsive */
+@media (max-width: 480px) {
+  /* Small phones */
+  .container {
+    padding: 12px;
+    max-width: 100%;
+  }
+  
+  .profile-card {
+    padding: 16px;
+  }
+  
+  .headline {
+    font-size: 1.3rem;
+    margin-bottom: 16px;
+  }
+  
+  .card input[type="text"],
+  .card input[type="email"],
+  .card input[type="password"] {
+    padding: 12px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  .card > div {
+    flex-direction: column;
+  }
+  
+  .profile-card .btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px 24px;
+  }
+}
+
 @media (max-width: 768px) {
+  /* Tablets */
   .container {
     padding: 16px;
   }

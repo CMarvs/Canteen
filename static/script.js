@@ -1,6 +1,7 @@
 /* ===== RMLCanteen — API-Connected Version =====
    - Uses FastAPI backend with NeonDB PostgreSQL
    - Admin account: admin@canteen / admin123
+   - Version: 2.0 - Profile update enabled
 */
 
 // API Base URL
@@ -111,52 +112,29 @@ function logoutUser(){
   location.href = 'index.html';
 }
 
-/* ---------- Menu Data (Frontend - same as before) ---------- */
-const DEFAULT_MENU = {
-  budget: [
-    { id: 's1', name: 'Budget Meal A (Fried Chicken + Rice)', price: 50 },
-    { id: 's2', name: 'Budget Meal B (Pork Adobo + Rice)', price: 50 },
-    { id: 's3', name: 'Budget Meal C (Burger Steak + Rice)', price: 50 },
-    { id: 's4', name: 'Budget Meal D (Hotdog + Egg + Rice)', price: 45 }
-  ],
-  foods: [
-    { id: 'f1', name: 'Sisig', price: 70 },
-    { id: 'f2', name: 'Dinakdakan', price: 75 },
-    { id: 'f3', name: 'Pork Adobo', price: 65 },
-    { id: 'f4', name: 'Beef Caldereta', price: 80 },
-    { id: 'f5', name: 'Carbonara', price: 70 },
-    { id: 'f6', name: 'Spaghetti', price: 60 },
-    { id: 'f7', name: 'Palabok', price: 60 },
-    { id: 'f8', name: 'Fried Rice', price: 20 }
-  ],
-  drinks: [
-    { id: 'd1', name: 'Coke', price: 25 },
-    { id: 'd2', name: 'Sprite', price: 25 },
-    { id: 'd3', name: 'Royal', price: 25 },
-    { id: 'd4', name: 'Bottled Water', price: 15 },
-    { id: 'd5', name: 'C2 Green Tea', price: 20 },
-    { id: 'd6', name: 'Iced Coffee', price: 35 }
-  ]
-};
+/* ---------- Menu Data (Fetched from API) ---------- */
+let MENU_CACHE = null; // Cache menu items to avoid repeated API calls
 
-/* ---------- Sold Out Management (localStorage for now, can be moved to API) ---------- */
-function getSoldOutItems() {
-  return readLocal(KEY_SOLDOUT, []);
-}
-function saveSoldOutItems(list) {
-  writeLocal(KEY_SOLDOUT, list);
-}
-function toggleSoldOut(itemId) {
-  let soldOut = getSoldOutItems();
-  if (soldOut.includes(itemId)) {
-    soldOut = soldOut.filter(id => id !== itemId);
-  } else {
-    soldOut.push(itemId);
+/* ---------- Menu Functions ---------- */
+async function fetchMenuItems() {
+  try {
+    const response = await fetch(`${API_BASE}/menu`);
+    if (!response.ok) {
+      console.error('Failed to fetch menu items');
+      return [];
+    }
+    const items = await response.json();
+    MENU_CACHE = items;
+    return items;
+  } catch(error) {
+    console.error('Error fetching menu items:', error);
+    return [];
   }
-  saveSoldOutItems(soldOut);
-  renderAdminMenuList();
-  if(typeof loadMenuToPage === 'function') loadMenuToPage();
-  alert('✅ Item availability updated.');
+}
+
+function getMenuById(id) {
+  if (!MENU_CACHE) return null;
+  return MENU_CACHE.find(item => item.id === id || item.id.toString() === id.toString());
 }
 
 /* ---------- Cart Functions (localStorage) ---------- */
@@ -164,19 +142,34 @@ function getCart(){ return readLocal(KEY_CART, []); }
 function saveCart(c){ writeLocal(KEY_CART, c); }
 function clearCart(){ saveCart([]); renderCart(); }
 
-function addToCartById(id, qty = 1){
-  const menu = {...DEFAULT_MENU};
-  const all = [...menu.budget, ...menu.foods, ...menu.drinks];
-  const item = all.find(x => x.id === id);
-  const soldOut = getSoldOutItems();
+async function addToCartById(id, qty = 1){
+  // Ensure menu is loaded
+  if (!MENU_CACHE) {
+    await fetchMenuItems();
+  }
   
-  if(!item) return alert('Item not found.');
-  if(soldOut.includes(id)) return alert('Sorry — this item is sold out.');
+  const item = getMenuById(id);
+  if(!item) {
+    return alert('Item not found. Please refresh the page.');
+  }
+  
+  // Check if item is available
+  if(item.is_available === false) {
+    return alert('Sorry — this item is sold out.');
+  }
   
   const cart = getCart();
-  const row = cart.find(r => r.id === id);
-  if(row) row.qty += qty;
-  else cart.push({ id: item.id, name: item.name, price: item.price, qty });
+  const row = cart.find(r => r.id === id || r.id.toString() === id.toString());
+  if(row) {
+    row.qty += qty;
+  } else {
+    cart.push({ 
+      id: item.id, 
+      name: item.name, 
+      price: item.price, 
+      qty 
+    });
+  }
   
   saveCart(cart);
   renderCart();
@@ -242,18 +235,41 @@ function promptEditQty(id, currentQty){
 }
 
 /* ---------- Menu Rendering ---------- */
-function loadMenuToPage(){
+async function loadMenuToPage(){
   const budget = document.getElementById('budgetContainer');
   const foods = document.getElementById('foodsContainer');
   const drinks = document.getElementById('drinksContainer');
-  if(budget) budget.innerHTML = DEFAULT_MENU.budget.map(i => itemCardHtml(i)).join('');
-  if(foods) foods.innerHTML = DEFAULT_MENU.foods.map(i => itemCardHtml(i)).join('');
-  if(drinks) drinks.innerHTML = DEFAULT_MENU.drinks.map(i => itemCardHtml(i)).join('');
+  
+  // Show loading state
+  if(budget) budget.innerHTML = '<div class="muted">Loading...</div>';
+  if(foods) foods.innerHTML = '<div class="muted">Loading...</div>';
+  if(drinks) drinks.innerHTML = '<div class="muted">Loading...</div>';
+  
+  // Fetch menu items from API
+  const menuItems = await fetchMenuItems();
+  
+  if(menuItems.length === 0) {
+    const emptyMsg = '<div class="muted">No menu items available. Please contact admin.</div>';
+    if(budget) budget.innerHTML = emptyMsg;
+    if(foods) foods.innerHTML = emptyMsg;
+    if(drinks) drinks.innerHTML = emptyMsg;
+    return;
+  }
+  
+  // Group by category
+  const grouped = {
+    budget: menuItems.filter(i => i.category === 'budget'),
+    foods: menuItems.filter(i => i.category === 'foods'),
+    drinks: menuItems.filter(i => i.category === 'drinks')
+  };
+  
+  if(budget) budget.innerHTML = grouped.budget.map(i => itemCardHtml(i)).join('');
+  if(foods) foods.innerHTML = grouped.foods.map(i => itemCardHtml(i)).join('');
+  if(drinks) drinks.innerHTML = grouped.drinks.map(i => itemCardHtml(i)).join('');
 }
 
 function itemCardHtml(i){
-  const soldOut = getSoldOutItems();
-  const isSold = soldOut.includes(i.id);
+  const isSold = i.is_available === false;
   return `
     <div class="item card ${isSold ? 'sold' : ''}">
       <div>
@@ -264,7 +280,7 @@ function itemCardHtml(i){
         ${isSold ? `<div class="sold-label">SOLD OUT</div>` : `
           <div style="display:flex;gap:8px;align-items:center;justify-content:center;">
             <input class="qty" type="number" id="q_${i.id}" value="1" min="1">
-            <button class="btn small" onclick="addToCartWithQty('${i.id}')">Add</button>
+            <button class="btn small" onclick="addToCartWithQty(${i.id})">Add</button>
           </div>
         `}
       </div>
@@ -272,14 +288,14 @@ function itemCardHtml(i){
   `;
 }
 
-function addToCartWithQty(id){
+async function addToCartWithQty(id){
   const qEl = document.getElementById('q_' + id);
   const qty = qEl ? Number(qEl.value) || 1 : 1;
-  addToCartById(id, qty);
+  await addToCartById(id, qty);
 }
 
 /* ---------- Order Placement (API) ---------- */
-async function placeOrder(name, contact, address){
+async function placeOrder(name, contact, address, idProofBase64 = null){
   const cur = getCurrent();
   if(!cur) { 
     alert('Please login'); 
@@ -290,8 +306,14 @@ async function placeOrder(name, contact, address){
   const cart = getCart();
   if(cart.length === 0) return alert('Cart is empty');
 
-  const soldOut = getSoldOutItems();
-  const blocked = cart.filter(it => soldOut.includes(it.id));
+  // Check if any items in cart are sold out (validate against current menu)
+  if (!MENU_CACHE) {
+    await fetchMenuItems();
+  }
+  const blocked = cart.filter(cartItem => {
+    const menuItem = getMenuById(cartItem.id);
+    return !menuItem || menuItem.is_available === false;
+  });
   if(blocked.length > 0) {
     alert('Some items in your cart are sold out. Please remove them first.');
     return;
@@ -310,14 +332,43 @@ async function placeOrder(name, contact, address){
         contact: contact,
         location: address,
         items: cart,
-        total: total
+        total: total,
+        id_proof: idProofBase64
       })
     });
 
     if(response.ok) {
-      saveCart([]); // Clear cart
+      // Clear cart
+      saveCart([]);
+      
+      // Clear form fields on order page if still there
+      const delName = document.getElementById('delName');
+      const delContact = document.getElementById('delContact');
+      const delAddress = document.getElementById('delAddress');
+      const idProofFile = document.getElementById('idProofFile');
+      if(delName) delName.value = '';
+      if(delContact) delContact.value = '';
+      if(delAddress) delAddress.value = '';
+      if(idProofFile) {
+        idProofFile.value = '';
+        // Clear ID proof preview if exists
+        const preview = document.getElementById('idProofPreview');
+        const capture = document.getElementById('idProofCapture');
+        if(preview) preview.style.display = 'none';
+        if(capture) capture.style.display = 'block';
+      }
+      
+      // Re-render cart to show it's empty
+      if(typeof renderCart === 'function') {
+        renderCart();
+      }
+      
       alert('✅ Order placed successfully!');
-      location.href = 'orders.html';
+      
+      // Small delay to ensure order is committed, then redirect
+      setTimeout(() => {
+        location.href = 'orders.html?t=' + Date.now(); // Add timestamp to prevent cache
+      }, 300);
     } else {
       const data = await response.json();
       alert(data.detail || 'Order placement failed');
@@ -338,7 +389,13 @@ async function renderUserOrders(){
   if(!list) return;
 
   try {
-    const response = await fetch(`${API_BASE}/orders`);
+    // Add cache-busting timestamp to ensure fresh data
+    const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`, {
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
     const allOrders = await response.json();
     
     // Filter orders for current user
@@ -391,37 +448,7 @@ function statusBadgeHtml(status){
   return map[status] || `<span class="order-status">${status}</span>`;
 }
 
-/* ---------- Admin Menu Editor ---------- */
-function renderAdminMenuList(){
-  const cur = getCurrent();
-  if(!cur || cur.role !== 'admin') return;
-  const menuArea = document.getElementById('adminMenuList');
-  if(!menuArea) return;
-
-  const soldOut = getSoldOutItems();
-  const sections = Object.keys(DEFAULT_MENU);
-
-  menuArea.innerHTML = sections.map(sec => {
-    const itemsHtml = DEFAULT_MENU[sec].map(i => {
-      const isSold = soldOut.includes(i.id);
-      return `
-        <div class="item-row">
-          <span>${i.name}</span>
-          <div class="price">₱${Number(i.price).toFixed(2)}</div>
-          <button class="btn small ${isSold ? 'ghost' : ''}" onclick="toggleSoldOut('${i.id}')">
-            ${isSold ? 'Mark Available' : 'Mark Sold Out'}
-          </button>
-        </div>
-      `;
-    }).join('');
-    return `
-      <div class="card" style="margin-bottom:12px;">
-        <h4 style="margin:0 0 8px 0;">${sec.charAt(0).toUpperCase() + sec.slice(1)}</h4>
-        ${itemsHtml}
-      </div>
-    `;
-  }).join('');
-}
+/* ---------- Old Admin Menu Editor (removed - now handled in admin.html) ---------- */
 
 /* ---------- Profile Functions ---------- */
 function loadProfilePage(){
@@ -433,17 +460,96 @@ function loadProfilePage(){
 
 async function saveProfile(){
   const cur = getCurrent();
-  if(!cur) return;
+  if(!cur) {
+    alert('Please login first');
+    location.href = 'index.html';
+    return;
+  }
   
-  const name = (document.getElementById('profileName')?.value || '').trim();
-  const pass = (document.getElementById('profilePass')?.value || '').trim();
+  const nameInput = document.getElementById('profileName');
+  const passInput = document.getElementById('profilePass');
   
-  if(!name && !pass) {
-    return alert('Nothing to update');
+  if(!nameInput || !passInput) {
+    console.error('Profile form elements not found');
+    return;
+  }
+  
+  const name = (nameInput.value || '').trim();
+  const pass = (passInput.value || '').trim();
+  
+  // Get current name from session if name field is empty
+  const currentName = cur.name || '';
+  const nameToUpdate = name || currentName;
+  
+  // Check if there's anything to update
+  const nameChanged = name && name !== currentName;
+  const passwordProvided = pass && pass.length > 0;
+  
+  if(!nameChanged && !passwordProvided) {
+    return alert('Nothing to update. Please enter a new name or new password.');
   }
 
-  // Note: You'll need to add a PUT /users/{id} endpoint in server.py for this
-  alert('Profile update coming soon!');
+  if(pass && pass.length < 4) {
+    return alert('Password must be at least 4 characters.');
+  }
+
+  try {
+    const updateData = {};
+    
+    // Always include name (either new or current)
+    if(nameToUpdate) {
+      updateData.name = nameToUpdate;
+    }
+    
+    // Only include password if provided
+    if(passwordProvided) {
+      updateData.password = pass;
+    }
+
+    console.log('Updating profile:', { userId: cur.id, updateData });
+
+    const response = await fetch(`${API_BASE}/users/${cur.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to update profile';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch(e) {
+        errorMessage = `Server returned ${response.status}: ${response.statusText}`;
+      }
+      alert(`❌ ${errorMessage}`);
+      return;
+    }
+
+    const data = await response.json();
+    console.log('Profile update response:', data);
+    
+    // Update local session with updated user data
+    if(data.user) {
+      saveCurrent({
+        id: cur.id,
+        name: data.user.name || nameToUpdate,
+        email: cur.email,
+        role: cur.role
+      });
+    }
+
+    alert('✅ Profile updated successfully!');
+    
+    // Clear password field
+    passInput.value = '';
+    
+    // Reload profile page to show updated information
+    loadProfilePage();
+  } catch(error) {
+    console.error('Profile update error:', error);
+    alert('Failed to update profile. Please check your connection and try again.');
+  }
 }
 
 /* ---------- Page Helpers ---------- */

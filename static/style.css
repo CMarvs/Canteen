@@ -19,12 +19,14 @@ body { background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; 
 .topbar {
   background: var(--card); padding: 12px 24px; display:flex; justify-content:space-between; align-items:center;
   box-shadow: var(--shadow); position: sticky; top: 0; z-index:100;
+  width: 100%; box-sizing: border-box; flex-wrap: wrap;
 }
-.brand { font-weight:600; font-size:20px; color: var(--primary); }
-.nav a { margin-left:18px; text-decoration:none; color:var(--text); transition:0.2s; font-weight:500; }
+.brand { font-weight:600; font-size:20px; color: var(--primary); word-wrap: break-word; }
+.nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.nav a { margin-left:18px; text-decoration:none; color:var(--text); transition:0.2s; font-weight:500; white-space: nowrap; }
 .nav a:hover, .nav a.active { color:var(--primary); text-shadow: 0 0 6px rgba(212,163,115,0.35); }
 
-.container { flex:1; padding:24px; max-width:900px; margin:0 auto; }
+.container { flex:1; padding:24px; max-width:900px; margin:0 auto; width:100%; box-sizing:border-box; }
 .headline { font-size:22px; font-weight:600; margin-bottom:16px; color:var(--primary); }
 .card { background:var(--card); padding:20px; border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; }
 
@@ -73,10 +75,86 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
 .link { color:var(--primary); text-decoration:none; }
 .link:hover { text-decoration:underline; }
 
-/* responsive */
-@media (max-width:760px){
-  .items-grid { grid-template-columns: repeat(1, 1fr); }
-  .topbar { flex-direction:column; gap:8px; align-items:flex-start; }
+/* responsive - Mobile First Approach */
+@media (max-width: 480px) {
+  /* Small phones */
+  .topbar { 
+    flex-direction: column; 
+    gap: 8px; 
+    align-items: flex-start; 
+    padding: 10px 12px; 
+  }
+  .brand { font-size: 18px; }
+  .topbar .nav { 
+    margin-top: 8px; 
+    width: 100%; 
+    flex-wrap: wrap;
+  }
+  .topbar .nav a { 
+    margin-left: 0; 
+    margin-right: 12px; 
+    font-size: 14px;
+    padding: 4px 0;
+  }
+  .container { 
+    padding: 12px; 
+  }
+  .headline { 
+    font-size: 18px; 
+    margin-bottom: 12px;
+  }
+  .card { 
+    padding: 16px; 
+    margin-bottom: 12px;
+  }
+  .btn { 
+    padding: 10px 14px; 
+    font-size: 14px;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .btn.small { 
+    padding: 6px 10px; 
+    font-size: 12px;
+  }
+  .items-grid { 
+    grid-template-columns: 1fr; 
+    gap: 10px;
+  }
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  textarea { 
+    padding: 10px; 
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+@media (max-width: 768px) {
+  /* Tablets and larger phones */
+  .items-grid { 
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+  }
+  .topbar { 
+    flex-direction: column; 
+    gap: 8px; 
+    align-items: flex-start; 
+    padding: 12px 16px; 
+  }
+  .topbar .nav { 
+    margin-top: 8px; 
+    width: 100%; 
+  }
+  .topbar .nav a { 
+    margin-left: 0; 
+    margin-right: 16px; 
+  }
+  .container { 
+    padding: 16px; 
+  }
+  .card {
+    padding: 18px;
+  }
 }
 /* Admin menu row & sold out visuals */
 .menu-list .card { padding: 12px; }

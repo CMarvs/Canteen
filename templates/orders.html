@@ -28,6 +28,19 @@
   <script>
     window.addEventListener('DOMContentLoaded', () => {
       ensureLoggedIn('user');
+      // Force reload orders when page loads
+      renderUserOrders();
+    });
+    
+    // Also reload when page becomes visible (handles tab switching, back button)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        renderUserOrders();
+      }
+    });
+    
+    // Reload when page is focused (user switches back to tab)
+    window.addEventListener('focus', () => {
       renderUserOrders();
     });
   </script>
