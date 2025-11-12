@@ -109,11 +109,13 @@ def safe_file_response(path: str):
         if os.path.exists(full_path):
             with open(full_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            # Add no-cache headers to prevent browser caching
+            # Add aggressive no-cache headers to prevent browser and CDN caching
             headers = {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
-                "Expires": "0"
+                "Expires": "0",
+                "X-Content-Type-Options": "nosniff",
+                "Last-Modified": "Thu, 01 Jan 1970 00:00:00 GMT"
             }
             return HTMLResponse(content=content, headers=headers)
         else:
