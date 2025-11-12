@@ -467,7 +467,10 @@ function orderCardHtmlForUser(o){
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:space-between;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
-        ${canCancel ? `<button class="btn delete small" onclick="cancelUserOrder(${o.id})">❌ Cancel Order</button>` : ''}
+        <div style="display:flex;gap:8px;">
+          ${canCancel ? `<button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white;">✏️ Edit</button>` : ''}
+          ${canCancel ? `<button class="btn delete small" onclick="cancelUserOrder(${o.id})">❌ Cancel</button>` : ''}
+        </div>
       </div>
     </div>
   `;
@@ -481,6 +484,292 @@ function statusBadgeHtml(status){
     'Delivered': `<span class="order-status status-Delivered">Delivered</span>`
   };
   return map[status] || `<span class="order-status">${status}</span>`;
+}
+
+/* ---------- Edit User Order ---------- */
+async function editUserOrder(orderId) {
+  const cur = getCurrent();
+  if (!cur) {
+    alert('Please login first');
+    location.href = 'index.html';
+    return;
+  }
+
+  // Fetch all orders to find this one
+  try {
+    const response = await fetch(`/orders?t=${Date.now()}`);
+    const allOrders = await response.json();
+    const order = allOrders.find(o => o.id === orderId && o.user_id === cur.id);
+    
+    if (!order) {
+      alert('Order not found or you do not have permission to edit this order.');
+      return;
+    }
+
+    if (order.status !== 'Pending') {
+      alert('Only orders with "Pending" status can be edited.');
+      return;
+    }
+
+    // Parse items if it's a string
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    
+    // Create edit modal
+    const modal = document.createElement('div');
+    modal.id = 'editUserOrderModal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-y: auto;
+    `;
+    
+    modal.innerHTML = `
+      <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;">
+        <button onclick="document.getElementById('editUserOrderModal').remove()" 
+                style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+        
+        <h2 style="margin: 0 0 20px 0; color: #8b4513;">✏️ Edit Order #${orderId}</h2>
+        
+        <form id="editUserOrderForm" onsubmit="saveUserOrderEdit(event, ${orderId})">
+          <div style="margin-bottom: 16px;">
+            <label class="input-label">Full Name</label>
+            <input type="text" id="editUserFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
+                   required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label class="input-label">Contact Number</label>
+            <input type="text" id="editUserContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+                   required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label class="input-label">Address / Location</label>
+            <textarea id="editUserLocation" required 
+                      style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px;">${(order.location || order.address || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label class="input-label">Order Items</label>
+            <div id="editUserItemsList" style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;">
+              ${items.map((item, idx) => {
+                const safeName = (item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                return `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 8px; background: white; border-radius: 6px;">
+                  <div style="flex: 1;">
+                    <strong>${safeName}</strong><br>
+                    <span style="color: var(--muted); font-size: 0.9rem;">₱${Number(item.price).toFixed(2)} × 
+                    <input type="number" id="editUserQty_${idx}" value="${item.qty}" min="1" 
+                           style="width: 60px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
+                           onchange="updateUserEditTotal()">
+                    </span>
+                  </div>
+                  <button type="button" class="btn delete small" onclick="removeUserEditItem(${idx})">Remove</button>
+                </div>
+              `;
+              }).join('')}
+            </div>
+            <div style="margin-top: 12px;">
+              <button type="button" class="btn small ghost" onclick="addUserEditItem()">+ Add Item</button>
+            </div>
+          </div>
+          
+          <div style="margin-bottom: 20px; padding: 12px; background: #fff8f1; border-radius: 8px; border: 1px solid #8b4513;">
+            <strong>💰 Total: ₱<span id="editUserTotal">${Number(order.total).toFixed(2)}</span></strong>
+          </div>
+          
+          <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn ghost" onclick="document.getElementById('editUserOrderModal').remove()">Cancel</button>
+            <button type="submit" class="btn">💾 Save Changes</button>
+          </div>
+        </form>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Store original items for calculations
+    window.editUserOrderData = {
+      items: items.map(item => ({...item})),
+      orderId: orderId
+    };
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  } catch(error) {
+    console.error('Error loading order:', error);
+    alert('Failed to load order. Please try again.');
+  }
+}
+
+async function saveUserOrderEdit(event, orderId) {
+  event.preventDefault();
+  
+  const cur = getCurrent();
+  if (!cur) {
+    alert('Please login first');
+    return;
+  }
+  
+  const fullname = document.getElementById('editUserFullname').value.trim();
+  const contact = document.getElementById('editUserContact').value.trim();
+  const location = document.getElementById('editUserLocation').value.trim();
+  
+  if (!fullname || !contact || !location) {
+    alert('Please fill in all required fields.');
+    return;
+  }
+  
+  // Collect items with quantities
+  const items = [];
+  let total = 0;
+  const DELIVERY_FEE = 10;
+  
+  for (let i = 0; i < window.editUserOrderData.items.length; i++) {
+    const qtyInput = document.getElementById(`editUserQty_${i}`);
+    if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+      const qty = parseInt(qtyInput.value) || 0;
+      if (qty > 0) {
+        const item = window.editUserOrderData.items[i];
+        items.push({
+          id: item.id,
+          name: item.name,
+          price: Number(item.price),
+          qty: qty
+        });
+        total += Number(item.price) * qty;
+      }
+    }
+  }
+  
+  if (items.length === 0) {
+    alert('Order must have at least one item.');
+    return;
+  }
+  
+  total += DELIVERY_FEE;
+  
+  try {
+    const response = await fetch(`/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: cur.id,
+        fullname: fullname,
+        contact: contact,
+        location: location,
+        items: items,
+        total: total
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      alert(`Failed to update order: ${errorData.detail || 'Unknown error'}`);
+      return;
+    }
+    
+    alert('✅ Order updated successfully!');
+    document.getElementById('editUserOrderModal').remove();
+    await renderUserOrders();
+  } catch(error) {
+    console.error('Error updating order:', error);
+    alert('Failed to update order. Please try again.');
+  }
+}
+
+function updateUserEditTotal() {
+  const DELIVERY_FEE = 10;
+  let total = 0;
+  
+  for (let i = 0; i < window.editUserOrderData.items.length; i++) {
+    const qtyInput = document.getElementById(`editUserQty_${i}`);
+    if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+      const qty = parseInt(qtyInput.value) || 0;
+      const item = window.editUserOrderData.items[i];
+      total += Number(item.price) * qty;
+    }
+  }
+  
+  total += DELIVERY_FEE;
+  document.getElementById('editUserTotal').textContent = total.toFixed(2);
+}
+
+function removeUserEditItem(idx) {
+  window.editUserOrderData.items.splice(idx, 1);
+  document.getElementById('editUserOrderModal').remove();
+  editUserOrder(window.editUserOrderData.orderId);
+}
+
+async function addUserEditItem() {
+  // Fetch menu items
+  try {
+    const response = await fetch('/menu');
+    const menuItems = await response.json();
+    
+    if (menuItems.length === 0) {
+      alert('No menu items available.');
+      return;
+    }
+    
+    // Create a simple selection dialog
+    const itemNames = menuItems.map(item => item.name).join('\n');
+    const selectedName = prompt(`Enter item name to add:\n\nAvailable items:\n${itemNames}`);
+    if (!selectedName) return;
+    
+    const selectedItem = menuItems.find(item => 
+      item.name.toLowerCase() === selectedName.toLowerCase()
+    );
+    
+    if (!selectedItem) {
+      alert('Item not found. Please enter the exact item name.');
+      return;
+    }
+    
+    if (selectedItem.is_available === false || (selectedItem.quantity || 0) === 0) {
+      alert('This item is currently out of stock.');
+      return;
+    }
+    
+    const qty = parseInt(prompt(`Enter quantity for ${selectedItem.name}:`, '1')) || 1;
+    if (qty <= 0) {
+      alert('Quantity must be greater than 0.');
+      return;
+    }
+    
+    // Check stock availability
+    if (qty > (selectedItem.quantity || 0)) {
+      alert(`Only ${selectedItem.quantity} item(s) available in stock.`);
+      return;
+    }
+    
+    window.editUserOrderData.items.push({
+      id: selectedItem.id,
+      name: selectedItem.name,
+      price: selectedItem.price,
+      qty: qty
+    });
+    
+    // Refresh the modal
+    document.getElementById('editUserOrderModal').remove();
+    editUserOrder(window.editUserOrderData.orderId);
+  } catch(error) {
+    console.error('Error adding item:', error);
+    alert('Failed to load menu items.');
+  }
 }
 
 /* ---------- Cancel User Order ---------- */

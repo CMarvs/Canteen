@@ -535,18 +535,74 @@ async def update_order(oid: int, request: Request):
     try:
         cur = conn.cursor()
         
-        # Check if order exists and get current status
-        cur.execute("SELECT status FROM orders WHERE id=%s", (oid,))
+        # Check if order exists and get current status and user_id
+        cur.execute("SELECT status, user_id, items FROM orders WHERE id=%s", (oid,))
         order = cur.fetchone()
         if not order:
             raise HTTPException(404, f"Order {oid} not found")
         
-        current_status = order.get("status") if isinstance(order, dict) else order[0] if order else None
+        # Get order data (handle both dict and tuple responses)
+        if isinstance(order, dict):
+            current_status = order.get("status")
+            order_user_id = order.get("user_id")
+            old_items = order.get("items")
+        else:
+            current_status = order[0] if len(order) > 0 else None
+            order_user_id = order[1] if len(order) > 1 else None
+            old_items = order[2] if len(order) > 2 else None
+        
+        # If user_id is provided, verify ownership (for user edits)
+        user_id = data.get("user_id")
+        if user_id is not None:
+            if order_user_id != user_id:
+                raise HTTPException(403, "You can only edit your own orders")
         
         # If updating order details (not just status), check if order is Pending
         if "fullname" in data or "contact" in data or "location" in data or "items" in data or "total" in data:
             if current_status != "Pending":
                 raise HTTPException(400, f"Cannot edit order. Only orders with 'Pending' status can be edited. Current status: {current_status}")
+            
+            # Handle stock updates if items are being changed
+            if "items" in data:
+                # Restore stock from old items
+                if old_items:
+                    try:
+                        old_items_list = json.loads(old_items) if isinstance(old_items, str) else old_items
+                        for item in old_items_list:
+                            item_id = item.get("id")
+                            qty_ordered = item.get("qty", 0)
+                            if item_id and qty_ordered > 0:
+                                try:
+                                    cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
+                                    result = cur.fetchone()
+                                    if result:
+                                        current_qty = result.get("quantity") if isinstance(result, dict) else (result[0] if result else 0)
+                                        new_qty = current_qty + qty_ordered  # Restore
+                                        cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
+                                        if current_qty == 0 and new_qty > 0:
+                                            cur.execute("UPDATE menu_items SET is_available = TRUE WHERE id = %s", (item_id,))
+                                except Exception as stock_error:
+                                    print(f"[WARNING] Could not restore stock for item {item_id}: {stock_error}")
+                    except Exception as items_error:
+                        print(f"[WARNING] Could not parse old items for stock restoration: {items_error}")
+                
+                # Deduct stock for new items
+                new_items = data.get("items", [])
+                for item in new_items:
+                    item_id = item.get("id")
+                    qty_ordered = item.get("qty", 0)
+                    if item_id and qty_ordered > 0:
+                        try:
+                            cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
+                            result = cur.fetchone()
+                            if result:
+                                current_qty = result.get("quantity") if isinstance(result, dict) else (result[0] if result else 0)
+                                new_qty = max(0, current_qty - qty_ordered)  # Deduct
+                                cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
+                                if new_qty == 0:
+                                    cur.execute("UPDATE menu_items SET is_available = FALSE WHERE id = %s", (item_id,))
+                        except Exception as stock_error:
+                            print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
             
             # Build update query for order details
             updates = []
