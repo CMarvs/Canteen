@@ -274,8 +274,11 @@
                 <option value="Out for Delivery" ${o.status === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
                 <option value="Delivered" ${o.status === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
               </select>
+              ${o.status === 'Pending' ? `
+                <button class="btn small" onclick="editOrder(${o.id})" style="background: #2196F3; color: white;">✏️ Edit</button>
+                <button class="btn delete small" onclick="cancelOrder(${o.id})">❌ Cancel</button>
+              ` : ''}
               <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
-              <button class="btn delete small" onclick="deleteOrder(${o.id})">🗑️ Delete</button>
             </div>
           </div>
         `;
@@ -355,9 +358,9 @@
       filterOrders();
     }
 
-    /* -------- Delete Order -------- */
-    async function deleteOrder(orderId) {
-      if (!confirm(`⚠️ Are you sure you want to delete Order #${orderId}?\n\nThis action cannot be undone.`)) return;
+    /* -------- Cancel Order (only for Pending orders) -------- */
+    async function cancelOrder(orderId) {
+      if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone.`)) return;
       
       try {
         const response = await fetch(`/orders/${orderId}`, {
@@ -380,24 +383,282 @@
         if (!response.ok) {
           // Handle error response
           const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
-          alert(`Failed to delete order: ${errorMessage}`);
+          alert(`Failed to cancel order: ${errorMessage}`);
           return;
         }
 
         // Success - show message and refresh
-        alert('✅ Order deleted successfully!');
+        alert('✅ Order cancelled successfully!');
         
         // Refresh orders list (wrap in try-catch to prevent errors from showing to user)
         try {
           await renderAdminOrders();
           filterOrders();
         } catch(refreshError) {
-          console.error('Error refreshing orders after delete:', refreshError);
-          // Don't show error to user - deletion was successful, just refresh failed
+          console.error('Error refreshing orders after cancel:', refreshError);
+          // Don't show error to user - cancellation was successful, just refresh failed
         }
       } catch(error) {
-        console.error('Error deleting order:', error);
-        alert('Failed to delete order. Please check your connection and try again.');
+        console.error('Error cancelling order:', error);
+        alert('Failed to cancel order. Please check your connection and try again.');
+      }
+    }
+
+    /* -------- Edit Order (only for Pending orders) -------- */
+    async function editOrder(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+
+      if (order.status !== 'Pending') {
+        alert('Only orders with "Pending" status can be edited.');
+        return;
+      }
+
+      // Parse items if it's a string
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      
+      // Create edit modal
+      const modal = document.createElement('div');
+      modal.id = 'editOrderModal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        overflow-y: auto;
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;">
+          <button onclick="document.getElementById('editOrderModal').remove()" 
+                  style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+          
+          <h2 style="margin: 0 0 20px 0; color: #8b4513;">✏️ Edit Order #${orderId}</h2>
+          
+          <form id="editOrderForm" onsubmit="saveOrderEdit(event, ${orderId})">
+            <div style="margin-bottom: 16px;">
+              <label class="input-label">Customer Name</label>
+              <input type="text" id="editFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
+                     required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label">Contact Number</label>
+              <input type="text" id="editContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+                     required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label">Address / Location</label>
+              <textarea id="editLocation" required 
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px;">${(order.location || order.address || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label">Order Items</label>
+              <div id="editItemsList" style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;">
+                ${items.map((item, idx) => {
+                  const safeName = (item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                  return `
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 8px; background: white; border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <strong>${safeName}</strong><br>
+                      <span style="color: var(--muted); font-size: 0.9rem;">₱${Number(item.price).toFixed(2)} × 
+                      <input type="number" id="editQty_${idx}" value="${item.qty}" min="1" 
+                             style="width: 60px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
+                             onchange="updateEditTotal()">
+                      </span>
+                    </div>
+                    <button type="button" class="btn delete small" onclick="removeEditItem(${idx})">Remove</button>
+                  </div>
+                `;
+                }).join('')}
+              </div>
+              <div style="margin-top: 12px;">
+                <button type="button" class="btn small ghost" onclick="addEditItem()">+ Add Item</button>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 20px; padding: 12px; background: #fff8f1; border-radius: 8px; border: 1px solid #8b4513;">
+              <strong>💰 Total: ₱<span id="editTotal">${Number(order.total).toFixed(2)}</span></strong>
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+              <button type="button" class="btn ghost" onclick="document.getElementById('editOrderModal').remove()">Cancel</button>
+              <button type="submit" class="btn">💾 Save Changes</button>
+            </div>
+          </form>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Store original items for calculations
+      window.editOrderData = {
+        items: items.map(item => ({...item})),
+        orderId: orderId
+      };
+      
+      // Close on background click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+    }
+
+    async function saveOrderEdit(event, orderId) {
+      event.preventDefault();
+      
+      const fullname = document.getElementById('editFullname').value.trim();
+      const contact = document.getElementById('editContact').value.trim();
+      const location = document.getElementById('editLocation').value.trim();
+      
+      if (!fullname || !contact || !location) {
+        alert('Please fill in all required fields.');
+        return;
+      }
+      
+      // Collect items with quantities
+      const items = [];
+      let total = 0;
+      const DELIVERY_FEE = 10;
+      
+      for (let i = 0; i < window.editOrderData.items.length; i++) {
+        const qtyInput = document.getElementById(`editQty_${i}`);
+        if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+          const qty = parseInt(qtyInput.value) || 0;
+          if (qty > 0) {
+            const item = window.editOrderData.items[i];
+            items.push({
+              id: item.id,
+              name: item.name,
+              price: Number(item.price),
+              qty: qty
+            });
+            total += Number(item.price) * qty;
+          }
+        }
+      }
+      
+      if (items.length === 0) {
+        alert('Order must have at least one item.');
+        return;
+      }
+      
+      total += DELIVERY_FEE;
+      
+      try {
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullname: fullname,
+            contact: contact,
+            location: location,
+            items: items,
+            total: total
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          alert(`Failed to update order: ${errorData.detail || 'Unknown error'}`);
+          return;
+        }
+        
+        alert('✅ Order updated successfully!');
+        document.getElementById('editOrderModal').remove();
+        await renderAdminOrders();
+        filterOrders();
+      } catch(error) {
+        console.error('Error updating order:', error);
+        alert('Failed to update order. Please try again.');
+      }
+    }
+
+    function updateEditTotal() {
+      const DELIVERY_FEE = 10;
+      let total = 0;
+      
+      for (let i = 0; i < window.editOrderData.items.length; i++) {
+        const qtyInput = document.getElementById(`editQty_${i}`);
+        if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+          const qty = parseInt(qtyInput.value) || 0;
+          const item = window.editOrderData.items[i];
+          total += Number(item.price) * qty;
+        }
+      }
+      
+      total += DELIVERY_FEE;
+      document.getElementById('editTotal').textContent = total.toFixed(2);
+    }
+
+    function removeEditItem(idx) {
+      window.editOrderData.items.splice(idx, 1);
+      document.getElementById('editOrderModal').remove();
+      editOrder(window.editOrderData.orderId);
+    }
+
+    async function addEditItem() {
+      // Fetch menu items
+      try {
+        const response = await fetch('/menu');
+        const menuItems = await response.json();
+        
+        if (menuItems.length === 0) {
+          alert('No menu items available.');
+          return;
+        }
+        
+        // Create a simple selection dialog
+        const itemNames = menuItems.map(item => item.name).join('\n');
+        const selectedName = prompt(`Enter item name to add:\n\nAvailable items:\n${itemNames}`);
+        if (!selectedName) return;
+        
+        const selectedItem = menuItems.find(item => 
+          item.name.toLowerCase() === selectedName.toLowerCase()
+        );
+        
+        if (!selectedItem) {
+          alert('Item not found. Please enter the exact item name.');
+          return;
+        }
+        
+        if (selectedItem.is_available === false || (selectedItem.quantity || 0) === 0) {
+          alert('This item is currently out of stock.');
+          return;
+        }
+        
+        const qty = parseInt(prompt(`Enter quantity for ${selectedItem.name}:`, '1')) || 1;
+        if (qty <= 0) {
+          alert('Quantity must be greater than 0.');
+          return;
+        }
+        
+        window.editOrderData.items.push({
+          id: selectedItem.id,
+          name: selectedItem.name,
+          price: selectedItem.price,
+          qty: qty
+        });
+        
+        // Refresh the modal
+        document.getElementById('editOrderModal').remove();
+        editOrder(window.editOrderData.orderId);
+      } catch(error) {
+        console.error('Error adding item:', error);
+        alert('Failed to load menu items.');
       }
     }
 

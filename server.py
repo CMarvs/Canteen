@@ -527,20 +527,71 @@ async def delete_menu_item(item_id: int):
     finally:
         conn.close()
 
-# --- Admin: Update order status ---
+# --- Admin: Update order status or details ---
 @app.put("/orders/{oid}")
 async def update_order(oid: int, request: Request):
     data = await request.json()
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE orders SET status=%s WHERE id=%s RETURNING *",
-                    (data.get("status"), oid))
-        conn.commit()
-        result = cur.fetchone()
-        if not result:
+        
+        # Check if order exists and get current status
+        cur.execute("SELECT status FROM orders WHERE id=%s", (oid,))
+        order = cur.fetchone()
+        if not order:
             raise HTTPException(404, f"Order {oid} not found")
-        return result
+        
+        current_status = order.get("status") if isinstance(order, dict) else order[0] if order else None
+        
+        # If updating order details (not just status), check if order is Pending
+        if "fullname" in data or "contact" in data or "location" in data or "items" in data or "total" in data:
+            if current_status != "Pending":
+                raise HTTPException(400, f"Cannot edit order. Only orders with 'Pending' status can be edited. Current status: {current_status}")
+            
+            # Build update query for order details
+            updates = []
+            params = []
+            
+            if "fullname" in data:
+                updates.append("fullname = %s")
+                params.append(data.get("fullname"))
+            if "contact" in data:
+                updates.append("contact = %s")
+                params.append(data.get("contact"))
+            if "location" in data:
+                updates.append("location = %s")
+                params.append(data.get("location"))
+            if "items" in data:
+                updates.append("items = %s")
+                params.append(json.dumps(data.get("items")))
+            if "total" in data:
+                updates.append("total = %s")
+                params.append(data.get("total"))
+            
+            # Also update status if provided
+            if "status" in data:
+                updates.append("status = %s")
+                params.append(data.get("status"))
+            
+            if updates:
+                params.append(oid)
+                query = f"UPDATE orders SET {', '.join(updates)} WHERE id = %s RETURNING *"
+                cur.execute(query, params)
+                conn.commit()
+                result = cur.fetchone()
+                return {"ok": True, "message": "Order updated successfully", "order": result}
+        
+        # If only updating status
+        if "status" in data:
+            cur.execute("UPDATE orders SET status=%s WHERE id=%s RETURNING *",
+                        (data.get("status"), oid))
+            conn.commit()
+            result = cur.fetchone()
+            if not result:
+                raise HTTPException(404, f"Order {oid} not found")
+            return result
+        
+        raise HTTPException(400, "No valid fields to update")
     except HTTPException:
         raise
     except Exception as e:
@@ -549,25 +600,74 @@ async def update_order(oid: int, request: Request):
     finally:
         conn.close()
 
-# --- Admin: Delete order ---
+# --- Admin: Delete/Cancel order ---
 @app.delete("/orders/{oid}")
 async def delete_order(oid: int):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # Check if order exists
-        cur.execute("SELECT id FROM orders WHERE id=%s", (oid,))
-        if not cur.fetchone():
+        # Check if order exists and get full order data (including items)
+        cur.execute("SELECT id, status, items FROM orders WHERE id=%s", (oid,))
+        order = cur.fetchone()
+        if not order:
             raise HTTPException(404, f"Order {oid} not found")
+        
+        # Get status (handle both dict and tuple responses)
+        if isinstance(order, dict):
+            order_status = order.get("status")
+            order_items = order.get("items")
+        else:
+            order_status = order[1] if len(order) > 1 else None
+            order_items = order[2] if len(order) > 2 else None
+        
+        # Only allow cancellation if status is Pending
+        if order_status != "Pending":
+            raise HTTPException(400, f"Cannot cancel order. Only orders with 'Pending' status can be cancelled. Current status: {order_status}")
+        
+        # Restore stock for all items in the order
+        if order_items:
+            try:
+                # Parse items if it's a JSON string
+                items = json.loads(order_items) if isinstance(order_items, str) else order_items
+                
+                for item in items:
+                    item_id = item.get("id")
+                    qty_ordered = item.get("qty", 0)
+                    
+                    if item_id and qty_ordered > 0:
+                        try:
+                            # Get current quantity
+                            cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
+                            result = cur.fetchone()
+                            if result:
+                                current_qty = result.get("quantity") if isinstance(result, dict) else (result[0] if result else 0)
+                                new_qty = current_qty + qty_ordered  # Restore the quantity
+                                
+                                # Update quantity
+                                cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
+                                
+                                # If stock was 0 and now has items, mark as available
+                                if current_qty == 0 and new_qty > 0:
+                                    cur.execute("UPDATE menu_items SET is_available = TRUE WHERE id = %s", (item_id,))
+                                
+                                print(f"[INFO] Restored {qty_ordered} units of item {item_id}. New stock: {new_qty}")
+                        except Exception as stock_error:
+                            print(f"[WARNING] Could not restore stock for item {item_id}: {stock_error}")
+                            # Continue with other items even if one fails
+            except Exception as items_error:
+                print(f"[WARNING] Could not parse order items for stock restoration: {items_error}")
+                # Continue with order deletion even if stock restoration fails
         
         # Delete the order
         cur.execute("DELETE FROM orders WHERE id=%s", (oid,))
         conn.commit()
-        return {"ok": True, "message": f"Order {oid} deleted successfully"}
+        return {"ok": True, "message": f"Order {oid} cancelled successfully and stock restored"}
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Delete order error: {e}")
-        raise HTTPException(500, f"Failed to delete order: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to cancel order: {str(e)}")
     finally:
         conn.close()
