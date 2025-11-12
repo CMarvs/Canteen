@@ -209,16 +209,34 @@ async def register(request: Request):
         if cur.fetchone():
             raise HTTPException(400, "Email already registered")
         
-        id_proof = data.get("id_proof")
-        if not id_proof:
-            raise HTTPException(400, "ID proof is required for registration")
+        # Check if this is the first user - make them admin automatically
+        cur.execute("SELECT COUNT(*) as count FROM users")
+        result = cur.fetchone()
+        user_count = result.get('count') if isinstance(result, dict) else (result[0] if result else 0)
+        is_first_user = user_count == 0
+        
+        # Determine role and approval status
+        if is_first_user:
+            # First user becomes admin and is automatically approved
+            user_role = 'admin'
+            is_approved = True
+            id_proof = data.get("id_proof")  # Optional for first admin
+            message = "Admin account created successfully! You can now login."
+        else:
+            # Subsequent users need approval
+            user_role = 'user'
+            is_approved = False
+            id_proof = data.get("id_proof")
+            if not id_proof:
+                raise HTTPException(400, "ID proof is required for registration")
+            message = "User registered successfully. Account pending admin approval."
         
         cur.execute(
-            "INSERT INTO users(name,email,password,role,id_proof,is_approved) VALUES(%s,%s,%s,'user',%s,FALSE)",
-            (data.get("name"), data.get("email"), data.get("password"), id_proof)
+            "INSERT INTO users(name,email,password,role,id_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s)",
+            (data.get("name"), data.get("email"), data.get("password"), user_role, id_proof, is_approved)
         )
         conn.commit()
-        return {"ok": True, "message": "User registered successfully. Account pending admin approval."}
+        return {"ok": True, "message": message}
     except HTTPException:
         raise
     except Exception as e:
@@ -248,12 +266,25 @@ async def login(request: Request):
             role = user.get("role")
         else:
             # Handle tuple response - need to get column index
-            # Assuming: id, name, email, password, role, id_proof, is_approved
-            role = user[4] if len(user) > 4 else None
-            is_approved = user[6] if len(user) > 6 else True  # Default to True if column doesn't exist
+            # Get column names to find correct index
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+            try:
+                role_idx = col_names.index('role') if 'role' in col_names else 4
+                is_approved_idx = col_names.index('is_approved') if 'is_approved' in col_names else 6
+                role = user[role_idx] if len(user) > role_idx else None
+                is_approved = user[is_approved_idx] if len(user) > is_approved_idx else True
+            except:
+                # Fallback to default positions
+                role = user[4] if len(user) > 4 else None
+                is_approved = user[6] if len(user) > 6 else True
         
-        # Admin accounts are always approved
-        if role != 'admin' and (is_approved is False or is_approved == 0):
+        # Admin accounts are always approved - check role first
+        if role == 'admin':
+            # Admin can always login regardless of approval status
+            return user
+        
+        # Regular users need approval
+        if is_approved is False or is_approved == 0:
             raise HTTPException(403, "Account pending admin approval. Please wait for approval.")
         
         return user
@@ -819,11 +850,12 @@ def get_users():
     finally:
         conn.close()
 
-# --- Admin: Approve/Reject user ---
+# --- Admin: Approve/Reject user and set role ---
 @app.put("/users/{user_id}/approve")
 async def approve_user(user_id: int, request: Request):
     data = await request.json()
     is_approved = data.get("is_approved", True)
+    new_role = data.get("role")  # Optional: 'admin' or 'user'
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -832,19 +864,45 @@ async def approve_user(user_id: int, request: Request):
         if not user:
             raise HTTPException(404, f"User {user_id} not found")
         
-        # Don't allow changing admin approval status
+        # Get current role
         if isinstance(user, dict):
-            role = user.get("role")
+            current_role = user.get("role")
         else:
-            role = user[1] if len(user) > 1 else None
+            current_role = user[1] if len(user) > 1 else None
         
-        if role == 'admin':
-            raise HTTPException(400, "Cannot change approval status of admin accounts")
+        # Don't allow changing the first admin's role
+        if current_role == 'admin':
+            # Check if this is the first user (lowest ID with admin role)
+            cur.execute("SELECT MIN(id) as first_admin_id FROM users WHERE role='admin'")
+            first_admin_result = cur.fetchone()
+            first_admin_id = first_admin_result.get('first_admin_id') if isinstance(first_admin_result, dict) else (first_admin_result[0] if first_admin_result else None)
+            
+            if user_id == first_admin_id:
+                raise HTTPException(400, "Cannot modify the first admin account")
         
-        cur.execute("UPDATE users SET is_approved=%s WHERE id=%s RETURNING *", (is_approved, user_id))
+        # Build update query
+        updates = []
+        params = []
+        
+        if "is_approved" in data:
+            updates.append("is_approved = %s")
+            params.append(is_approved)
+        
+        if new_role and new_role in ['admin', 'user']:
+            updates.append("role = %s")
+            params.append(new_role)
+        
+        if not updates:
+            raise HTTPException(400, "No fields to update")
+        
+        params.append(user_id)
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *"
+        cur.execute(query, params)
         conn.commit()
         result = cur.fetchone()
-        return {"ok": True, "message": f"User {'approved' if is_approved else 'rejected'} successfully", "user": result}
+        
+        role_msg = f" as {new_role}" if new_role else ""
+        return {"ok": True, "message": f"User {'approved' if is_approved else 'rejected'}{role_msg} successfully", "user": result}
     except HTTPException:
         raise
     except Exception as e:

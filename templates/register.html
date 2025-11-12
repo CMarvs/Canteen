@@ -44,7 +44,7 @@
       </div>
 
       <button class="btn mt-8" onclick="registerUser()">Register</button>
-      <p class="center mt-4 muted" style="font-size: 0.85rem;">
+      <p class="center mt-4 muted" style="font-size: 0.85rem;" id="regMessage">
         ⏳ Your account will be reviewed by admin before you can login.
       </p>
 
@@ -60,6 +60,30 @@
       const el = document.getElementById(id);
       el.type = el.type === 'password' ? 'text' : 'password';
     }
+
+    // Check if this is first user on page load
+    window.addEventListener('DOMContentLoaded', async function() {
+      try {
+        const checkResponse = await fetch('/users');
+        const existingUsers = await checkResponse.json();
+        if (existingUsers.length === 0) {
+          const msgEl = document.getElementById('regMessage');
+          if (msgEl) {
+            msgEl.innerHTML = '👑 You will be the first admin! No approval needed.';
+            msgEl.style.color = '#4caf50';
+          }
+          // Make ID proof optional - update label text
+          const labels = document.querySelectorAll('.input-label');
+          labels.forEach(label => {
+            if (label.textContent.includes('ID Proof')) {
+              label.innerHTML = '📷 ID Proof (Optional for first admin)';
+            }
+          });
+        }
+      } catch(e) {
+        console.log('Could not check existing users:', e);
+      }
+    });
 
     let idProofBase64 = null;
 
@@ -99,10 +123,6 @@
     // Override registerUser to include ID proof
     const originalRegisterUser = window.registerUser;
     window.registerUser = async function() {
-      if (!idProofBase64) {
-        return alert('Please upload an ID proof photo for account verification.');
-      }
-      
       const name = (document.getElementById('regName')?.value || '').trim();
       const email = (document.getElementById('regEmail')?.value || '').trim().toLowerCase();
       const pass = (document.getElementById('regPass')?.value || '').trim();
@@ -120,17 +140,48 @@
         return alert('❌ Passwords do not match! Please try again.');
       }
 
+      // Check if this is first user (no ID proof required)
+      // For subsequent users, ID proof is required
+      let requiresIdProof = true;
+      let isFirstUser = false;
+      try {
+        const checkResponse = await fetch('/users');
+        const existingUsers = await checkResponse.json();
+        if (existingUsers.length === 0) {
+          requiresIdProof = false; // First user doesn't need ID proof
+          isFirstUser = true;
+          // Update message
+          const msgEl = document.getElementById('regMessage');
+          if (msgEl) {
+            msgEl.innerHTML = '👑 You will be the first admin! No approval needed.';
+            msgEl.style.color = '#4caf50';
+          }
+        }
+      } catch(e) {
+        // If we can't check, assume ID proof is required
+        console.log('Could not check existing users:', e);
+      }
+
+      if (requiresIdProof && !idProofBase64) {
+        return alert('Please upload an ID proof photo for account verification.');
+      }
+
       try {
         const response = await fetch('/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password: pass, id_proof: idProofBase64 })
+          body: JSON.stringify({ name, email, password: pass, id_proof: idProofBase64 || null })
         });
 
         const data = await response.json();
         
         if(response.ok) {
-          alert('✅ Registration successful! Your account is pending admin approval. You will be notified once approved.');
+          // Check if this was the first user (admin)
+          if (!requiresIdProof) {
+            alert('✅ Admin account created successfully! You can now login.');
+          } else {
+            alert('✅ Registration successful! Your account is pending admin approval. You will be notified once approved.');
+          }
           location.href = 'index.html';
         } else {
           alert(data.detail || 'Registration failed');

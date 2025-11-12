@@ -1093,9 +1093,15 @@
                         </div>
                         ` : '<div style="margin-top: 8px; color: #f44336;">⚠️ No ID Proof provided</div>'}
                       </div>
-                      <div style="display: flex; gap: 8px; align-items: flex-start;">
-                        <button class="btn small" onclick="approveUser(${user.id}, true)" style="background: #4caf50; color: white;">✅ Approve</button>
-                        <button class="btn delete small" onclick="approveUser(${user.id}, false)">❌ Reject</button>
+                      <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
+                        <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
+                          <option value="user">👤 User</option>
+                          <option value="admin">👑 Admin</option>
+                        </select>
+                        <div style="display: flex; gap: 8px; width: 100%;">
+                          <button class="btn small" onclick="approveUserWithRole(${user.id}, true)" style="background: #4caf50; color: white; flex: 1;">✅ Approve</button>
+                          <button class="btn delete small" onclick="approveUser(${user.id}, false)" style="flex: 1;">❌ Reject</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1122,8 +1128,11 @@
                     <strong>${user.name || 'N/A'}</strong>
                     <div style="color: var(--muted); font-size: 0.9rem;">${user.email || 'N/A'}</div>
                   </div>
-                  <div style="display: flex; gap: 8px;">
-                    <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">Approved</span>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">✅ Approved</span>
+                    <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : '#666'}; color: white; border-radius: 12px; font-size: 0.85rem;">
+                      ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                    </span>
                     <button class="btn delete small" onclick="approveUser(${user.id}, false)">Revoke</button>
                   </div>
                 </div>
@@ -1147,6 +1156,38 @@
       } catch(error) {
         console.error('Error loading users:', error);
         document.getElementById('usersList').innerHTML = '<p class="muted">Failed to load users</p>';
+      }
+    }
+
+    async function approveUserWithRole(userId, isApproved) {
+      const roleSelect = document.getElementById(`roleSelect_${userId}`);
+      const selectedRole = roleSelect ? roleSelect.value : 'user';
+      
+      const action = isApproved ? 'approve' : 'reject';
+      const roleText = selectedRole === 'admin' ? ' as Admin' : ' as User';
+      if (!confirm(`Are you sure you want to ${action} this user${roleText}?`)) return;
+
+      try {
+        const response = await fetch(`/users/${userId}/approve`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            is_approved: isApproved,
+            role: selectedRole
+          })
+        });
+
+        if (response.ok) {
+          const roleMsg = selectedRole === 'admin' ? ' as Admin' : ' as User';
+          alert(`✅ User ${isApproved ? 'approved' : 'rejected'}${roleMsg} successfully!`);
+          await renderAdminUsers();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to ${action} user: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error(`Error ${action}ing user:`, error);
+        alert(`Failed to ${action} user. Please try again.`);
       }
     }
 
