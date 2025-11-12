@@ -465,12 +465,14 @@ function orderCardHtmlForUser(o){
       </div>
       <div style="margin-top:8px">${itemsText}</div>
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:space-between;">
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
-        <div style="display:flex;gap:8px;">
-          ${canCancel ? `<button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white;">✏️ Edit</button>` : ''}
-          ${canCancel ? `<button class="btn delete small" onclick="cancelUserOrder(${o.id})">❌ Cancel</button>` : ''}
+        ${canCancel ? `
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">✏️ Edit</button>
+          <button class="btn delete small" onclick="cancelUserOrder(${o.id})" style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">❌ Cancel</button>
         </div>
+        ` : ''}
       </div>
     </div>
   `;
