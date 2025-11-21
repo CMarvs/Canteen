@@ -15,6 +15,9 @@
     </nav>
   </header>
 
+  <!-- Notification Container -->
+  <div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 10000; max-width: 400px;"></div>
+
   <main>
     <!-- Statistics Dashboard -->
     <div class="stats-grid" id="statsGrid"></div>
@@ -186,6 +189,13 @@
         filteredOrders = [...allOrders];
         renderStats();
         displayOrders();
+        
+        // Update orders badge
+        const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
+        const badge = document.getElementById('ordersBadge');
+        if (badge) {
+          badge.textContent = pendingCount;
+        }
       } catch(error) {
         console.error('Error loading orders:', error);
         document.getElementById('ordersList').innerHTML = '<p class="muted">Failed to load orders</p>';
@@ -1257,6 +1267,179 @@
       document.body.appendChild(modal);
     }
 
+    /* -------- Real-time Order Notifications -------- */
+    let lastOrderId = 0;
+    let orderPollInterval = null;
+    let notificationSound = null;
+
+    // Create notification sound (optional)
+    function createNotificationSound() {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } catch(e) {
+        console.log('Could not play notification sound:', e);
+      }
+    }
+
+    // Show notification
+    function showOrderNotification(order) {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.className = 'order-notification';
+      notification.style.cssText = `
+        background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid #FFD700;
+      `;
+
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      const itemCount = items.reduce((sum, item) => sum + (item.qty || 1), 0);
+      const total = parseFloat(order.total || 0).toFixed(2);
+
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              🔔 New Order #${order.id}
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
+              <strong>${order.fullname || order.name || 'Customer'}</strong>
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.85;">
+              ${itemCount} item${itemCount !== 1 ? 's' : ''} • ₱${total}
+            </div>
+            <div style="font-size: 0.8rem; opacity: 0.75; margin-top: 4px;">
+              ${order.location || order.address || 'No address'}
+            </div>
+          </div>
+          <button onclick="this.parentElement.parentElement.remove(); switchTab('orders');" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      // Click to view order
+      notification.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          switchTab('orders');
+          // Scroll to the order
+          setTimeout(() => {
+            const orderCard = document.querySelector(`[data-order-id="${order.id}"]`);
+            if (orderCard) {
+              orderCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              orderCard.style.animation = 'pulse 1s ease-in-out';
+              setTimeout(() => {
+                orderCard.style.animation = '';
+              }, 1000);
+            }
+          }, 100);
+          notification.remove();
+        }
+      });
+
+      container.appendChild(notification);
+
+      // Play sound
+      createNotificationSound();
+
+      // Auto-remove after 10 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 10000);
+    }
+
+    // Check for new orders
+    async function checkForNewOrders() {
+      try {
+        const response = await fetch('/orders');
+        if (!response.ok) return;
+        
+        const orders = await response.json();
+        if (!Array.isArray(orders) || orders.length === 0) return;
+
+        // Get the latest order ID
+        const latestOrderId = orders[0]?.id || 0;
+
+        // If we have a new order (ID greater than last known)
+        if (latestOrderId > lastOrderId && lastOrderId > 0) {
+          // Find all new orders
+          const newOrders = orders.filter(o => o.id > lastOrderId);
+          
+          // Show notification for each new order (most recent first)
+          newOrders.reverse().forEach(order => {
+            showOrderNotification(order);
+          });
+
+          // Update badge count
+          const pendingCount = orders.filter(o => o.status === 'Pending').length;
+          const badge = document.getElementById('ordersBadge');
+          if (badge) {
+            badge.textContent = pendingCount;
+            if (pendingCount > 0) {
+              badge.style.animation = 'pulse 0.5s ease-in-out 3';
+            }
+          }
+        }
+
+        // Update last known order ID
+        if (latestOrderId > lastOrderId) {
+          lastOrderId = latestOrderId;
+        }
+
+        // Update stats
+        renderStats();
+      } catch(error) {
+        console.error('Error checking for new orders:', error);
+      }
+    }
+
+    // Start polling for new orders
+    function startOrderPolling() {
+      // Initial load - set lastOrderId
+      renderAdminOrders().then(() => {
+        if (allOrders && allOrders.length > 0) {
+          lastOrderId = allOrders[0].id || 0;
+        }
+      });
+
+      // Poll every 5 seconds
+      orderPollInterval = setInterval(checkForNewOrders, 5000);
+    }
+
+    // Stop polling
+    function stopOrderPolling() {
+      if (orderPollInterval) {
+        clearInterval(orderPollInterval);
+        orderPollInterval = null;
+      }
+    }
+
     /* -------- Initialize -------- */
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -1264,6 +1447,18 @@
       renderStats();
       renderAdminOrders();
       renderAdminMenuList(); // Load menu items on page load
+      
+      // Start real-time order notifications
+      startOrderPolling();
+    });
+
+    // Stop polling when page is hidden (save resources)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopOrderPolling();
+      } else {
+        startOrderPolling();
+      }
     });
   </script>
 </body>
