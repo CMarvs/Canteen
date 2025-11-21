@@ -738,7 +738,17 @@
     async function renderAdminMenuList() {
       try {
         const response = await fetch('/menu');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const menuItems = await response.json();
+        
+        // Ensure menuItems is an array
+        if (!Array.isArray(menuItems)) {
+          console.error('Menu items is not an array:', menuItems);
+          document.getElementById('adminMenuList').innerHTML = '<p class="muted">No menu items available. Add your first item below.</p>';
+          return;
+        }
         
         const menuArea = document.getElementById('adminMenuList');
         if (!menuArea) return;

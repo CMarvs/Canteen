@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # NeonDB connection - use environment variable or fallback to default
-DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_O0LrfcY7oGZN@ep-silent-rain-a19bkdss-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 
 def get_db_connection():
     try:
@@ -470,35 +470,62 @@ def get_orders():
 # --- Menu Items: Get all menu items ---
 @app.get("/menu")
 def get_menu_items():
+    # Ensure table exists first (this manages its own connection)
+    try:
+        ensure_menu_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure menu table exists: {e}")
+        # Continue anyway, will try to query
+    
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM menu_items ORDER BY category, name")
-        return cur.fetchall()
+        items = cur.fetchall()
+        # Always return a list, even if empty
+        return items if items else []
     except psycopg2_errors.UndefinedTable as e:
-        print(f"❌ Table doesn't exist: {e}")
-        conn.close()
-        # Try to create table
+        print(f"[WARNING] Table doesn't exist: {e}")
+        # Try to create table one more time
         try:
             ensure_menu_table_exists()
             # Return empty list since table was just created
             return []
         except Exception as create_error:
-            print(f"❌ Table creation failed: {create_error}")
-            raise HTTPException(500, f"Menu table not found. Please run CREATE_MENU_TABLE.sql in your database.")
+            print(f"[ERROR] Table creation failed: {create_error}")
+            # Return empty list instead of raising error to prevent frontend crashes
+            return []
     except Exception as e:
-        print(f"❌ Get menu items error: {e}")
+        print(f"[ERROR] Get menu items error: {e}")
         error_msg = str(e)
         if "does not exist" in error_msg or "relation" in error_msg.lower():
-            raise HTTPException(404, f"Menu table not found. Please create the menu_items table. See CREATE_MENU_TABLE.sql")
-        raise HTTPException(500, f"Failed to get menu items: {error_msg}")
+            # Try to create table
+            try:
+                ensure_menu_table_exists()
+                return []
+            except:
+                pass
+        # Return empty list instead of raising error to prevent frontend crashes
+        return []
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 # --- Menu Items: Add new menu item (Admin only) ---
 @app.post("/menu")
 async def add_menu_item(request: Request):
     data = await request.json()
+    
+    # Ensure table exists first
+    try:
+        ensure_menu_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure menu table exists: {e}")
+        # Continue anyway, will try to insert
+    
     conn = None
     try:
         conn = get_db_connection()
