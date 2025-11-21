@@ -551,6 +551,15 @@ async def add_menu_item(request: Request):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        
+        # Check if quantity column exists
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'menu_items' AND column_name = 'quantity'
+        """)
+        has_quantity = cur.fetchone() is not None
+        
         category = data.get("category", "foods")
         is_available = data.get("is_available", True)
         quantity = data.get("quantity", 0)
@@ -562,17 +571,32 @@ async def add_menu_item(request: Request):
         except (ValueError, TypeError):
             quantity = 0
         
-        cur.execute("""
-            INSERT INTO menu_items (name, price, category, is_available, quantity)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING *
-        """, (
-            name.strip(),
-            price,
-            category,
-            is_available,
-            quantity
-        ))
+        # Insert with or without quantity column
+        if has_quantity:
+            cur.execute("""
+                INSERT INTO menu_items (name, price, category, is_available, quantity)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+            """, (
+                name.strip(),
+                price,
+                category,
+                is_available,
+                quantity
+            ))
+        else:
+            # Table doesn't have quantity column, insert without it
+            cur.execute("""
+                INSERT INTO menu_items (name, price, category, is_available)
+                VALUES (%s, %s, %s, %s)
+                RETURNING *
+            """, (
+                name.strip(),
+                price,
+                category,
+                is_available
+            ))
+        
         conn.commit()
         result = cur.fetchone()
         return {"ok": True, "message": "Menu item added successfully", "item": result}
@@ -607,8 +631,59 @@ async def add_menu_item(request: Request):
     except HTTPException:
         # Re-raise HTTP exceptions (validation errors, etc.)
         raise
+    except psycopg2_errors.IntegrityError as e:
+        print(f"[ERROR] Database integrity error: {e}")
+        import traceback
+        traceback.print_exc()
+        error_msg = str(e)
+        # Check for common integrity errors
+        if "duplicate key" in error_msg.lower() or "unique constraint" in error_msg.lower():
+            raise HTTPException(400, "A menu item with this name already exists")
+        raise HTTPException(400, f"Database constraint error: {error_msg}")
+    except psycopg2_errors.ProgrammingError as e:
+        print(f"[ERROR] Database programming error: {e}")
+        import traceback
+        traceback.print_exc()
+        error_msg = str(e)
+        # Check if it's a column error
+        if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
+            # Try to add missing column and retry
+            try:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                    conn.close()
+                # Add quantity column if missing
+                ensure_menu_table_exists()  # This should add missing columns
+                # Retry insert
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO menu_items (name, price, category, is_available, quantity)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    name.strip(),
+                    price,
+                    category,
+                    is_available,
+                    quantity
+                ))
+                conn.commit()
+                result = cur.fetchone()
+                conn.close()
+                return {"ok": True, "message": "Menu item added successfully", "item": result}
+            except Exception as retry_error:
+                print(f"[ERROR] Retry after column fix failed: {retry_error}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(500, f"Failed to add menu item. Please check table structure. Error: {str(retry_error)}")
+        raise HTTPException(500, f"Database error: {error_msg}")
     except Exception as e:
         print(f"[ERROR] Add menu item error: {e}")
+        print(f"[ERROR] Error type: {type(e)}")
         import traceback
         traceback.print_exc()
         error_msg = str(e)

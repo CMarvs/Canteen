@@ -878,7 +878,14 @@
             responseData: responseData,
             fullResponse: response
           });
-          alert(`❌ Failed to add menu item:\n\n${errorMessage}\n\nPlease check:\n- Name and price are filled\n- Price is a valid number\n- Check server logs for details`);
+          
+          // Show detailed error
+          let userMessage = `❌ Failed to add menu item:\n\n${errorMessage}`;
+          if (responseData && responseData.detail) {
+            userMessage += `\n\nDetails: ${responseData.detail}`;
+          }
+          userMessage += `\n\nPlease check:\n- Name and price are filled\n- Price is a valid number\n- Check Render logs for database errors`;
+          alert(userMessage);
         }
       } catch(error) {
         console.error('Error adding menu item:', error);
