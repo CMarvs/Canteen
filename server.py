@@ -73,22 +73,56 @@ def ensure_menu_table_exists():
             print("[SUCCESS] menu_items table created successfully!")
         else:
             print("[INFO] menu_items table already exists")
-            # Check if quantity column exists, if not add it
+            # Check and add missing columns
             try:
+                # Get all existing columns
                 cur.execute("""
                     SELECT column_name 
                     FROM information_schema.columns 
-                    WHERE table_name = 'menu_items' AND column_name = 'quantity'
+                    WHERE table_name = 'menu_items'
                 """)
-                has_quantity = cur.fetchone() is not None
+                existing_columns = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
                 
-                if not has_quantity:
+                # Check and add category column if missing
+                if 'category' not in existing_columns:
+                    print("[INFO] Adding category column to menu_items table...")
+                    cur.execute("ALTER TABLE menu_items ADD COLUMN category TEXT NOT NULL DEFAULT 'foods';")
+                    conn.commit()
+                    print("[SUCCESS] category column added successfully!")
+                
+                # Check and add is_available column if missing
+                if 'is_available' not in existing_columns:
+                    print("[INFO] Adding is_available column to menu_items table...")
+                    cur.execute("ALTER TABLE menu_items ADD COLUMN is_available BOOLEAN DEFAULT TRUE;")
+                    conn.commit()
+                    print("[SUCCESS] is_available column added successfully!")
+                
+                # Check and add quantity column if missing
+                if 'quantity' not in existing_columns:
                     print("[INFO] Adding quantity column to menu_items table...")
                     cur.execute("ALTER TABLE menu_items ADD COLUMN quantity INTEGER DEFAULT 0;")
                     conn.commit()
                     print("[SUCCESS] quantity column added successfully!")
+                
+                # Check and add created_at column if missing
+                if 'created_at' not in existing_columns:
+                    print("[INFO] Adding created_at column to menu_items table...")
+                    cur.execute("ALTER TABLE menu_items ADD COLUMN created_at TIMESTAMP DEFAULT NOW();")
+                    conn.commit()
+                    print("[SUCCESS] created_at column added successfully!")
+                
+                # Create indexes if they don't exist
+                try:
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_menu_category ON menu_items(category);")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_menu_available ON menu_items(is_available);")
+                    conn.commit()
+                except Exception as idx_error:
+                    print(f"[WARNING] Could not create indexes: {idx_error}")
+                    
             except Exception as col_error:
-                print(f"[WARNING] Could not check/add quantity column: {col_error}")
+                print(f"[WARNING] Could not check/add columns: {col_error}")
+                import traceback
+                traceback.print_exc()
     except Exception as e:
         print(f"[ERROR] Error ensuring menu table exists: {e}")
         conn.rollback()
@@ -552,13 +586,20 @@ async def add_menu_item(request: Request):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Check if quantity column exists
+        # Ensure all required columns exist (this should have been done by ensure_menu_table_exists, but double-check)
         cur.execute("""
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_name = 'menu_items' AND column_name = 'quantity'
+            WHERE table_name = 'menu_items'
         """)
-        has_quantity = cur.fetchone() is not None
+        existing_columns = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+        
+        # If category is missing, add it now
+        if 'category' not in existing_columns:
+            print("[WARNING] category column missing, adding it now...")
+            cur.execute("ALTER TABLE menu_items ADD COLUMN category TEXT NOT NULL DEFAULT 'foods';")
+            conn.commit()
+            existing_columns.append('category')
         
         category = data.get("category", "foods")
         is_available = data.get("is_available", True)
@@ -571,7 +612,9 @@ async def add_menu_item(request: Request):
         except (ValueError, TypeError):
             quantity = 0
         
-        # Insert with or without quantity column
+        # Build INSERT statement based on available columns
+        has_quantity = 'quantity' in existing_columns
+        
         if has_quantity:
             cur.execute("""
                 INSERT INTO menu_items (name, price, category, is_available, quantity)
