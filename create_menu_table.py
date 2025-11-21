@@ -3,8 +3,10 @@
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import os
 
-DB_URL = "postgresql://neondb_owner:npg_O0LrfcY7oGZN@ep-silent-rain-a19bkdss-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+# Use environment variable or fallback to default
+DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 
 def create_menu_table():
     try:
