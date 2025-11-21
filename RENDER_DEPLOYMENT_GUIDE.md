@@ -83,7 +83,7 @@ Click on **"Environment"** tab and add:
 
 | Key | Value | Description |
 |-----|-------|-------------|
-| `DATABASE_URL` | `postgresql://neondb_owner:npg_O0LrfcY7oGZN@ep-silent-rain-a19bkdss-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require` | Your NeonDB connection string |
+| `DATABASE_URL` | `postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require` | Your NeonDB connection string |
 
 **⚠️ Security Note**: In production, consider using Render's environment variable encryption feature.
 
