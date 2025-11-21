@@ -875,9 +875,10 @@
           console.error('Add menu item error:', {
             status: response.status,
             statusText: response.statusText,
-            responseData: responseData
+            responseData: responseData,
+            fullResponse: response
           });
-          alert(`Failed to add item: ${errorMessage}\n\nStatus: ${response.status}`);
+          alert(`❌ Failed to add menu item:\n\n${errorMessage}\n\nPlease check:\n- Name and price are filled\n- Price is a valid number\n- Check server logs for details`);
         }
       } catch(error) {
         console.error('Error adding menu item:', error);

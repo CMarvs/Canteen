@@ -517,7 +517,28 @@ def get_menu_items():
 # --- Menu Items: Add new menu item (Admin only) ---
 @app.post("/menu")
 async def add_menu_item(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as e:
+        print(f"[ERROR] Failed to parse request JSON: {e}")
+        raise HTTPException(400, "Invalid JSON in request body")
+    
+    # Validate required fields
+    name = data.get("name")
+    price = data.get("price")
+    
+    if not name or not isinstance(name, str) or not name.strip():
+        raise HTTPException(400, "Name is required and must be a non-empty string")
+    
+    if price is None:
+        raise HTTPException(400, "Price is required")
+    
+    try:
+        price = float(price)
+        if price <= 0:
+            raise HTTPException(400, "Price must be greater than 0")
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Price must be a valid number")
     
     # Ensure table exists first
     try:
@@ -536,13 +557,18 @@ async def add_menu_item(request: Request):
         if quantity is None:
             quantity = 0
         
+        try:
+            quantity = int(quantity)
+        except (ValueError, TypeError):
+            quantity = 0
+        
         cur.execute("""
             INSERT INTO menu_items (name, price, category, is_available, quantity)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING *
         """, (
-            data.get("name"),
-            data.get("price"),
+            name.strip(),
+            price,
             category,
             is_available,
             quantity
@@ -578,30 +604,39 @@ async def add_menu_item(request: Request):
         except Exception as retry_error:
             print(f"[ERROR] Retry failed: {retry_error}")
             raise HTTPException(500, f"Table creation failed. Please run CREATE_MENU_TABLE.sql in your database. Error: {str(retry_error)}")
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors, etc.)
+        raise
     except Exception as e:
         print(f"[ERROR] Add menu item error: {e}")
         import traceback
         traceback.print_exc()
         error_msg = str(e)
+        
         # Check for table not found errors
         if "does not exist" in error_msg or "relation" in error_msg.lower() or "UndefinedTable" in str(type(e)):
             # Try to create table and retry
             try:
                 if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
                     conn.close()
                 ensure_menu_table_exists()
                 # Retry with new connection
                 conn = get_db_connection()
                 cur = conn.cursor()
                 cur.execute("""
-                    INSERT INTO menu_items (name, price, category, is_available)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO menu_items (name, price, category, is_available, quantity)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING *
                 """, (
-                    data.get("name"),
-                    data.get("price"),
-                    data.get("category", "foods"),
-                    data.get("is_available", True)
+                    name.strip(),
+                    price,
+                    category,
+                    is_available,
+                    quantity
                 ))
                 conn.commit()
                 result = cur.fetchone()
@@ -609,7 +644,11 @@ async def add_menu_item(request: Request):
                 return {"ok": True, "message": "Menu item added successfully", "item": result}
             except Exception as retry_error:
                 print(f"[ERROR] Retry after table creation failed: {retry_error}")
-                raise HTTPException(500, f"Failed to add menu item. Error: {str(retry_error)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(500, f"Failed to add menu item after table creation. Error: {str(retry_error)}")
+        
+        # For other errors, provide a more helpful message
         raise HTTPException(500, f"Failed to add menu item: {error_msg}")
     finally:
         if conn:
