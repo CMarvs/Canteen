@@ -604,36 +604,8 @@ async def payment_callback(request: Request):
         traceback.print_exc()
         return {"ok": False, "message": str(e)}
 
-# --- Generate GCash QR Code ---
-@app.get("/payment/gcash/qr/{order_id}")
-async def generate_gcash_qr(order_id: int):
-    """Generate QR code for GCash payment"""
-    try:
-        from payment_gateway import generate_gcash_qr_code, generate_gcash_qr_image, ADMIN_GCASH_NUMBER
-        
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT total, payment_intent_id FROM orders WHERE id = %s", (order_id,))
-            order = cur.fetchone()
-            
-            if not order:
-                raise HTTPException(404, "Order not found")
-            
-            amount = float(order.get("total", 0))
-            reference = order.get("payment_intent_id") or f"ORDER_{order_id}"
-            admin_number = ADMIN_GCASH_NUMBER or "09947784922"
-            
-            qr_data = generate_gcash_qr_code(amount, reference, admin_number)
-            qr_image = generate_gcash_qr_image(qr_data)
-            
-            return Response(content=qr_image, media_type="image/png")
-        finally:
-            conn.close()
-            
-    except Exception as e:
-        print(f"[ERROR] QR code generation error: {e}")
-        raise HTTPException(500, f"Failed to generate QR code: {str(e)}")
+# Note: GCash QR code generation removed - GCash doesn't accept generic QR codes
+# Users will manually send payment via GCash app with instructions shown in modal
 
 # --- Check Payment Status ---
 @app.get("/payment/status/{payment_intent_id}")

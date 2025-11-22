@@ -507,7 +507,7 @@ async function placeOrder(name, contact, address, paymentMethod){
   }
 }
 
-// Show GCash payment modal with QR code and instructions
+// Show GCash payment modal with instructions (no QR code - GCash doesn't support generic QR)
 function showGCashPaymentModal(paymentData) {
   // Create modal
   const modal = document.createElement('div');
@@ -537,35 +537,67 @@ function showGCashPaymentModal(paymentData) {
     text-align: center;
   `;
   
-  const qrImageUrl = `/payment/gcash/qr/${paymentData.order_id}?t=${Date.now()}`;
   const adminNumber = paymentData.admin_gcash_number || '09947784922';
   const amount = paymentData.amount || 0;
   const reference = paymentData.reference || paymentData.payment_intent_id || '';
   
   modalContent.innerHTML = `
     <h2 style="margin-top: 0; color: #0066cc;">📱 GCash Payment</h2>
-    <div style="margin: 20px 0;">
-      <img src="${qrImageUrl}" alt="GCash QR Code" style="max-width: 250px; border: 2px solid #0066cc; border-radius: 8px; padding: 10px; background: white;">
+    
+    <div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #0066cc 0%, #004499 100%); border-radius: 12px; color: white;">
+      <div style="font-size: 0.9em; margin-bottom: 8px; opacity: 0.9;">Send Payment To</div>
+      <div style="font-size: 1.8em; font-weight: bold; margin-bottom: 8px; letter-spacing: 2px;">${adminNumber}</div>
+      <div style="font-size: 0.9em; opacity: 0.9;">Amount: <strong style="font-size: 1.2em;">₱${amount.toFixed(2)}</strong></div>
     </div>
+    
+    <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #0066cc;">
+      <div style="font-weight: bold; color: #333; margin-bottom: 10px;">Reference Number:</div>
+      <div style="font-size: 1.1em; color: #0066cc; font-weight: bold; font-family: monospace; letter-spacing: 1px; padding: 10px; background: white; border-radius: 6px;">${reference}</div>
+      <button id="copyReferenceBtn" style="
+        margin-top: 10px;
+        background: #0066cc;
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+      ">📋 Copy Reference</button>
+    </div>
+    
     <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left;">
-      <h3 style="margin-top: 0; color: #333;">Payment Instructions:</h3>
-      <ol style="line-height: 1.8; color: #555;">
-        <li>Open your <strong>GCash app</strong></li>
+      <h3 style="margin-top: 0; color: #333; display: flex; align-items: center; gap: 8px;">
+        <span>📝</span> Payment Instructions:
+      </h3>
+      <ol style="line-height: 2; color: #555; padding-left: 20px;">
+        <li>Open your <strong>GCash app</strong> on your phone</li>
         <li>Tap <strong>"Send Money"</strong></li>
-        <li>Enter GCash number: <strong style="color: #0066cc; font-size: 1.1em;">${adminNumber}</strong></li>
-        <li>Enter amount: <strong style="color: #0066cc; font-size: 1.1em;">₱${amount.toFixed(2)}</strong></li>
-        <li>Add reference: <strong style="color: #0066cc;">${reference}</strong></li>
-        <li>Complete the payment</li>
+        <li>Enter or paste GCash number: <strong style="color: #0066cc;">${adminNumber}</strong></li>
+        <li>Enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong></li>
+        <li>In the message/notes field, add: <strong style="color: #0066cc;">${reference}</strong></li>
+        <li>Review and confirm the payment</li>
       </ol>
       <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-top: 15px; border-left: 4px solid #ffc107;">
-        <strong>⚠️ Important:</strong> Please include the reference number <strong>${reference}</strong> when sending payment. This helps us verify your payment.
+        <strong>⚠️ Important:</strong><br>
+        • Include the reference number <strong>${reference}</strong> in your payment message<br>
+        • This helps us verify your payment quickly<br>
+        • Keep your payment receipt for reference
       </div>
     </div>
-    <div style="margin: 20px 0; padding: 15px; background: #e7f3ff; border-radius: 8px;">
-      <strong>Admin GCash Number:</strong><br>
-      <span style="font-size: 1.3em; color: #0066cc; font-weight: bold;">${adminNumber}</span>
-    </div>
-    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+    
+    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
+      <button id="copyNumberBtn" style="
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95em;
+        font-weight: bold;
+        flex: 1;
+        min-width: 150px;
+      ">📱 Copy GCash Number</button>
       <button id="confirmPaymentBtn" style="
         background: #0066cc;
         color: white;
@@ -575,21 +607,55 @@ function showGCashPaymentModal(paymentData) {
         cursor: pointer;
         font-size: 1em;
         font-weight: bold;
-      ">I've Sent the Payment</button>
+        flex: 1;
+        min-width: 150px;
+      ">✅ I've Sent the Payment</button>
+    </div>
+    <div style="margin-top: 10px;">
       <button id="cancelPaymentBtn" style="
         background: #6c757d;
         color: white;
         border: none;
-        padding: 12px 30px;
+        padding: 10px 20px;
         border-radius: 6px;
         cursor: pointer;
-        font-size: 1em;
+        font-size: 0.9em;
       ">Cancel</button>
     </div>
   `;
   
   modal.appendChild(modalContent);
   document.body.appendChild(modal);
+  
+  // Copy GCash number
+  document.getElementById('copyNumberBtn').onclick = () => {
+    navigator.clipboard.writeText(adminNumber).then(() => {
+      const btn = document.getElementById('copyNumberBtn');
+      const originalText = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      btn.style.background = '#28a745';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '#28a745';
+      }, 2000);
+    }).catch(() => {
+      alert(`GCash Number: ${adminNumber}\n\nPlease copy this number manually.`);
+    });
+  };
+  
+  // Copy reference number
+  document.getElementById('copyReferenceBtn').onclick = () => {
+    navigator.clipboard.writeText(reference).then(() => {
+      const btn = document.getElementById('copyReferenceBtn');
+      const originalText = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => {
+        btn.textContent = originalText;
+      }, 2000);
+    }).catch(() => {
+      alert(`Reference: ${reference}\n\nPlease copy this reference manually.`);
+    });
+  };
   
   // Handle confirm payment
   document.getElementById('confirmPaymentBtn').onclick = () => {
@@ -1207,3 +1273,4 @@ function ensureLoggedIn(requiredRole){
 window.addEventListener('DOMContentLoaded', () => {
   renderCart();
 });
+

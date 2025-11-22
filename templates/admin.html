@@ -1437,24 +1437,41 @@
         if (!response.ok) return;
         
         const orders = await response.json();
-        if (!Array.isArray(orders) || orders.length === 0) return;
+        if (!Array.isArray(orders) || orders.length === 0) {
+          // Reset if no orders
+          allOrders = [];
+          filteredOrders = [];
+          displayOrders();
+          return;
+        }
 
-        // Get the latest order ID
-        const latestOrderId = orders[0]?.id || 0;
-        const previousLastOrderId = lastOrderId;
+        // Reverse to get newest first, then update allOrders immediately
+        const currentOrders = orders.reverse();
+        
+        // Check if any orders changed status (for real-time number updates)
+        const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
+                              JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
+        
+        // Update allOrders FIRST so sequential numbers are correct
+        allOrders = currentOrders;
+        filteredOrders = [...allOrders];
+
+        // Get the latest order ID AFTER updating allOrders
+        const latestOrderId = currentOrders[0]?.id || 0;
 
         // If we have a new order (ID greater than last known)
         if (latestOrderId > lastOrderId && lastOrderId > 0) {
           // Find all new orders
-          const newOrders = orders.filter(o => o.id > lastOrderId);
+          const newOrders = currentOrders.filter(o => o.id > lastOrderId);
           
           // Show notification for each new order (most recent first)
+          // Sequential numbers will be correct because allOrders is already updated
           newOrders.reverse().forEach(order => {
             showOrderNotification(order);
           });
 
           // Update badge count
-          const pendingCount = orders.filter(o => o.status === 'Pending').length;
+          const pendingCount = currentOrders.filter(o => o.status === 'Pending').length;
           const badge = document.getElementById('ordersBadge');
           if (badge) {
             badge.textContent = pendingCount;
@@ -1468,22 +1485,11 @@
         if (latestOrderId > lastOrderId) {
           lastOrderId = latestOrderId;
         }
-
-        // Check if any orders changed status (for real-time number updates)
-        const currentOrders = orders.reverse();
-        const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
-                              JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
         
-        // If orders changed or we're on the orders tab, refresh the display
-        if (ordersChanged || document.getElementById('ordersSection').classList.contains('active')) {
-          allOrders = currentOrders;
-          filteredOrders = [...allOrders];
-          displayOrders(); // This will update sequential numbers
-          renderStats();
-        } else {
-          // Just update stats if not on orders tab
-          renderStats();
-        }
+        // Always refresh display to update sequential numbers (especially when orders are completed)
+        // This ensures numbering resets when orders are delivered
+        displayOrders(); // This will recalculate sequential numbers based on active orders
+        renderStats();
       } catch(error) {
         console.error('Error checking for new orders:', error);
       }
