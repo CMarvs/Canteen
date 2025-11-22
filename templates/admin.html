@@ -202,9 +202,32 @@
       }
     }
 
+    // Calculate sequential order numbers (only for active orders, not delivered)
+    function getOrderNumberMap() {
+      // Get all active orders (not delivered), sorted by creation time (oldest first)
+      const activeOrders = allOrders
+        .filter(o => o.status !== 'Delivered')
+        .sort((a, b) => {
+          const dateA = new Date(a.created_at || 0);
+          const dateB = new Date(b.created_at || 0);
+          return dateA - dateB; // Oldest first
+        });
+      
+      // Create a map: orderId -> sequential number
+      const orderNumberMap = {};
+      activeOrders.forEach((order, index) => {
+        orderNumberMap[order.id] = index + 1; // Start from 1
+      });
+      
+      return orderNumberMap;
+    }
+
     function displayOrders() {
       const container = document.getElementById('ordersList');
       if (!container) return;
+
+      // Get sequential order numbers
+      const orderNumberMap = getOrderNumberMap();
 
       if (filteredOrders.length === 0) {
         const hasFilters = document.getElementById('searchInput')?.value || 
@@ -238,6 +261,11 @@
           default: badgeClass = "status-pending";
         }
 
+        // Get sequential order number (only for active orders)
+        const sequentialNumber = orderNumberMap[o.id];
+        const displayOrderNumber = sequentialNumber ? sequentialNumber : `#${o.id}`;
+        const orderNumberLabel = sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+
         const buyerName = o.fullname || o.name || "N/A";
         const buyerContact = o.contact || o.number || "N/A";
         const buyerAddress = o.location || o.address || "N/A";
@@ -253,10 +281,10 @@
         const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
 
         return `
-          <div class="order-card" data-order-id="${o.id}">
+          <div class="order-card" data-order-id="${o.id}" data-sequential-number="${sequentialNumber || ''}">
             <div class="order-header">
               <div>
-                <div class="order-id">Order #${o.id}</div>
+                <div class="order-id">${orderNumberLabel}</div>
                 <div class="order-date">${orderDate}</div>
               </div>
               <span class="status-badge ${badgeClass}">${o.status}</span>
@@ -322,6 +350,10 @@
         return;
       }
       
+      // Get sequential order number before update
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      
       let response;
       try {
         response = await fetch(`/orders/${orderId}`, {
@@ -369,7 +401,10 @@
 
     /* -------- Cancel Order (only for Pending orders) -------- */
     async function cancelOrder(orderId) {
-      if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone.`)) return;
+      // Get sequential order number for confirmation
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      if (!confirm(`⚠️ Are you sure you want to cancel Order #${sequentialNumber}?\n\nThis action cannot be undone.`)) return;
       
       try {
         const response = await fetch(`/orders/${orderId}`, {
@@ -700,6 +735,9 @@
     }
 
     function printSingleOrder(orderId) {
+      // Get sequential order number
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
       const order = allOrders.find(o => o.id === orderId);
       if (!order) return;
       
@@ -713,7 +751,7 @@
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Order #${order.id} - RMLCanteen</title>
+          <title>Order #${sequentialNumber} - RMLCanteen</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
             h1 { color: #8B4513; }
@@ -724,7 +762,7 @@
         </head>
         <body>
           <h1>🍽️ RMLCanteen - Order Receipt</h1>
-          <div class="info"><strong>Order #:</strong> ${order.id}</div>
+          <div class="info"><strong>Order #:</strong> ${sequentialNumber}</div>
           <div class="info"><strong>Date:</strong> ${new Date(order.created_at || Date.now()).toLocaleString()}</div>
           <div class="info"><strong>Status:</strong> ${order.status}</div>
           <hr>
@@ -1318,11 +1356,15 @@
       const itemCount = items.reduce((sum, item) => sum + (item.qty || 1), 0);
       const total = parseFloat(order.total || 0).toFixed(2);
 
+      // Get sequential order number for notification
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[order.id] || order.id;
+      
       notification.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
           <div style="flex: 1;">
             <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-              🔔 New Order #${order.id}
+              🔔 New Order #${sequentialNumber}
             </div>
             <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
               <strong>${order.fullname || order.name || 'Customer'}</strong>
@@ -1385,6 +1427,7 @@
 
         // Get the latest order ID
         const latestOrderId = orders[0]?.id || 0;
+        const previousLastOrderId = lastOrderId;
 
         // If we have a new order (ID greater than last known)
         if (latestOrderId > lastOrderId && lastOrderId > 0) {
@@ -1412,8 +1455,21 @@
           lastOrderId = latestOrderId;
         }
 
-        // Update stats
-        renderStats();
+        // Check if any orders changed status (for real-time number updates)
+        const currentOrders = orders.reverse();
+        const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
+                              JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
+        
+        // If orders changed or we're on the orders tab, refresh the display
+        if (ordersChanged || document.getElementById('ordersSection').classList.contains('active')) {
+          allOrders = currentOrders;
+          filteredOrders = [...allOrders];
+          displayOrders(); // This will update sequential numbers
+          renderStats();
+        } else {
+          // Just update stats if not on orders tab
+          renderStats();
+        }
       } catch(error) {
         console.error('Error checking for new orders:', error);
       }
