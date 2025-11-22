@@ -436,6 +436,13 @@ async function placeOrder(name, contact, address, paymentMethod){
 
     const paymentData = await paymentResponse.json();
 
+    // Handle direct GCash transfer (show payment instructions)
+    if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
+      // Show payment modal with QR code and instructions
+      showGCashPaymentModal(paymentData);
+      return;
+    }
+
     // Handle payment that requires action (GCash redirect)
     if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
       // Show message and redirect to GCash payment page
@@ -498,6 +505,135 @@ async function placeOrder(name, contact, address, paymentMethod){
     console.error('Order placement error:', error);
     alert('Failed to place order. Please try again.');
   }
+}
+
+// Show GCash payment modal with QR code and instructions
+function showGCashPaymentModal(paymentData) {
+  // Create modal
+  const modal = document.createElement('div');
+  modal.id = 'gcashPaymentModal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+  `;
+  
+  const modalContent = document.createElement('div');
+  modalContent.style.cssText = `
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    text-align: center;
+  `;
+  
+  const qrImageUrl = `/payment/gcash/qr/${paymentData.order_id}?t=${Date.now()}`;
+  const adminNumber = paymentData.admin_gcash_number || '09947784922';
+  const amount = paymentData.amount || 0;
+  const reference = paymentData.reference || paymentData.payment_intent_id || '';
+  
+  modalContent.innerHTML = `
+    <h2 style="margin-top: 0; color: #0066cc;">📱 GCash Payment</h2>
+    <div style="margin: 20px 0;">
+      <img src="${qrImageUrl}" alt="GCash QR Code" style="max-width: 250px; border: 2px solid #0066cc; border-radius: 8px; padding: 10px; background: white;">
+    </div>
+    <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left;">
+      <h3 style="margin-top: 0; color: #333;">Payment Instructions:</h3>
+      <ol style="line-height: 1.8; color: #555;">
+        <li>Open your <strong>GCash app</strong></li>
+        <li>Tap <strong>"Send Money"</strong></li>
+        <li>Enter GCash number: <strong style="color: #0066cc; font-size: 1.1em;">${adminNumber}</strong></li>
+        <li>Enter amount: <strong style="color: #0066cc; font-size: 1.1em;">₱${amount.toFixed(2)}</strong></li>
+        <li>Add reference: <strong style="color: #0066cc;">${reference}</strong></li>
+        <li>Complete the payment</li>
+      </ol>
+      <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-top: 15px; border-left: 4px solid #ffc107;">
+        <strong>⚠️ Important:</strong> Please include the reference number <strong>${reference}</strong> when sending payment. This helps us verify your payment.
+      </div>
+    </div>
+    <div style="margin: 20px 0; padding: 15px; background: #e7f3ff; border-radius: 8px;">
+      <strong>Admin GCash Number:</strong><br>
+      <span style="font-size: 1.3em; color: #0066cc; font-weight: bold;">${adminNumber}</span>
+    </div>
+    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+      <button id="confirmPaymentBtn" style="
+        background: #0066cc;
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1em;
+        font-weight: bold;
+      ">I've Sent the Payment</button>
+      <button id="cancelPaymentBtn" style="
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1em;
+      ">Cancel</button>
+    </div>
+  `;
+  
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
+  
+  // Handle confirm payment
+  document.getElementById('confirmPaymentBtn').onclick = () => {
+    // Clear cart
+    saveCart([]);
+    
+    // Clear form fields
+    const delName = document.getElementById('delName');
+    const delContact = document.getElementById('delContact');
+    const delAddress = document.getElementById('delAddress');
+    if(delName) delName.value = '';
+    if(delContact) delContact.value = '';
+    if(delAddress) delAddress.value = '';
+    if(document.getElementById('gcashNumber')) {
+      document.getElementById('gcashNumber').value = '';
+    }
+    
+    // Re-render cart
+    if(typeof renderCart === 'function') {
+      renderCart();
+    }
+    
+    // Remove modal
+    document.body.removeChild(modal);
+    
+    alert(`✅ Payment instructions received!\n\nYour order has been placed. Please send ₱${amount.toFixed(2)} to ${adminNumber} with reference ${reference}.\n\nAdmin will verify your payment and update your order status.`);
+    
+    // Redirect to orders page
+    setTimeout(() => {
+      location.href = 'orders.html?t=' + Date.now();
+    }, 300);
+  };
+  
+  // Handle cancel
+  document.getElementById('cancelPaymentBtn').onclick = () => {
+    document.body.removeChild(modal);
+  };
+  
+  // Close on outside click
+  modal.onclick = (e) => {
+    if(e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
 }
 
 /* ---------- User Orders (API) ---------- */

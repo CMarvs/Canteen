@@ -1,13 +1,17 @@
 """
 Payment Gateway Integration Module
 Supports GCash via PayMongo (Philippines payment gateway)
+and Direct GCash-to-GCash payments
 """
 
 import os
 import requests
 import base64
 import json
+import qrcode
+import io
 from typing import Dict, Optional
+from PIL import Image
 
 # PayMongo API Configuration
 PAYMONGO_SECRET_KEY = os.getenv("PAYMONGO_SECRET_KEY", "")
@@ -18,6 +22,9 @@ PAYMONGO_API_URL = "https://api.paymongo.com/v1"
 GCASH_API_KEY = os.getenv("GCASH_API_KEY", "")
 GCASH_SECRET_KEY = os.getenv("GCASH_SECRET_KEY", "")
 GCASH_API_URL = os.getenv("GCASH_API_URL", "https://api.gcash.com")
+
+# Admin GCash Number (for direct transfers)
+ADMIN_GCASH_NUMBER = os.getenv("ADMIN_GCASH_NUMBER", "09947784922")
 
 def get_paymongo_auth_header() -> str:
     """Generate PayMongo authentication header"""
@@ -279,7 +286,76 @@ def process_gcash_direct(order_id: int, amount: float, gcash_number: str, order_
     except Exception as e:
         raise Exception(f"GCash direct API error: {str(e)}")
 
-def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order_details: Dict, use_paymongo: bool = True) -> Dict:
+def generate_gcash_qr_code(amount: float, reference: str, admin_number: str) -> str:
+    """
+    Generate GCash QR code data for payment
+    Format: GCash payment string with admin number, amount, and reference
+    """
+    # Format: Send to admin number with amount and reference
+    # This creates a payment instruction that can be scanned
+    qr_data = f"Send ₱{amount:.2f} to {admin_number}\nReference: {reference}"
+    return qr_data
+
+def generate_gcash_qr_image(qr_data: str) -> bytes:
+    """
+    Generate QR code image as bytes
+    """
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Convert to bytes
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    
+    return img_bytes.getvalue()
+
+def generate_gcash_payment_link(amount: float, reference: str, admin_number: str) -> Dict:
+    """
+    Generate GCash payment request/link
+    Returns payment instructions and QR code data
+    """
+    qr_data = generate_gcash_qr_code(amount, reference, admin_number)
+    
+    return {
+        "success": True,
+        "payment_type": "direct_gcash",
+        "admin_gcash_number": admin_number,
+        "amount": amount,
+        "reference": reference,
+        "qr_data": qr_data,
+        "instructions": f"Send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}\n\nPlease send the payment and keep your reference number for verification.",
+        "status": "pending"
+    }
+
+def process_gcash_direct_transfer(order_id: int, amount: float, customer_gcash: str, admin_gcash: str, order_details: Dict) -> Dict:
+    """
+    Process direct GCash-to-GCash transfer
+    Generates payment request with QR code
+    """
+    reference = f"ORDER_{order_id}_{int(os.urandom(4).hex(), 16)}"
+    
+    payment_info = generate_gcash_payment_link(
+        amount=amount,
+        reference=reference,
+        admin_number=admin_gcash
+    )
+    
+    payment_info["order_id"] = order_id
+    payment_info["customer_gcash"] = customer_gcash
+    payment_info["payment_intent_id"] = reference  # Use reference as payment ID
+    
+    return payment_info
+
+def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order_details: Dict, use_paymongo: bool = True, use_direct: bool = False) -> Dict:
     """
     Main function to process GCash payment
     
@@ -289,19 +365,32 @@ def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order
         gcash_number: GCash mobile number
         order_details: Order information
         use_paymongo: Use PayMongo gateway (True) or direct GCash API (False)
+        use_direct: Use direct GCash-to-GCash transfer (True)
     
     Returns:
         Payment result dictionary
     """
+    # Direct GCash-to-GCash transfer (preferred if admin number is set)
+    if use_direct or ADMIN_GCASH_NUMBER:
+        return process_gcash_direct_transfer(
+            order_id=order_id,
+            amount=amount,
+            customer_gcash=gcash_number,
+            admin_gcash=ADMIN_GCASH_NUMBER,
+            order_details=order_details
+        )
+    
+    # PayMongo integration (alternative)
     if use_paymongo:
         if not PAYMONGO_SECRET_KEY:
-            # Fallback to simulated payment if PayMongo not configured
-            return {
-                "success": True,
-                "message": "GCash payment request sent. Please confirm in your GCash app. (Demo mode - configure PayMongo for real payments)",
-                "status": "pending",
-                "demo_mode": True
-            }
+            # Fallback to direct transfer if PayMongo not configured
+            return process_gcash_direct_transfer(
+                order_id=order_id,
+                amount=amount,
+                customer_gcash=gcash_number,
+                admin_gcash=ADMIN_GCASH_NUMBER,
+                order_details=order_details
+            )
         return process_gcash_payment_paymongo(order_id, amount, gcash_number, order_details)
     else:
         return process_gcash_direct(order_id, amount, gcash_number, order_details)

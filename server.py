@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 import psycopg2, json
 from psycopg2.extras import RealDictCursor
 from psycopg2 import errors as psycopg2_errors
@@ -604,6 +604,37 @@ async def payment_callback(request: Request):
         traceback.print_exc()
         return {"ok": False, "message": str(e)}
 
+# --- Generate GCash QR Code ---
+@app.get("/payment/gcash/qr/{order_id}")
+async def generate_gcash_qr(order_id: int):
+    """Generate QR code for GCash payment"""
+    try:
+        from payment_gateway import generate_gcash_qr_code, generate_gcash_qr_image, ADMIN_GCASH_NUMBER
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT total, payment_intent_id FROM orders WHERE id = %s", (order_id,))
+            order = cur.fetchone()
+            
+            if not order:
+                raise HTTPException(404, "Order not found")
+            
+            amount = float(order.get("total", 0))
+            reference = order.get("payment_intent_id") or f"ORDER_{order_id}"
+            admin_number = ADMIN_GCASH_NUMBER or "09947784922"
+            
+            qr_data = generate_gcash_qr_code(amount, reference, admin_number)
+            qr_image = generate_gcash_qr_image(qr_data)
+            
+            return Response(content=qr_image, media_type="image/png")
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"[ERROR] QR code generation error: {e}")
+        raise HTTPException(500, f"Failed to generate QR code: {str(e)}")
+
 # --- Check Payment Status ---
 @app.get("/payment/status/{payment_intent_id}")
 async def check_payment_status(payment_intent_id: str):
@@ -707,13 +738,13 @@ async def process_payment(request: Request):
             }
             
             try:
-                # Process GCash payment (uses PayMongo by default)
+                # Process GCash payment (direct GCash-to-GCash transfer)
                 payment_result = process_gcash_payment(
                     order_id=order_id,
                     amount=float(amount),
                     gcash_number=gcash_number,
                     order_details=order_details,
-                    use_paymongo=True  # Set to False to use direct GCash API (requires GCash partner access)
+                    use_direct=True  # Use direct GCash-to-GCash transfer to admin number
                 )
                 
                 payment_success = payment_result.get("success", False)
@@ -747,6 +778,24 @@ async def process_payment(request: Request):
                         "redirect_url": payment_result.get("redirect_url"),
                         "payment_intent_id": payment_intent_id,
                         "order_id": order_id
+                    }
+                
+                # Check if direct GCash transfer
+                payment_type = payment_result.get("payment_type", "")
+                if payment_type == "direct_gcash":
+                    return {
+                        "success": True,
+                        "payment_type": "direct_gcash",
+                        "message": payment_message,
+                        "order_id": order_id,
+                        "payment_method": payment_method,
+                        "amount": amount,
+                        "payment_intent_id": payment_intent_id,
+                        "status": payment_status,
+                        "admin_gcash_number": payment_result.get("admin_gcash_number", "09947784922"),
+                        "reference": payment_result.get("reference", payment_intent_id),
+                        "instructions": payment_result.get("instructions", ""),
+                        "qr_data": payment_result.get("qr_data", "")
                     }
                 
                 # Return success response for GCash
