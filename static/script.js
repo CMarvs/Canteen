@@ -436,6 +436,15 @@ async function placeOrder(name, contact, address, paymentMethod){
 
     const paymentData = await paymentResponse.json();
 
+    // Handle payment that requires action (GCash redirect)
+    if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
+      // Show message and redirect to GCash payment page
+      if(confirm(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
+        window.location.href = paymentData.redirect_url;
+      }
+      return;
+    }
+
     if(paymentResponse.ok && paymentData.success) {
       // Clear cart
       saveCart([]);
@@ -465,7 +474,11 @@ async function placeOrder(name, contact, address, paymentMethod){
       
       // Show success message
       const paymentMethodName = paymentMethod === 'card' ? 'Card' : 'GCash';
-      alert(`✅ Payment successful via ${paymentMethodName}!\n\nOrder placed successfully!`);
+      const statusMessage = paymentData.status === 'pending' ? 
+        'Payment request sent. Please confirm in your GCash app.' : 
+        'Payment successful!';
+      
+      alert(`✅ ${statusMessage}\n\nOrder placed successfully!`);
       
       // Redirect to orders page
       setTimeout(() => {

@@ -493,6 +493,18 @@ async def place_order(request: Request):
                 print("[INFO] Adding payment_status column to orders table...")
                 cur.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pending';")
                 conn.commit()
+            
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_intent_id'
+            """)
+            has_payment_intent_id = cur.fetchone() is not None
+            
+            if not has_payment_intent_id:
+                print("[INFO] Adding payment_intent_id column to orders table...")
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_intent_id TEXT;")
+                conn.commit()
         except Exception as col_error:
             print(f"[WARNING] Could not check/add payment columns: {col_error}")
         
@@ -519,6 +531,109 @@ async def place_order(request: Request):
         raise HTTPException(500, f"Order placement failed: {str(e)}")
     finally:
         conn.close()
+
+# --- Payment Callback (Webhook) ---
+@app.post("/payment/callback")
+async def payment_callback(request: Request):
+    """Handle payment callbacks from PayMongo/GCash"""
+    try:
+        data = await request.json()
+        
+        # PayMongo webhook format
+        event_type = data.get("data", {}).get("attributes", {}).get("type") or data.get("type")
+        payment_intent_data = data.get("data", {}).get("attributes", {}).get("data", {})
+        
+        # Extract payment intent ID
+        payment_intent_id = None
+        if payment_intent_data:
+            payment_intent_id = payment_intent_data.get("id")
+        if not payment_intent_id:
+            payment_intent_id = data.get("data", {}).get("id") or data.get("payment_intent_id")
+        
+        # Extract status
+        status = None
+        if payment_intent_data:
+            status = payment_intent_data.get("attributes", {}).get("status")
+        if not status:
+            status = data.get("data", {}).get("attributes", {}).get("status") or data.get("status")
+        
+        print(f"[INFO] Payment callback received: event={event_type}, payment_intent_id={payment_intent_id}, status={status}")
+        
+        if not payment_intent_id:
+            return {"ok": False, "message": "Missing payment intent ID"}
+        
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            
+            # Find order by payment_intent_id
+            cur.execute("SELECT id, payment_status FROM orders WHERE payment_intent_id = %s", (payment_intent_id,))
+            order = cur.fetchone()
+            
+            if order:
+                order_id = order.get("id")
+                current_status = order.get("payment_status")
+                
+                # Update payment status based on webhook
+                if status == "succeeded" and current_status != "paid":
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid'
+                        WHERE id = %s
+                    """, (order_id,))
+                    conn.commit()
+                    print(f"[SUCCESS] Order {order_id} payment confirmed via webhook")
+                elif status == "failed" and current_status != "failed":
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'failed'
+                        WHERE id = %s
+                    """, (order_id,))
+                    conn.commit()
+                    print(f"[INFO] Order {order_id} payment failed via webhook")
+            else:
+                print(f"[WARNING] Order not found for payment_intent_id: {payment_intent_id}")
+            
+            return {"ok": True, "message": "Payment callback processed"}
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"[ERROR] Payment callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": str(e)}
+
+# --- Check Payment Status ---
+@app.get("/payment/status/{payment_intent_id}")
+async def check_payment_status(payment_intent_id: str):
+    """Check payment status from payment gateway"""
+    try:
+        from payment_gateway import check_payment_status_paymongo
+        
+        status = check_payment_status_paymongo(payment_intent_id)
+        
+        # Update order status if payment succeeded
+        if status.get("paid"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                # Find order by payment_intent_id
+                cur.execute("""
+                    UPDATE orders 
+                    SET payment_status = 'paid'
+                    WHERE payment_intent_id = %s
+                    AND payment_status != 'paid'
+                """, (payment_intent_id,))
+                conn.commit()
+                print(f"[INFO] Updated order payment status to paid for payment_intent_id: {payment_intent_id}")
+            finally:
+                conn.close()
+        
+        return status
+    except Exception as e:
+        print(f"[ERROR] Check payment status error: {e}")
+        raise HTTPException(500, f"Failed to check payment status: {str(e)}")
 
 # --- Payment Processing ---
 @app.post("/payment/process")
@@ -571,23 +686,112 @@ async def process_payment(request: Request):
             payment_message = "Card payment processed successfully"
             
         elif payment_method == "gcash":
-            # Simulate GCash payment processing
-            # In production, integrate with GCash API
+            # Process GCash payment via PayMongo or direct GCash API
+            from payment_gateway import process_gcash_payment
+            
             gcash_number = payment_details.get("gcashNumber", "")
             
             if not gcash_number or len(gcash_number) != 11:
-                raise HTTPException(400, "Invalid GCash number")
+                raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
             
-            # Simulate GCash payment request
-            # In production, send payment request via GCash API
-            payment_success = True
-            payment_message = "GCash payment request sent. Please confirm in your GCash app."
+            # Get order details for payment
+            cur.execute("SELECT fullname, contact FROM orders WHERE id = %s", (order_id,))
+            order_info = cur.fetchone()
+            
+            order_details = {
+                "customer_name": order_info.get("fullname", "") if order_info else "",
+                "customer_contact": order_info.get("contact", "") if order_info else "",
+                "customer_email": "",
+                "return_url": f"{os.getenv('APP_URL', 'https://your-app.onrender.com')}/orders.html",
+                "callback_url": f"{os.getenv('APP_URL', 'https://your-app.onrender.com')}/payment/callback"
+            }
+            
+            try:
+                # Process GCash payment (uses PayMongo by default)
+                payment_result = process_gcash_payment(
+                    order_id=order_id,
+                    amount=float(amount),
+                    gcash_number=gcash_number,
+                    order_details=order_details,
+                    use_paymongo=True  # Set to False to use direct GCash API (requires GCash partner access)
+                )
+                
+                payment_success = payment_result.get("success", False)
+                payment_message = payment_result.get("message", "GCash payment processed")
+                payment_status = payment_result.get("status", "pending")
+                payment_intent_id = payment_result.get("payment_intent_id")
+                
+                # Store payment intent ID if available (for status checking)
+                if payment_intent_id:
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = %s, payment_method = %s, payment_intent_id = %s
+                        WHERE id = %s
+                    """, (payment_status, payment_method, payment_intent_id, order_id))
+                    conn.commit()
+                else:
+                    # Update status without payment_intent_id
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = %s, payment_method = %s
+                        WHERE id = %s
+                    """, (payment_status, payment_method, order_id))
+                    conn.commit()
+                
+                # If payment requires action (redirect to GCash)
+                if payment_result.get("requires_action"):
+                    return {
+                        "success": False,
+                        "requires_action": True,
+                        "message": payment_message,
+                        "redirect_url": payment_result.get("redirect_url"),
+                        "payment_intent_id": payment_intent_id,
+                        "order_id": order_id
+                    }
+                
+                # Return success response for GCash
+                return {
+                    "success": payment_success,
+                    "message": payment_message,
+                    "order_id": order_id,
+                    "payment_method": payment_method,
+                    "amount": amount,
+                    "payment_intent_id": payment_intent_id,
+                    "status": payment_status
+                }
+                
+            except Exception as payment_error:
+                print(f"[ERROR] GCash payment error: {payment_error}")
+                import traceback
+                traceback.print_exc()
+                
+                # If payment gateway is not configured, use demo mode
+                if "not set" in str(payment_error) or "not configured" in str(payment_error) or "PAYMONGO" in str(payment_error):
+                    # Demo mode - mark as pending
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'pending', payment_method = %s
+                        WHERE id = %s
+                    """, (payment_method, order_id))
+                    conn.commit()
+                    
+                    return {
+                        "success": True,
+                        "message": "GCash payment request sent. Please confirm in your GCash app. (Demo mode - configure PayMongo API keys for real payments)",
+                        "order_id": order_id,
+                        "payment_method": payment_method,
+                        "amount": amount,
+                        "status": "pending",
+                        "demo_mode": True
+                    }
+                else:
+                    raise HTTPException(500, f"GCash payment failed: {str(payment_error)}")
             
         else:
             raise HTTPException(400, f"Unsupported payment method: {payment_method}")
         
-        # Update order payment status
-        if payment_success:
+        # Update order payment status (for card payments)
+        if payment_success and payment_method == "card":
             cur.execute("""
                 UPDATE orders 
                 SET payment_status = 'paid', payment_method = %s
