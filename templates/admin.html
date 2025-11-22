@@ -280,12 +280,26 @@
         // Parse items if it's a string (from database)
         const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
 
+        // Get payment information
+        const paymentMethod = o.payment_method || 'cash';
+        const paymentStatus = o.payment_status || 'pending';
+        const paymentMethodIcon = paymentMethod === 'card' ? '💳' : paymentMethod === 'gcash' ? '📱' : '💵';
+        const paymentMethodName = paymentMethod === 'card' ? 'Card' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+        const paymentStatusBadge = paymentStatus === 'paid' ? 
+          '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
+          paymentStatus === 'failed' ?
+          '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">❌ Failed</span>' :
+          '<span style="background: #d7a24e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">⏳ Pending</span>';
+
         return `
           <div class="order-card" data-order-id="${o.id}" data-sequential-number="${sequentialNumber || ''}">
             <div class="order-header">
               <div>
                 <div class="order-id">${orderNumberLabel}</div>
                 <div class="order-date">${orderDate}</div>
+                <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
+                  ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}
+                </div>
               </div>
               <span class="status-badge ${badgeClass}">${o.status}</span>
             </div>

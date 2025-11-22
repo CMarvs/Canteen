@@ -55,8 +55,55 @@
       <label class="input-label">Address / Location</label>
       <textarea id="delAddress" placeholder="Block, Building (Inside the Main Campus)"></textarea>
 
+      <h4 style="margin-top:16px;">💳 Payment Method</h4>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; transition: all 0.3s;" 
+               onmouseover="this.style.borderColor='#8B4513'; this.style.background='#fff8f1';" 
+               onmouseout="if(!this.querySelector('input').checked) {this.style.borderColor='#ddd'; this.style.background='';}">
+          <input type="radio" name="paymentMethod" value="card" id="paymentCard" checked style="margin: 0;">
+          <span style="font-size: 1.2rem;">💳</span>
+          <span><strong>Credit/Debit Card</strong></span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; transition: all 0.3s;" 
+               onmouseover="this.style.borderColor='#8B4513'; this.style.background='#fff8f1';" 
+               onmouseout="if(!this.querySelector('input').checked) {this.style.borderColor='#ddd'; this.style.background='';}">
+          <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" style="margin: 0;">
+          <span style="font-size: 1.2rem;">📱</span>
+          <span><strong>GCash</strong></span>
+        </label>
+      </div>
+      <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: none;">
+        <div id="cardDetails" style="display: none;">
+          <label class="input-label">Card Number</label>
+          <input type="text" id="cardNumber" placeholder="1234 5678 9012 3456" maxlength="19" 
+                 oninput="this.value = this.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim().slice(0, 19)">
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-top: 10px;">
+            <div>
+              <label class="input-label">Expiry Date</label>
+              <input type="text" id="cardExpiry" placeholder="MM/YY" maxlength="5" 
+                     oninput="this.value = this.value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2').slice(0, 5)">
+            </div>
+            <div>
+              <label class="input-label">CVV</label>
+              <input type="text" id="cardCVV" placeholder="123" maxlength="4" 
+                     oninput="this.value = this.value.replace(/\D/g, '').slice(0, 4)">
+            </div>
+          </div>
+          <label class="input-label" style="margin-top: 10px;">Cardholder Name</label>
+          <input type="text" id="cardName" placeholder="Name on card">
+        </div>
+        <div id="gcashDetails" style="display: none;">
+          <label class="input-label">GCash Mobile Number</label>
+          <input type="tel" id="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
+                 oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
+          <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+            💡 You will receive a payment request via GCash. Please confirm the payment in your GCash app.
+          </p>
+        </div>
+      </div>
+
       <div style="margin-top:10px;display:flex;gap:10px;">
-        <button class="btn" onclick="showConfirmBox()">Confirm Order</button>
+        <button class="btn" onclick="showConfirmBox()">Proceed to Payment</button>
         <button class="btn ghost" onclick="clearCart()">Clear Cart</button>
       </div>
     </section>
@@ -78,6 +125,48 @@
         if(delName) delName.value = '';
         if(delContact) delContact.value = '';
         if(delAddress) delAddress.value = '';
+      }
+    });
+
+    // Handle payment method selection
+    document.addEventListener('DOMContentLoaded', () => {
+      const paymentMethods = document.querySelectorAll('input[name="paymentMethod"]');
+      const paymentDetails = document.getElementById('paymentDetails');
+      const cardDetails = document.getElementById('cardDetails');
+      const gcashDetails = document.getElementById('gcashDetails');
+      
+      paymentMethods.forEach(method => {
+        method.addEventListener('change', () => {
+          if (method.value === 'card') {
+            cardDetails.style.display = 'block';
+            gcashDetails.style.display = 'none';
+            paymentDetails.style.display = 'block';
+          } else if (method.value === 'gcash') {
+            cardDetails.style.display = 'none';
+            gcashDetails.style.display = 'block';
+            paymentDetails.style.display = 'block';
+          }
+          
+          // Update label styles
+          document.querySelectorAll('label[for^="payment"]').forEach(label => {
+            const input = label.querySelector('input');
+            if (input.checked) {
+              label.style.borderColor = '#8B4513';
+              label.style.background = '#fff8f1';
+            } else {
+              label.style.borderColor = '#ddd';
+              label.style.background = '';
+            }
+          });
+        });
+      });
+      
+      // Initialize with card selected
+      if (document.getElementById('paymentCard').checked) {
+        cardDetails.style.display = 'block';
+        paymentDetails.style.display = 'block';
+        document.querySelector('label[for="paymentCard"]').style.borderColor = '#8B4513';
+        document.querySelector('label[for="paymentCard"]').style.background = '#fff8f1';
       }
     });
 
@@ -113,13 +202,59 @@
         return;
       }
       
+      // Get payment method
+      const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
+      if (!paymentMethod) {
+        alert('Please select a payment method.');
+        return;
+      }
+      
+      // Validate payment details
+      if (paymentMethod === 'card') {
+        const cardNumber = document.getElementById('cardNumber').value.replace(/\s/g, '');
+        const cardExpiry = document.getElementById('cardExpiry').value;
+        const cardCVV = document.getElementById('cardCVV').value;
+        const cardName = document.getElementById('cardName').value.trim();
+        
+        if (!cardNumber || cardNumber.length < 13) {
+          alert('Please enter a valid card number.');
+          document.getElementById('cardNumber').focus();
+          return;
+        }
+        if (!cardExpiry || cardExpiry.length !== 5) {
+          alert('Please enter a valid expiry date (MM/YY).');
+          document.getElementById('cardExpiry').focus();
+          return;
+        }
+        if (!cardCVV || cardCVV.length < 3) {
+          alert('Please enter a valid CVV.');
+          document.getElementById('cardCVV').focus();
+          return;
+        }
+        if (!cardName) {
+          alert('Please enter the cardholder name.');
+          document.getElementById('cardName').focus();
+          return;
+        }
+      } else if (paymentMethod === 'gcash') {
+        const gcashNumber = document.getElementById('gcashNumber').value.replace(/\D/g, '');
+        if (!gcashNumber || gcashNumber.length !== 11) {
+          alert('Please enter a valid GCash mobile number (11 digits).');
+          document.getElementById('gcashNumber').focus();
+          return;
+        }
+      }
+      
       // Update contact to digits only
       const validContact = contactDigits;
       
       const subtotal = calcSubtotal();
       const grand = subtotal + DELIVERY_FEE;
-      if(!confirm(`Confirm order?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nPlace order now?`)) return;
-      placeOrder(name, validContact, address);
+      
+      const paymentMethodName = paymentMethod === 'card' ? 'Credit/Debit Card' : 'GCash';
+      if(!confirm(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`)) return;
+      
+      placeOrder(name, validContact, address, paymentMethod);
     }
   </script>
 </body>

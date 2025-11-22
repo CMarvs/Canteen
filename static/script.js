@@ -337,7 +337,7 @@ async function addToCartWithQty(id){
 }
 
 /* ---------- Order Placement (API) ---------- */
-async function placeOrder(name, contact, address){
+async function placeOrder(name, contact, address, paymentMethod){
   const cur = getCurrent();
   if(!cur) { 
     alert('Please login'); 
@@ -381,25 +381,66 @@ async function placeOrder(name, contact, address){
   const subtotal = calcSubtotal();
   const total = subtotal + DELIVERY_FEE;
 
+  // Get payment details
+  let paymentDetails = {};
+  if (paymentMethod === 'card') {
+    paymentDetails = {
+      cardNumber: document.getElementById('cardNumber').value.replace(/\s/g, ''),
+      cardExpiry: document.getElementById('cardExpiry').value,
+      cardCVV: document.getElementById('cardCVV').value,
+      cardName: document.getElementById('cardName').value.trim()
+    };
+  } else if (paymentMethod === 'gcash') {
+    paymentDetails = {
+      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
+    };
+  }
+
   try {
-    const response = await fetch(`${API_BASE}/orders`, {
+    // First, create the order
+    const orderResponse = await fetch(`${API_BASE}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: cur.id,
         fullname: name.trim(),
-        contact: contactDigits, // Use validated digits-only contact (already validated above)
+        contact: contactDigits,
         location: address.trim(),
         items: cart,
         total: total,
+        payment_method: paymentMethod,
+        payment_status: 'pending'
       })
     });
 
-    if(response.ok) {
+    if(!orderResponse.ok) {
+      const errorData = await orderResponse.json();
+      alert(errorData.detail || 'Order placement failed');
+      return;
+    }
+
+    const orderData = await orderResponse.json();
+    const orderId = orderData.order?.id || orderData.id;
+
+    // Process payment
+    const paymentResponse = await fetch(`${API_BASE}/payment/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_id: orderId,
+        payment_method: paymentMethod,
+        amount: total,
+        payment_details: paymentDetails
+      })
+    });
+
+    const paymentData = await paymentResponse.json();
+
+    if(paymentResponse.ok && paymentData.success) {
       // Clear cart
       saveCart([]);
       
-      // Clear form fields on order page if still there
+      // Clear form fields
       const delName = document.getElementById('delName');
       const delContact = document.getElementById('delContact');
       const delAddress = document.getElementById('delAddress');
@@ -407,20 +448,38 @@ async function placeOrder(name, contact, address){
       if(delContact) delContact.value = '';
       if(delAddress) delAddress.value = '';
       
-      // Re-render cart to show it's empty
+      // Clear payment fields
+      if (paymentMethod === 'card') {
+        document.getElementById('cardNumber').value = '';
+        document.getElementById('cardExpiry').value = '';
+        document.getElementById('cardCVV').value = '';
+        document.getElementById('cardName').value = '';
+      } else {
+        document.getElementById('gcashNumber').value = '';
+      }
+      
+      // Re-render cart
       if(typeof renderCart === 'function') {
         renderCart();
       }
       
-      alert('✅ Order placed successfully!');
+      // Show success message
+      const paymentMethodName = paymentMethod === 'card' ? 'Card' : 'GCash';
+      alert(`✅ Payment successful via ${paymentMethodName}!\n\nOrder placed successfully!`);
       
-      // Small delay to ensure order is committed, then redirect
+      // Redirect to orders page
       setTimeout(() => {
-        location.href = 'orders.html?t=' + Date.now(); // Add timestamp to prevent cache
+        location.href = 'orders.html?t=' + Date.now();
       }, 300);
     } else {
-      const data = await response.json();
-      alert(data.detail || 'Order placement failed');
+      // Payment failed - order is created but payment pending
+      const errorMsg = paymentData.message || paymentData.detail || 'Payment processing failed';
+      alert(`⚠️ Payment Issue: ${errorMsg}\n\nYour order has been placed but payment is pending. Please complete the payment or contact support.`);
+      
+      // Still redirect to orders page
+      setTimeout(() => {
+        location.href = 'orders.html?t=' + Date.now();
+      }, 500);
     }
   } catch(error) {
     console.error('Order placement error:', error);
@@ -467,6 +526,17 @@ async function renderUserOrders(){
 }
 
 function orderCardHtmlForUser(o){
+  // Get payment information
+  const paymentMethod = o.payment_method || 'cash';
+  const paymentStatus = o.payment_status || 'pending';
+  const paymentMethodIcon = paymentMethod === 'card' ? '💳' : paymentMethod === 'gcash' ? '📱' : '💵';
+  const paymentMethodName = paymentMethod === 'card' ? 'Card' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+  const paymentStatusBadge = paymentStatus === 'paid' ? 
+    '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
+    paymentStatus === 'failed' ?
+    '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">❌ Failed</span>' :
+    '<span style="background: #d7a24e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">⏳ Pending</span>';
+  
   const statusBadge = statusBadgeHtml(o.status);
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
   const itemsText = items.map(i => `${i.name} ×${i.qty}`).join('<br>');
@@ -475,7 +545,13 @@ function orderCardHtmlForUser(o){
   return `
     <div class="order-card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div><strong>Order #${o.id}</strong><div class="muted small">${new Date(o.created_at).toLocaleString()}</div></div>
+        <div>
+          <strong>Order #${o.id}</strong>
+          <div class="muted small">${new Date(o.created_at).toLocaleString()}</div>
+          <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
+            ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}
+          </div>
+        </div>
         <div>${statusBadge}</div>
       </div>
       <div style="margin-top:8px">${itemsText}</div>

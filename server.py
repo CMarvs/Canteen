@@ -468,22 +468,158 @@ async def place_order(request: Request):
                     print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
                     # Continue with order placement even if stock update fails
         
-        # Insert order (id_proof no longer required - it's stored in user account)
+        # Check and add payment columns if they don't exist
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_method'
+            """)
+            has_payment_method = cur.fetchone() is not None
+            
+            if not has_payment_method:
+                print("[INFO] Adding payment_method column to orders table...")
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'cash';")
+                conn.commit()
+            
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_status'
+            """)
+            has_payment_status = cur.fetchone() is not None
+            
+            if not has_payment_status:
+                print("[INFO] Adding payment_status column to orders table...")
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pending';")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add payment columns: {col_error}")
+        
+        # Insert order with payment information
+        payment_method = data.get("payment_method", "cash")
+        payment_status = data.get("payment_status", "pending")
+        
         cur.execute("""
-            INSERT INTO orders(user_id,fullname,contact,location,items,total)
-            VALUES (%s,%s,%s,%s,%s,%s)
+            INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING *;
         """, (
             data.get("user_id"), data.get("fullname"), data.get("contact"),
-            data.get("location"), json.dumps(items), data.get("total")
+            data.get("location"), json.dumps(items), data.get("total"),
+            payment_method, payment_status
         ))
+        result = cur.fetchone()
         conn.commit()
-        return {"ok": True, "message": "Order placed successfully"}
+        return {"ok": True, "message": "Order placed successfully", "order": result}
     except Exception as e:
         print(f"[ERROR] Order placement error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(500, f"Order placement failed: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Payment Processing ---
+@app.post("/payment/process")
+async def process_payment(request: Request):
+    """Process payment for an order"""
+    data = await request.json()
+    order_id = data.get("order_id")
+    payment_method = data.get("payment_method")
+    amount = data.get("amount")
+    payment_details = data.get("payment_details", {})
+    
+    if not order_id or not payment_method or not amount:
+        raise HTTPException(400, "Missing required payment information")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Verify order exists
+        cur.execute("SELECT id, total, payment_status FROM orders WHERE id = %s", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(404, "Order not found")
+        
+        if order.get("payment_status") == "paid":
+            return {"success": True, "message": "Payment already processed", "order_id": order_id}
+        
+        # Process payment based on method
+        if payment_method == "card":
+            # Simulate card payment processing
+            # In production, integrate with Stripe, PayPal, or other payment gateway
+            card_number = payment_details.get("cardNumber", "")
+            card_expiry = payment_details.get("cardExpiry", "")
+            card_cvv = payment_details.get("cardCVV", "")
+            card_name = payment_details.get("cardName", "")
+            
+            # Basic validation
+            if not card_number or len(card_number) < 13:
+                raise HTTPException(400, "Invalid card number")
+            if not card_expiry or len(card_expiry) != 5:
+                raise HTTPException(400, "Invalid expiry date")
+            if not card_cvv or len(card_cvv) < 3:
+                raise HTTPException(400, "Invalid CVV")
+            if not card_name:
+                raise HTTPException(400, "Cardholder name required")
+            
+            # Simulate payment processing (replace with real gateway API call)
+            # For demo: accept any valid format
+            payment_success = True
+            payment_message = "Card payment processed successfully"
+            
+        elif payment_method == "gcash":
+            # Simulate GCash payment processing
+            # In production, integrate with GCash API
+            gcash_number = payment_details.get("gcashNumber", "")
+            
+            if not gcash_number or len(gcash_number) != 11:
+                raise HTTPException(400, "Invalid GCash number")
+            
+            # Simulate GCash payment request
+            # In production, send payment request via GCash API
+            payment_success = True
+            payment_message = "GCash payment request sent. Please confirm in your GCash app."
+            
+        else:
+            raise HTTPException(400, f"Unsupported payment method: {payment_method}")
+        
+        # Update order payment status
+        if payment_success:
+            cur.execute("""
+                UPDATE orders 
+                SET payment_status = 'paid', payment_method = %s
+                WHERE id = %s
+            """, (payment_method, order_id))
+            conn.commit()
+            
+            return {
+                "success": True,
+                "message": payment_message,
+                "order_id": order_id,
+                "payment_method": payment_method,
+                "amount": amount
+            }
+        else:
+            # Payment failed
+            cur.execute("""
+                UPDATE orders 
+                SET payment_status = 'failed'
+                WHERE id = %s
+            """, (order_id,))
+            conn.commit()
+            
+            raise HTTPException(400, "Payment processing failed")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Payment processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Payment processing failed: {str(e)}")
     finally:
         conn.close()
 
