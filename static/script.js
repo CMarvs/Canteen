@@ -605,7 +605,7 @@ function showGCashPaymentModal(paymentData) {
     </div>
     
     <div style="margin: 20px 0;">
-      <button id="openGCashBtn" style="
+      <button id="openGCashBtn" onclick="window.openGCashAppFunc && window.openGCashAppFunc(); return false;" style="
         background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
         color: white;
         border: none;
@@ -668,7 +668,7 @@ function showGCashPaymentModal(paymentData) {
   modal.appendChild(modalContent);
   document.body.appendChild(modal);
   
-  // Function to open GCash app
+  // Function to open GCash app - improved version
   function openGCashApp() {
     const adminNumber = paymentData.admin_gcash_number || '09947784922';
     const amount = paymentData.amount || 0;
@@ -681,12 +681,16 @@ function showGCashPaymentModal(paymentData) {
     
     // Show loading state
     const btn = document.getElementById('openGCashBtn');
-    const originalText = btn.textContent;
-    btn.textContent = '⏳ Opening GCash...';
-    btn.style.opacity = '0.7';
+    if (btn) {
+      const originalText = btn.textContent;
+      btn.textContent = '⏳ Opening GCash...';
+      btn.style.opacity = '0.7';
+      btn.disabled = true;
+    }
     
     if (isMobile) {
-      // Mobile device - try to open GCash app
+      // Mobile device - try to open GCash app directly
+      let opened = false;
       
       // Method 1: Try Android Intent URL (for Android)
       if (isAndroid) {
@@ -694,18 +698,32 @@ function showGCashPaymentModal(paymentData) {
           // Android Intent format - opens GCash app
           const intentUrl = `intent://#Intent;scheme=gcash;package=com.globe.gcash.android;end`;
           window.location.href = intentUrl;
+          opened = true;
         } catch(e) {
-          // Fallback to direct link
-          window.location.href = 'gcash://';
+          console.log('Intent URL failed, trying direct link');
         }
-      } else if (isIOS) {
-        // iOS: Try GCash URL scheme
+      }
+      
+      // Method 2: Try direct GCash deep link (works for both iOS and Android)
+      if (!opened) {
         try {
+          // Try opening GCash app directly
           window.location.href = 'gcash://';
+          opened = true;
         } catch(e) {
-          // Fallback to App Store
-          window.open('https://apps.apple.com/app/gcash/id1322865881', '_blank');
+          console.log('GCash deep link failed');
         }
+      }
+      
+      // Method 3: Fallback - Open Play Store/App Store
+      if (!opened) {
+        setTimeout(() => {
+          if (isAndroid) {
+            window.open('https://play.google.com/store/apps/details?id=com.globe.gcash.android', '_blank');
+          } else if (isIOS) {
+            window.open('https://apps.apple.com/app/gcash/id1322865881', '_blank');
+          }
+        }, 2000);
       }
       
       // Show instructions after opening app
@@ -763,8 +781,19 @@ function showGCashPaymentModal(paymentData) {
     }
   }
   
-  // Open GCash app button
-  document.getElementById('openGCashBtn').onclick = openGCashApp;
+  // Make openGCashApp function available globally and attach to button
+  window.openGCashAppFunc = openGCashApp;
+  
+  // Attach event listener to button
+  const openGCashBtn = document.getElementById('openGCashBtn');
+  if (openGCashBtn) {
+    openGCashBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openGCashApp();
+      return false;
+    };
+  }
   
   // Copy GCash number
   document.getElementById('copyNumberBtn').onclick = () => {
@@ -842,6 +871,9 @@ function showGCashPaymentModal(paymentData) {
 }
 
 /* ---------- User Orders (API) ---------- */
+// Store user orders globally for sequential numbering
+let userAllOrders = [];
+
 async function renderUserOrders(){
   const cur = getCurrent();
   if(!cur){ location.href='index.html'; return; }
@@ -860,10 +892,13 @@ async function renderUserOrders(){
     });
     const allOrders = await response.json();
     
-    // Filter orders for current user
+    // Filter orders for current user and update global
     const mine = allOrders
       .filter(o => o.user_id === cur.id)
       .reverse();
+    
+    // Update global orders list
+    userAllOrders = mine;
 
     if(mine.length === 0){
       list.innerHTML = '';
@@ -879,7 +914,33 @@ async function renderUserOrders(){
   }
 }
 
+// Calculate sequential order numbers for user (only active orders)
+function getUserOrderNumberMap() {
+  // Get all active orders (not delivered), sorted by creation time (oldest first)
+  const activeOrders = userAllOrders
+    .filter(o => o.status !== 'Delivered')
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || 0);
+      const dateB = new Date(b.created_at || 0);
+      return dateA - dateB; // Oldest first
+    });
+  
+  // Create a map: orderId -> sequential number
+  const orderNumberMap = {};
+  activeOrders.forEach((order, index) => {
+    orderNumberMap[order.id] = index + 1; // Start from 1
+  });
+  
+  return orderNumberMap;
+}
+
 function orderCardHtmlForUser(o){
+  // Get sequential order number (only for active orders)
+  const orderNumberMap = getUserOrderNumberMap();
+  const sequentialNumber = orderNumberMap[o.id];
+  const displayOrderNumber = sequentialNumber ? sequentialNumber : o.id;
+  const orderNumberLabel = sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+  
   // Get payment information
   const paymentMethod = o.payment_method || 'cash';
   const paymentStatus = o.payment_status || 'pending';
@@ -900,7 +961,7 @@ function orderCardHtmlForUser(o){
     <div class="order-card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <strong>Order #${o.id}</strong>
+          <strong>${orderNumberLabel}</strong>
           <div class="muted small">${new Date(o.created_at).toLocaleString()}</div>
           <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
             ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}

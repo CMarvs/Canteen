@@ -26,22 +26,60 @@
 
   <script src="/static/script.js"></script>
   <script>
+    let userOrderPollInterval = null;
+    
+    // Check for order updates in real-time
+    async function checkUserOrderUpdates() {
+      try {
+        await renderUserOrders(); // This will update sequential numbers
+      } catch(error) {
+        console.error('Error checking order updates:', error);
+      }
+    }
+    
+    // Start polling for order updates
+    function startUserOrderPolling() {
+      // Poll every 5 seconds for real-time updates
+      if (!userOrderPollInterval) {
+        userOrderPollInterval = setInterval(checkUserOrderUpdates, 5000);
+      }
+    }
+    
+    // Stop polling
+    function stopUserOrderPolling() {
+      if (userOrderPollInterval) {
+        clearInterval(userOrderPollInterval);
+        userOrderPollInterval = null;
+      }
+    }
+    
     window.addEventListener('DOMContentLoaded', () => {
       ensureLoggedIn('user');
       // Force reload orders when page loads
       renderUserOrders();
+      // Start real-time polling
+      startUserOrderPolling();
     });
     
     // Also reload when page becomes visible (handles tab switching, back button)
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         renderUserOrders();
+        startUserOrderPolling();
+      } else {
+        stopUserOrderPolling();
       }
     });
     
     // Reload when page is focused (user switches back to tab)
     window.addEventListener('focus', () => {
       renderUserOrders();
+      startUserOrderPolling();
+    });
+    
+    // Stop polling when page is hidden (save resources)
+    window.addEventListener('blur', () => {
+      stopUserOrderPolling();
     });
   </script>
 </body>
