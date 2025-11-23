@@ -336,7 +336,7 @@ def generate_gcash_payment_link(amount: float, reference: str, admin_number: str
         "status": "pending"
     }
 
-def process_gcash_direct_transfer(order_id: int, amount: float, customer_gcash: str, admin_gcash: str, order_details: Dict) -> Dict:
+def process_gcash_direct_transfer(order_id: int, amount: float, customer_gcash: str, admin_gcash: str, order_details: Dict, qr_code_url: str = None) -> Dict:
     """
     Process direct GCash-to-GCash transfer
     Generates payment request with QR code
@@ -353,9 +353,15 @@ def process_gcash_direct_transfer(order_id: int, amount: float, customer_gcash: 
     payment_info["customer_gcash"] = customer_gcash
     payment_info["payment_intent_id"] = reference  # Use reference as payment ID
     
+    # Add QR code URL if provided, otherwise use default
+    if qr_code_url:
+        payment_info["qr_code_url"] = qr_code_url
+    else:
+        payment_info["qr_code_url"] = "/static/gcash-qr.png"  # Default path
+    
     return payment_info
 
-def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order_details: Dict, use_paymongo: bool = True, use_direct: bool = False) -> Dict:
+def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order_details: Dict, use_paymongo: bool = True, use_direct: bool = False, qr_code_url: str = None) -> Dict:
     """
     Main function to process GCash payment
     
@@ -377,7 +383,8 @@ def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order
             amount=amount,
             customer_gcash=gcash_number,
             admin_gcash=ADMIN_GCASH_NUMBER,
-            order_details=order_details
+            order_details=order_details,
+            qr_code_url=qr_code_url  # Pass QR code URL
         )
     
     # PayMongo integration (alternative)
@@ -389,7 +396,8 @@ def process_gcash_payment(order_id: int, amount: float, gcash_number: str, order
                 amount=amount,
                 customer_gcash=gcash_number,
                 admin_gcash=ADMIN_GCASH_NUMBER,
-                order_details=order_details
+                order_details=order_details,
+                qr_code_url=qr_code_url  # Pass QR code URL
             )
         return process_gcash_payment_paymongo(order_id, amount, gcash_number, order_details)
     else:

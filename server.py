@@ -778,13 +778,17 @@ async def process_payment(request: Request):
             }
             
             try:
+                # QR code URL - use environment variable or default path
+                qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.png")
+                
                 # Process GCash payment (direct GCash-to-GCash transfer)
                 payment_result = process_gcash_payment(
                     order_id=order_id,
                     amount=float(amount),
                     gcash_number=gcash_number,
                     order_details=order_details,
-                    use_direct=True  # Use direct GCash-to-GCash transfer to admin number
+                    use_direct=True,  # Use direct GCash-to-GCash transfer to admin number
+                    qr_code_url=qr_code_url  # Pass QR code URL
                 )
                 
                 payment_success = payment_result.get("success", False)
@@ -836,7 +840,7 @@ async def process_payment(request: Request):
                         "reference": payment_result.get("reference", payment_intent_id),
                         "instructions": payment_result.get("instructions", ""),
                         "qr_data": payment_result.get("qr_data", ""),
-                        "qr_code_url": "/static/gcash-qr.png"  # Path to GCash QR code image
+                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.png")  # Path to GCash QR code image
                     }
                 
                 # Return success response for GCash
