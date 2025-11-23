@@ -47,23 +47,42 @@ async function registerUser(){
   // ID proof is handled in register.html script
   // This function is overridden there to include ID proof
   try {
+    console.log('[REGISTER] Attempting registration for:', email);
+    
     const response = await fetch(`${API_BASE}/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ name, email, password: pass })
     });
 
-    const data = await response.json();
+    console.log('[REGISTER] Response status:', response.status);
+    
+    let data;
+    try {
+      const text = await response.text();
+      console.log('[REGISTER] Response text:', text.substring(0, 200));
+      data = JSON.parse(text);
+    } catch(jsonError) {
+      console.error('[REGISTER] Failed to parse response:', jsonError);
+      alert('Server error. Please try again.');
+      return;
+    }
     
     if(response.ok) {
-      alert('✅ Account created successfully! You can now login.');
+      console.log('[REGISTER] Registration successful:', data);
+      alert(data.message || '✅ Account created successfully! You can now login.');
       location.href = 'index.html';
     } else {
-      alert(data.detail || 'Registration failed');
+      const errorMsg = data.detail || data.message || 'Registration failed';
+      console.error('[REGISTER] Registration failed:', errorMsg);
+      alert('❌ ' + errorMsg);
     }
   } catch(error) {
-    console.error('Registration error:', error);
-    alert('Registration failed. Please try again.');
+    console.error('[REGISTER] Registration error:', error);
+    alert('Registration failed. Please check your connection and try again.');
   }
 }
 

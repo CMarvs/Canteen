@@ -34,8 +34,14 @@ def get_db_connection():
     try:
         conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
         return conn
+    except psycopg2.OperationalError as e:
+        print(f"❌ Database connection error: {e}")
+        print(f"[ERROR] Failed to connect to database. Check DATABASE_URL environment variable.")
+        raise HTTPException(500, f"Database connection failed: {str(e)}")
     except Exception as e:
         print(f"❌ Database connection error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Database connection failed: {str(e)}")
 
 # --- Initialize menu_items table if it doesn't exist ---
@@ -208,7 +214,16 @@ def ping():
 # --- Register user ---
 @app.post("/register")
 async def register(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as json_error:
+        print(f"❌ Registration JSON parse error: {json_error}")
+        raise HTTPException(400, "Invalid request data")
+    
+    # Validate required fields
+    if not data.get("name") or not data.get("email") or not data.get("password"):
+        raise HTTPException(400, "Name, email, and password are required")
+    
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -263,7 +278,9 @@ async def register(request: Request):
         except Exception as col_error:
             print(f"[WARNING] Could not check/add is_approved column: {col_error}")
         
-        cur.execute("SELECT 1 FROM users WHERE email=%s", (data.get("email"),))
+        # Check if email already exists (case-insensitive)
+        email = data.get("email", "").strip().lower()
+        cur.execute("SELECT 1 FROM users WHERE LOWER(email)=%s", (email,))
         if cur.fetchone():
             raise HTTPException(400, "Email already registered")
         
@@ -295,17 +312,25 @@ async def register(request: Request):
         
         cur.execute(
             "INSERT INTO users(name,email,password,role,id_proof,selfie_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-            (data.get("name"), data.get("email"), data.get("password"), user_role, id_proof, selfie_proof, is_approved)
+            (data.get("name"), email, data.get("password"), user_role, id_proof, selfie_proof, is_approved)
         )
         conn.commit()
+        print(f"[INFO] User registered: {email} (Role: {user_role}, Approved: {is_approved})")
         return {"ok": True, "message": message}
-    except HTTPException:
+    except HTTPException as http_ex:
+        print(f"[ERROR] HTTPException in registration: {http_ex.status_code} - {http_ex.detail}")
         raise
     except Exception as e:
         print(f"❌ Registration error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Registration failed: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
 
 # --- Login ---
 @app.post("/login")
