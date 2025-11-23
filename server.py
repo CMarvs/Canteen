@@ -753,7 +753,8 @@ async def process_payment(request: Request):
                         "admin_gcash_number": payment_result.get("admin_gcash_number", "09947784922"),
                         "reference": payment_result.get("reference", payment_intent_id),
                         "instructions": payment_result.get("instructions", ""),
-                        "qr_data": payment_result.get("qr_data", "")
+                        "qr_data": payment_result.get("qr_data", ""),
+                        "qr_code_url": "/static/gcash-qr.png"  # Path to GCash QR code image
                     }
                 
                 # Return success response for GCash

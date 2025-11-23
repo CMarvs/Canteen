@@ -232,41 +232,96 @@ function calcSubtotal(){
 
 /* ---------- Render Cart UI ---------- */
 function renderCart(){
-  const listEl = document.getElementById('cartList');
-  if(!listEl) return;
-  const cart = getCart();
-  
-  if(cart.length === 0){
-    listEl.innerHTML = '<div class="muted">Cart is empty</div>';
-  } else {
-    listEl.innerHTML = cart.map(it => `
-      <div class="cart-item">
-        <div>
-          <strong>${it.name}</strong><br>
-          <span class="muted">₱${Number(it.price).toFixed(2)} × ${it.qty}</span>
-        </div>
-        <div>
-          <button class="btn small" onclick="promptEditQty('${it.id}', ${it.qty})">Edit</button>
-          <button class="btn small ghost" onclick="removeCartItem('${it.id}')">Delete</button>
-        </div>
-      </div>
-    `).join('');
+  try {
+    const listEl = document.getElementById('cartList');
+    if(!listEl) return;
+    
+    const cart = getCart();
+    if (!Array.isArray(cart)) {
+      saveCart([]);
+      listEl.innerHTML = '<div class="muted">Cart is empty</div>';
+      return;
+    }
+    
+    // Validate and filter cart items
+    const validCart = cart.filter(item => {
+      if (!item || !item.id) return false;
+      const menuItem = getMenuById(item.id);
+      return menuItem && menuItem.is_available !== false;
+    });
+    
+    // Update cart if items were filtered
+    if (validCart.length !== cart.length) {
+      saveCart(validCart);
+    }
+    
+    if(validCart.length === 0){
+      listEl.innerHTML = '<div class="muted">Cart is empty</div>';
+    } else {
+      listEl.innerHTML = validCart.map(it => {
+        try {
+          const price = Number(it.price) || 0;
+          const qty = Number(it.qty) || 1;
+          return `
+            <div class="cart-item" style="animation: fadeIn 0.3s ease-out;">
+              <div>
+                <strong>${it.name || 'Unknown Item'}</strong><br>
+                <span class="muted">₱${price.toFixed(2)} × ${qty}</span>
+              </div>
+              <div>
+                <button class="btn small" onclick="promptEditQty('${it.id}', ${qty})" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Edit</button>
+                <button class="btn small ghost" onclick="removeCartItem('${it.id}')" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Delete</button>
+              </div>
+            </div>
+          `;
+        } catch(err) {
+          console.error('Error rendering cart item:', err, it);
+          return '';
+        }
+      }).filter(html => html).join('');
+    }
+    
+    const subtotal = calcSubtotal();
+    const grand = subtotal + DELIVERY_FEE;
+    const sEl = document.getElementById('subtotal');
+    const gEl = document.getElementById('grandTotal') || document.getElementById('total') || null;
+    if(sEl) sEl.innerText = subtotal.toFixed(2);
+    if(gEl) gEl.innerText = grand.toFixed(2);
+  } catch(error) {
+    console.error('Error rendering cart:', error);
+    const listEl = document.getElementById('cartList');
+    if(listEl) {
+      listEl.innerHTML = '<div class="muted" style="color: #e74c3c;">Error loading cart. Please refresh the page.</div>';
+    }
   }
-  
-  const subtotal = calcSubtotal();
-  const grand = subtotal + DELIVERY_FEE;
-  const sEl = document.getElementById('subtotal');
-  const gEl = document.getElementById('grandTotal') || document.getElementById('total') || null;
-  if(sEl) sEl.innerText = subtotal.toFixed(2);
-  if(gEl) gEl.innerText = grand.toFixed(2);
 }
 
 async function promptEditQty(id, currentQty){
-  const val = prompt('Enter new quantity:', currentQty);
-  if(val === null) return;
-  const n = Number(val);
-  if(isNaN(n) || n <= 0) return alert('Invalid quantity');
-  await updateCartQty(id, n);
+  try {
+    const val = prompt('Enter new quantity:', currentQty);
+    if(val === null || val.trim() === '') return;
+    
+    const n = Number(val);
+    if(isNaN(n) || n <= 0) {
+      alert('⚠️ Please enter a valid quantity (greater than 0)');
+      return;
+    }
+    
+    // Check stock availability
+    const item = getMenuById(id);
+    if (item) {
+      const quantity = item.quantity || 0;
+      if (quantity > 0 && n > quantity) {
+        alert(`⚠️ Only ${quantity} available in stock.`);
+        return;
+      }
+    }
+    
+    await updateCartQty(id, n);
+  } catch(error) {
+    console.error('Error editing quantity:', error);
+    alert('❌ Failed to update quantity. Please try again.');
+  }
 }
 
 /* ---------- Menu Rendering ---------- */
@@ -331,6 +386,7 @@ function itemCardHtml(i){
 }
 
 async function addToCartWithQty(id){
+  try {
   const qEl = document.getElementById('q_' + id);
   const qty = qEl ? Number(qEl.value) || 1 : 1;
   await addToCartById(id, qty);
@@ -447,18 +503,37 @@ async function placeOrder(name, contact, address, paymentMethod){
     }
 
     // Process payment for GCash
-    const paymentResponse = await fetch(`${API_BASE}/payment/process`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        order_id: orderId,
-        payment_method: paymentMethod,
-        amount: total,
-        payment_details: paymentDetails
-      })
-    });
-
-    const paymentData = await paymentResponse.json();
+    let paymentResponse;
+    let paymentData;
+    
+    try {
+      paymentResponse = await fetch(`${API_BASE}/payment/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: orderId,
+          payment_method: paymentMethod,
+          amount: total,
+          payment_details: paymentDetails
+        })
+      });
+      
+      if (!paymentResponse.ok) {
+        const errorData = await paymentResponse.json().catch(() => ({ detail: 'Payment processing failed' }));
+        throw new Error(errorData.detail || `Payment failed: ${paymentResponse.status}`);
+      }
+      
+      paymentData = await paymentResponse.json();
+    } catch (paymentError) {
+      console.error('Payment processing error:', paymentError);
+      alert(`⚠️ Payment Error: ${paymentError.message || 'Failed to process payment. Please try again.'}\n\nYour order has been created. You can complete the payment later.`);
+      
+      // Still redirect to orders page
+      setTimeout(() => {
+        location.href = 'orders.html?t=' + Date.now();
+      }, 1000);
+      return;
+    }
 
     // Handle direct GCash transfer (show payment instructions)
     if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
@@ -526,9 +601,9 @@ async function placeOrder(name, contact, address, paymentMethod){
   }
 }
 
-// Show GCash payment modal with instructions (no QR code - GCash doesn't support generic QR)
+// Show GCash payment modal with beautiful UI and QR code support
 function showGCashPaymentModal(paymentData) {
-  // Create modal
+  // Create modal with smooth animation
   const modal = document.createElement('div');
   modal.id = 'gcashPaymentModal';
   modal.style.cssText = `
@@ -537,131 +612,238 @@ function showGCashPaymentModal(paymentData) {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.85);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 10000;
+    animation: fadeIn 0.3s ease-out;
   `;
   
   const modalContent = document.createElement('div');
   modalContent.style.cssText = `
     background: white;
-    padding: 30px;
-    border-radius: 12px;
-    max-width: 500px;
+    padding: 0;
+    border-radius: 20px;
+    max-width: 450px;
     width: 90%;
-    max-height: 90vh;
+    max-height: 95vh;
     overflow-y: auto;
     text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: slideUp 0.4s ease-out;
   `;
   
   const adminNumber = paymentData.admin_gcash_number || '09947784922';
   const amount = paymentData.amount || 0;
   const reference = paymentData.reference || paymentData.payment_intent_id || '';
   
+  // GCash QR code image URL (use provided URL or default)
+  const qrCodeUrl = paymentData.qr_code_url || '/static/gcash-qr.png';
+  
   modalContent.innerHTML = `
-    <h2 style="margin-top: 0; color: #0066cc;">📱 GCash Payment</h2>
+    <style>
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideUp {
+        from { transform: translateY(30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+    </style>
     
-    <div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #0066cc 0%, #004499 100%); border-radius: 12px; color: white;">
-      <div style="font-size: 0.9em; margin-bottom: 8px; opacity: 0.9;">Send Payment To</div>
-      <div style="font-size: 1.8em; font-weight: bold; margin-bottom: 8px; letter-spacing: 2px;">${adminNumber}</div>
-      <div style="font-size: 0.9em; opacity: 0.9;">Amount: <strong style="font-size: 1.2em;">₱${amount.toFixed(2)}</strong></div>
-    </div>
-    
-    <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #0066cc;">
-      <div style="font-weight: bold; color: #333; margin-bottom: 10px;">Reference Number:</div>
-      <div style="font-size: 1.1em; color: #0066cc; font-weight: bold; font-family: monospace; letter-spacing: 1px; padding: 10px; background: white; border-radius: 6px;">${reference}</div>
-      <button id="copyReferenceBtn" style="
-        margin-top: 10px;
-        background: #0066cc;
-        color: white;
-        border: none;
-        padding: 8px 20px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.9em;
-      ">📋 Copy Reference</button>
-    </div>
-    
-    <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left;">
-      <h3 style="margin-top: 0; color: #333; display: flex; align-items: center; gap: 8px;">
-        <span>📝</span> Payment Instructions:
-      </h3>
-      <ol style="line-height: 2; color: #555; padding-left: 20px;">
-        <li>Open your <strong>GCash app</strong> on your phone</li>
-        <li>Tap <strong>"Send Money"</strong></li>
-        <li>Enter or paste GCash number: <strong style="color: #0066cc;">${adminNumber}</strong></li>
-        <li>Enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong></li>
-        <li>In the message/notes field, add: <strong style="color: #0066cc;">${reference}</strong></li>
-        <li>Review and confirm the payment</li>
-      </ol>
-      <div style="background: #fff3cd; padding: 15px; border-radius: 6px; margin-top: 15px; border-left: 4px solid #ffc107;">
-        <strong>⚠️ Important:</strong><br>
-        • Include the reference number <strong>${reference}</strong> in your payment message<br>
-        • This helps us verify your payment quickly<br>
-        • Keep your payment receipt for reference
+    <!-- GCash Header -->
+    <div style="background: linear-gradient(135deg, #0066cc 0%, #004499 100%); padding: 25px 30px; border-radius: 20px 20px 0 0; color: white; position: relative; overflow: hidden;">
+      <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+      <div style="position: absolute; bottom: -30px; left: -30px; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+      <div style="position: relative; z-index: 1;">
+        <div style="font-size: 2.5rem; margin-bottom: 10px;">📱</div>
+        <h2 style="margin: 0; font-size: 1.8rem; font-weight: bold;">GCash Payment</h2>
+        <div style="font-size: 0.9rem; opacity: 0.95; margin-top: 5px;">Secure & Fast Payment</div>
       </div>
     </div>
     
-    <div style="margin: 20px 0;">
-      <button id="openGCashBtn" onclick="window.openGCashAppFunc && window.openGCashAppFunc(); return false;" style="
-        background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
-        color: white;
-        border: none;
-        padding: 16px 32px;
-        border-radius: 10px;
-        cursor: pointer;
-        font-size: 1.1em;
-        font-weight: bold;
-        width: 100%;
-        box-shadow: 0 4px 12px rgba(0,102,204,0.3);
-        transition: transform 0.2s, box-shadow 0.2s;
-      " onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 6px 16px rgba(0,102,204,0.4)';" 
-         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,102,204,0.3)';">
-        📱 Open GCash App
-      </button>
-      <div style="font-size: 0.85em; color: #666; margin-top: 8px; text-align: center;">
-        Tap to open GCash app directly
+    <div style="padding: 30px;">
+      <!-- Payment Amount -->
+      <div style="margin-bottom: 25px;">
+        <div style="font-size: 0.85rem; color: #666; margin-bottom: 5px;">Amount to Pay</div>
+        <div style="font-size: 2.5rem; font-weight: bold; color: #0066cc; letter-spacing: -1px;">₱${amount.toFixed(2)}</div>
       </div>
-    </div>
+      
+      <!-- GCash QR Code Section -->
+      <div style="background: #f8f9fa; padding: 25px; border-radius: 16px; margin-bottom: 25px; border: 2px solid #e9ecef;">
+        <div style="font-weight: bold; color: #333; margin-bottom: 15px; font-size: 1rem;">Scan QR Code to Pay</div>
+        <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+          <img id="gcashQRCode" src="${qrCodeUrl}" 
+               onerror="this.style.display='none'; document.getElementById('qrFallback').style.display='block';"
+               style="max-width: 250px; width: 100%; height: auto; border-radius: 8px;" 
+               alt="GCash QR Code">
+          <div id="qrFallback" style="display: none; padding: 40px; text-align: center; color: #999;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">📱</div>
+            <div>QR Code will be displayed here</div>
+            <div style="font-size: 0.85rem; margin-top: 5px; color: #666;">Use manual payment method below</div>
+          </div>
+        </div>
+        <div style="font-size: 0.75rem; color: #999; margin-top: 12px;">Transfer fees may apply</div>
+      </div>
+      
+      <!-- Admin GCash Number -->
+      <div style="background: linear-gradient(135deg, #f0f7ff 0%, #e6f2ff 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #0066cc;">
+        <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Send Payment To</div>
+        <div style="font-size: 1.6rem; font-weight: bold; color: #0066cc; letter-spacing: 1px; margin-bottom: 5px; font-family: monospace;">${adminNumber}</div>
+        <div style="font-size: 0.8rem; color: #666;">Or scan QR code above</div>
+      </div>
     
-    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
-      <button id="copyNumberBtn" style="
-        background: #28a745;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.95em;
-        font-weight: bold;
-        flex: 1;
-        min-width: 150px;
-      ">📋 Copy Number</button>
-      <button id="confirmPaymentBtn" style="
-        background: #0066cc;
-        color: white;
-        border: none;
-        padding: 12px 30px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 1em;
-        font-weight: bold;
-        flex: 1;
-        min-width: 150px;
-      ">✅ I've Sent the Payment</button>
-    </div>
-    <div style="margin-top: 10px;">
+      <!-- Reference Number -->
+      <div style="background: #fff8e1; padding: 18px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #ffc107;">
+        <div style="font-weight: bold; color: #856404; margin-bottom: 10px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <span>🔑</span> Reference Number
+        </div>
+        <div style="font-size: 1.1em; color: #0066cc; font-weight: bold; font-family: 'Courier New', monospace; letter-spacing: 1px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e0e0e0; word-break: break-all;">${reference}</div>
+        <button id="copyReferenceBtn" style="
+          margin-top: 12px;
+          background: #ffc107;
+          color: #333;
+          border: none;
+          padding: 10px 24px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.9em;
+          font-weight: bold;
+          transition: all 0.3s;
+          box-shadow: 0 2px 8px rgba(255,193,7,0.3);
+        " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(255,193,7,0.4)';" 
+           onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(255,193,7,0.3)';">
+          📋 Copy Reference
+        </button>
+      </div>
+      
+      <!-- Payment Instructions (Collapsible) -->
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: left;">
+        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; margin-bottom: 15px;" 
+             onclick="const inst = document.getElementById('paymentInstructions'); inst.style.display = inst.style.display === 'none' ? 'block' : 'none';">
+          <h3 style="margin: 0; color: #333; display: flex; align-items: center; gap: 8px; font-size: 1rem;">
+            <span>📝</span> Payment Instructions
+          </h3>
+          <span id="instructionsToggle" style="font-size: 1.2rem; color: #0066cc;">▼</span>
+        </div>
+        <div id="paymentInstructions" style="display: block;">
+          <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
+              <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">1</div>
+              <div style="flex: 1;">
+                <strong>Scan QR Code</strong> or open <strong>GCash app</strong>
+              </div>
+            </div>
+            <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
+              <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">2</div>
+              <div style="flex: 1;">
+                Tap <strong>"Send Money"</strong> or <strong>"Scan QR"</strong>
+              </div>
+            </div>
+            <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
+              <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">3</div>
+              <div style="flex: 1;">
+                Enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong>
+              </div>
+            </div>
+            <div style="display: flex; align-items: start; gap: 12px;">
+              <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">4</div>
+              <div style="flex: 1;">
+                Add reference: <strong style="color: #0066cc; font-family: monospace;">${reference}</strong> in message
+              </div>
+            </div>
+          </div>
+          <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+            <div style="font-weight: bold; color: #856404; margin-bottom: 8px;">⚠️ Important:</div>
+            <div style="font-size: 0.9rem; color: #856404; line-height: 1.6;">
+              • Always include the reference number in your payment message<br>
+              • This helps us verify your payment quickly<br>
+              • Keep your payment receipt for reference
+            </div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- Action Buttons -->
+      <div style="margin-bottom: 15px;">
+        <button id="openGCashBtn" style="
+          background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+          color: white;
+          border: none;
+          padding: 16px 32px;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 1.1em;
+          font-weight: bold;
+          width: 100%;
+          box-shadow: 0 4px 16px rgba(0,102,204,0.4);
+          transition: all 0.3s;
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(0,102,204,0.5)';" 
+           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(0,102,204,0.4)';"
+           onmousedown="this.style.transform='translateY(0)';"
+           onmouseup="this.style.transform='translateY(-2px)';">
+          <span style="position: relative; z-index: 1;">📱 Open GCash App</span>
+        </button>
+        <div style="font-size: 0.8rem; color: #999; margin-top: 8px; text-align: center;">
+          Tap to open GCash app directly
+        </div>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">
+        <button id="copyNumberBtn" style="
+          background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+          color: white;
+          border: none;
+          padding: 14px 20px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 0.95em;
+          font-weight: bold;
+          box-shadow: 0 3px 12px rgba(40,167,69,0.3);
+          transition: all 0.3s;
+        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(40,167,69,0.4)';" 
+           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(40,167,69,0.3)';">
+          📋 Copy Number
+        </button>
+        <button id="confirmPaymentBtn" style="
+          background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+          color: white;
+          border: none;
+          padding: 14px 20px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 0.95em;
+          font-weight: bold;
+          box-shadow: 0 3px 12px rgba(0,102,204,0.3);
+          transition: all 0.3s;
+        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(0,102,204,0.4)';" 
+           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(0,102,204,0.3)';">
+          ✅ Payment Sent
+        </button>
+      </div>
+      
       <button id="cancelPaymentBtn" style="
-        background: #6c757d;
-        color: white;
-        border: none;
+        background: transparent;
+        color: #666;
+        border: 2px solid #ddd;
         padding: 10px 20px;
-        border-radius: 6px;
+        border-radius: 8px;
         cursor: pointer;
         font-size: 0.9em;
-      ">Cancel</button>
+        width: 100%;
+        transition: all 0.3s;
+      " onmouseover="this.style.borderColor='#999'; this.style.color='#333';" 
+         onmouseout="this.style.borderColor='#ddd'; this.style.color='#666';">
+        Cancel
+      </button>
     </div>
   `;
   
