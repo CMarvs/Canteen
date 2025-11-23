@@ -94,7 +94,7 @@ async function loginUser(){
   }
 
   try {
-    console.log('Attempting login for:', email);
+    console.log('[LOGIN] Attempting login for:', email);
     
     const response = await fetch(`${API_BASE}/login`, {
       method: 'POST',
@@ -105,17 +105,26 @@ async function loginUser(){
       body: JSON.stringify({ email, password: pass })
     });
 
-    console.log('Login response status:', response.status);
+    console.log('[LOGIN] Response status:', response.status);
+    console.log('[LOGIN] Response ok:', response.ok);
 
     // Check if response is ok before parsing JSON
     let data;
     try {
       const text = await response.text();
-      console.log('Login response text:', text.substring(0, 200));
+      console.log('[LOGIN] Response text (first 500 chars):', text.substring(0, 500));
+      
+      if (!text || text.trim() === '') {
+        console.error('[LOGIN] Empty response from server');
+        throw new Error('Empty response from server');
+      }
+      
       data = JSON.parse(text);
+      console.log('[LOGIN] Parsed response data:', data);
     } catch(jsonError) {
-      console.error('Failed to parse response:', jsonError);
-      const msg = 'Server error. Please try again or contact support.';
+      console.error('[LOGIN] Failed to parse response:', jsonError);
+      console.error('[LOGIN] Response was:', text);
+      const msg = 'Server error. Please check the server logs and try again.';
       if(errorDiv) {
         errorDiv.style.display = 'block';
         errorDiv.textContent = msg;
@@ -126,24 +135,12 @@ async function loginUser(){
     }
     
     if(response.ok) {
-      console.log('Login successful, user data:', { id: data.id, email: data.email, role: data.role });
+      console.log('[LOGIN] Login successful! User data:', data);
       
-      // Check if user is approved (admins are always approved)
-      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0)) {
-        const msg = 'Your account is pending admin approval. Please wait for approval before logging in.';
-        if(errorDiv) {
-          errorDiv.style.display = 'block';
-          errorDiv.textContent = msg;
-        } else {
-          alert('⏳ ' + msg);
-        }
-        return;
-      }
-      
-      // Validate required fields
-      if(!data.id || !data.email || !data.role) {
-        console.error('Invalid user data received:', data);
-        const msg = 'Invalid user data. Please try again.';
+      // Validate required fields first
+      if(!data || !data.id || !data.email || !data.role) {
+        console.error('[LOGIN] Invalid user data received:', data);
+        const msg = 'Invalid user data received from server. Please try again.';
         if(errorDiv) {
           errorDiv.style.display = 'block';
           errorDiv.textContent = msg;
@@ -153,20 +150,35 @@ async function loginUser(){
         return;
       }
       
+      // Check if user is approved (admins are always approved)
+      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0)) {
+        const msg = 'Your account is pending admin approval. Please wait for approval before logging in.';
+        console.warn('[LOGIN] User not approved:', data.email);
+        if(errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = msg;
+        } else {
+          alert('⏳ ' + msg);
+        }
+        return;
+      }
+      
       // Save user session locally
-      saveCurrent({ 
+      const userSession = { 
         id: data.id, 
         name: data.name || data.email, 
         email: data.email, 
         role: data.role 
-      });
+      };
       
-      console.log('User session saved, redirecting...');
+      saveCurrent(userSession);
+      console.log('[LOGIN] User session saved:', userSession);
       
       // Small delay to ensure session is saved
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Redirect based on role
+      console.log('[LOGIN] Redirecting to:', data.role === 'admin' ? 'admin.html' : 'order.html');
       if(data.role === 'admin') {
         window.location.href = 'admin.html';
       } else {

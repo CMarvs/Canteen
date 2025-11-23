@@ -325,36 +325,38 @@ async def login(request: Request):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        
+        # First, try to find user by email (case-insensitive)
         cur.execute(
-            "SELECT * FROM users WHERE LOWER(email)=%s AND password=%s",
-            (email, password)
+            "SELECT * FROM users WHERE LOWER(email)=%s",
+            (email,)
         )
         user = cur.fetchone()
+        
         if not user:
-            raise HTTPException(400, "Invalid credentials")
+            print(f"[WARNING] Login attempt failed: Email '{email}' not found")
+            raise HTTPException(400, "Invalid email or password")
+        
+        # Convert to dict if needed
+        if not isinstance(user, dict):
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+            user = dict(zip(col_names, user)) if col_names else {}
+        
+        # Check password
+        stored_password = user.get('password', '')
+        if stored_password != password:
+            print(f"[WARNING] Login attempt failed: Incorrect password for '{email}'")
+            raise HTTPException(400, "Invalid email or password")
+        
+        print(f"[INFO] Password verified for user: {email}")
         
         # Check if user is approved (admin accounts are always approved)
-        # First, ensure all existing admin accounts are approved
-        if isinstance(user, dict):
-            role = user.get("role")
-            is_approved = user.get("is_approved")
-            user_id = user.get("id")
-        else:
-            # Handle tuple response - get column names to find correct index
-            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
-            try:
-                id_idx = col_names.index('id') if 'id' in col_names else 0
-                role_idx = col_names.index('role') if 'role' in col_names else 4
-                is_approved_idx = col_names.index('is_approved') if 'is_approved' in col_names else 6
-                user_id = user[id_idx] if len(user) > id_idx else None
-                role = user[role_idx] if len(user) > role_idx else None
-                is_approved = user[is_approved_idx] if len(user) > is_approved_idx else None
-            except Exception as idx_error:
-                # Fallback to default positions
-                print(f"[WARNING] Error getting column indices: {idx_error}")
-                user_id = user[0] if len(user) > 0 else None
-                role = user[4] if len(user) > 4 else None
-                is_approved = user[6] if len(user) > 6 else None
+        # User is already a dict at this point
+        role = user.get("role")
+        is_approved = user.get("is_approved")
+        user_id = user.get("id")
+        
+        print(f"[INFO] User found: ID={user_id}, Email={email}, Role={role}, Approved={is_approved}")
         
         # Admin accounts are always approved - check role first
         if role == 'admin':
@@ -369,19 +371,34 @@ async def login(request: Request):
                 except:
                     pass  # Continue even if update fails
             # Admin can always login regardless of approval status
-            return user
+            # Ensure user is a dict before returning
+            if not isinstance(user, dict):
+                col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                user = dict(zip(col_names, user)) if col_names else {}
+            
+            # Ensure all required fields are present
+            if not user.get('id') or not user.get('email') or not user.get('role'):
+                print(f"❌ Login: Missing required fields in admin user data: {user}")
+                raise HTTPException(500, "Invalid user data returned from database")
+            
+            # Remove sensitive data
+            user.pop('password', None)
+            user.pop('id_proof', None)
+            user.pop('selfie_proof', None)
+            
+            print(f"[INFO] Admin login successful: {user.get('email')} (ID: {user.get('id')})")
+            print(f"[INFO] Returning user data: {user}")
+            
+            # Ensure we return a proper dict (not RealDictRow)
+            response_data = dict(user)
+            return response_data
         
         # Regular users need approval
         if is_approved is False or is_approved == 0 or is_approved is None:
+            print(f"[WARNING] Login blocked: User '{email}' is not approved")
             raise HTTPException(403, "Account pending admin approval. Please wait for approval.")
         
-        # Convert user to dict if it's a tuple (shouldn't happen with RealDictCursor, but just in case)
-        if not isinstance(user, dict):
-            # Convert tuple to dict using column names
-            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
-            user = dict(zip(col_names, user)) if col_names else {}
-        
-        # Ensure all required fields are present
+        # User is already a dict, ensure all required fields are present
         if not user.get('id') or not user.get('email') or not user.get('role'):
             print(f"❌ Login: Missing required fields in user data: {user}")
             raise HTTPException(500, "Invalid user data returned from database")
@@ -391,14 +408,26 @@ async def login(request: Request):
         user.pop('id_proof', None)
         user.pop('selfie_proof', None)
         
-        return user
-    except HTTPException:
+        print(f"[INFO] User login successful: {user.get('email')} (ID: {user.get('id')}, Role: {user.get('role')})")
+        print(f"[INFO] Returning user data: {user}")
+        
+        # Ensure we return a proper dict (not RealDictRow) - convert to regular dict
+        response_data = dict(user)
+        return response_data
+    except HTTPException as http_ex:
+        print(f"[ERROR] HTTPException in login: {http_ex.status_code} - {http_ex.detail}")
         raise
     except Exception as e:
         print(f"❌ Login error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Login failed: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except:
+            pass
 
 # --- Update user profile ---
 @app.put("/users/{user_id}")
