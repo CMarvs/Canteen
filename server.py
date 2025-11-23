@@ -310,13 +310,24 @@ async def register(request: Request):
 # --- Login ---
 @app.post("/login")
 async def login(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as json_error:
+        print(f"❌ Login JSON parse error: {json_error}")
+        raise HTTPException(400, "Invalid request data")
+    
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    
+    if not email or not password:
+        raise HTTPException(400, "Email and password are required")
+    
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM users WHERE email=%s AND password=%s",
-            (data.get("email"), data.get("password"))
+            "SELECT * FROM users WHERE LOWER(email)=%s AND password=%s",
+            (email, password)
         )
         user = cur.fetchone()
         if not user:
@@ -338,8 +349,9 @@ async def login(request: Request):
                 user_id = user[id_idx] if len(user) > id_idx else None
                 role = user[role_idx] if len(user) > role_idx else None
                 is_approved = user[is_approved_idx] if len(user) > is_approved_idx else None
-            except:
+            except Exception as idx_error:
                 # Fallback to default positions
+                print(f"[WARNING] Error getting column indices: {idx_error}")
                 user_id = user[0] if len(user) > 0 else None
                 role = user[4] if len(user) > 4 else None
                 is_approved = user[6] if len(user) > 6 else None
@@ -368,6 +380,16 @@ async def login(request: Request):
             # Convert tuple to dict using column names
             col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
             user = dict(zip(col_names, user)) if col_names else {}
+        
+        # Ensure all required fields are present
+        if not user.get('id') or not user.get('email') or not user.get('role'):
+            print(f"❌ Login: Missing required fields in user data: {user}")
+            raise HTTPException(500, "Invalid user data returned from database")
+        
+        # Remove sensitive data before returning
+        user.pop('password', None)
+        user.pop('id_proof', None)
+        user.pop('selfie_proof', None)
         
         return user
     except HTTPException:

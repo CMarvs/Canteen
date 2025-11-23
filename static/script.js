@@ -69,39 +69,87 @@ async function registerUser(){
 
 /* ---------- Auth: Login ---------- */
 async function loginUser(){
-  const email = (document.getElementById('loginEmail')?.value || '').trim().toLowerCase();
-  const pass = (document.getElementById('loginPass')?.value || '').trim();
+  const emailInput = document.getElementById('loginEmail');
+  const passInput = document.getElementById('loginPass');
+  const errorDiv = document.getElementById('loginError');
   
-  if(!email || !pass) return alert('Enter email and password.');
+  const email = (emailInput?.value || '').trim().toLowerCase();
+  const pass = (passInput?.value || '').trim();
+  
+  if(!email || !pass) {
+    const msg = 'Please enter both email and password.';
+    if(errorDiv) {
+      errorDiv.style.display = 'block';
+      errorDiv.textContent = msg;
+    } else {
+      alert(msg);
+    }
+    return;
+  }
+
+  // Clear previous errors
+  if(errorDiv) {
+    errorDiv.style.display = 'none';
+    errorDiv.textContent = '';
+  }
 
   try {
+    console.log('Attempting login for:', email);
+    
     const response = await fetch(`${API_BASE}/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ email, password: pass })
     });
+
+    console.log('Login response status:', response.status);
 
     // Check if response is ok before parsing JSON
     let data;
     try {
-      data = await response.json();
+      const text = await response.text();
+      console.log('Login response text:', text.substring(0, 200));
+      data = JSON.parse(text);
     } catch(jsonError) {
       console.error('Failed to parse response:', jsonError);
-      alert('❌ Server error. Please try again or contact support.');
+      const msg = 'Server error. Please try again or contact support.';
+      if(errorDiv) {
+        errorDiv.style.display = 'block';
+        errorDiv.textContent = msg;
+      } else {
+        alert('❌ ' + msg);
+      }
       return;
     }
     
     if(response.ok) {
+      console.log('Login successful, user data:', { id: data.id, email: data.email, role: data.role });
+      
       // Check if user is approved (admins are always approved)
       if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0)) {
-        alert('⏳ Your account is pending admin approval. Please wait for approval before logging in.');
+        const msg = 'Your account is pending admin approval. Please wait for approval before logging in.';
+        if(errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = msg;
+        } else {
+          alert('⏳ ' + msg);
+        }
         return;
       }
       
       // Validate required fields
       if(!data.id || !data.email || !data.role) {
         console.error('Invalid user data received:', data);
-        alert('❌ Invalid user data. Please try again.');
+        const msg = 'Invalid user data. Please try again.';
+        if(errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = msg;
+        } else {
+          alert('❌ ' + msg);
+        }
         return;
       }
       
@@ -113,20 +161,37 @@ async function loginUser(){
         role: data.role 
       });
       
+      console.log('User session saved, redirecting...');
+      
+      // Small delay to ensure session is saved
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Redirect based on role
       if(data.role === 'admin') {
-        location.href = 'admin.html';
+        window.location.href = 'admin.html';
       } else {
-        location.href = 'order.html';
+        window.location.href = 'order.html';
       }
     } else {
       // Handle error response
       const errorMsg = data.detail || data.message || 'Invalid credentials';
-      alert(`❌ ${errorMsg}`);
+      console.error('Login failed:', errorMsg);
+      if(errorDiv) {
+        errorDiv.style.display = 'block';
+        errorDiv.textContent = errorMsg;
+      } else {
+        alert('❌ ' + errorMsg);
+      }
     }
   } catch(error) {
     console.error('Login error:', error);
-    alert('❌ Login failed. Please check your connection and try again.');
+    const msg = 'Login failed. Please check your connection and try again.';
+    if(errorDiv) {
+      errorDiv.style.display = 'block';
+      errorDiv.textContent = msg;
+    } else {
+      alert('❌ ' + msg);
+    }
   }
 }
 
