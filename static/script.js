@@ -654,7 +654,7 @@ async function placeOrder(name, contact, address, paymentMethod){
 
     // Handle direct GCash transfer (show payment instructions)
     if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
-      // Show payment modal with QR code and instructions
+      // Show payment modal with instructions
       showGCashPaymentModal(paymentData);
       return;
     }
@@ -718,7 +718,7 @@ async function placeOrder(name, contact, address, paymentMethod){
   }
 }
 
-// Show GCash payment modal with beautiful UI and QR code support
+// Show GCash payment modal with beautiful UI
 function showGCashPaymentModal(paymentData) {
   // Create modal with smooth animation
   const modal = document.createElement('div');
@@ -755,9 +755,6 @@ function showGCashPaymentModal(paymentData) {
   const amount = paymentData.amount || 0;
   const reference = paymentData.reference || paymentData.payment_intent_id || '';
   
-  // GCash QR code image URL (use provided URL or default)
-  const qrCodeUrl = paymentData.qr_code_url || '/static/gcash-qr.png';
-  
   modalContent.innerHTML = `
     <style>
       @keyframes fadeIn {
@@ -792,28 +789,11 @@ function showGCashPaymentModal(paymentData) {
         <div style="font-size: 2.5rem; font-weight: bold; color: #0066cc; letter-spacing: -1px;">₱${amount.toFixed(2)}</div>
       </div>
       
-      <!-- GCash QR Code Section -->
-      <div style="background: #f8f9fa; padding: 25px; border-radius: 16px; margin-bottom: 25px; border: 2px solid #e9ecef;">
-        <div style="font-weight: bold; color: #333; margin-bottom: 15px; font-size: 1rem;">Scan QR Code to Pay</div>
-        <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-          <img id="gcashQRCode" src="${qrCodeUrl}" 
-               onerror="this.style.display='none'; document.getElementById('qrFallback').style.display='block';"
-               style="max-width: 250px; width: 100%; height: auto; border-radius: 8px;" 
-               alt="GCash QR Code">
-          <div id="qrFallback" style="display: none; padding: 40px; text-align: center; color: #999;">
-            <div style="font-size: 2rem; margin-bottom: 10px;">📱</div>
-            <div>QR Code will be displayed here</div>
-            <div style="font-size: 0.85rem; margin-top: 5px; color: #666;">Use manual payment method below</div>
-          </div>
-        </div>
-        <div style="font-size: 0.75rem; color: #999; margin-top: 12px;">Transfer fees may apply</div>
-      </div>
-      
       <!-- Admin GCash Number -->
       <div style="background: linear-gradient(135deg, #f0f7ff 0%, #e6f2ff 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #0066cc;">
         <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Send Payment To</div>
         <div style="font-size: 1.6rem; font-weight: bold; color: #0066cc; letter-spacing: 1px; margin-bottom: 5px; font-family: monospace;">${adminNumber}</div>
-        <div style="font-size: 0.8rem; color: #666;">Or scan QR code above</div>
+        <div style="font-size: 0.8rem; color: #666;">Use the GCash app to send payment</div>
       </div>
     
       <!-- Reference Number -->
@@ -854,13 +834,13 @@ function showGCashPaymentModal(paymentData) {
             <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
               <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">1</div>
               <div style="flex: 1;">
-                <strong>Scan QR Code</strong> or open <strong>GCash app</strong>
+                Open <strong>GCash app</strong> on your phone
               </div>
             </div>
             <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
               <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">2</div>
               <div style="flex: 1;">
-                Tap <strong>"Send Money"</strong> or <strong>"Scan QR"</strong>
+                Tap <strong>"Send Money"</strong>
               </div>
             </div>
             <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
