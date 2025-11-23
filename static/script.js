@@ -500,9 +500,13 @@ function itemCardHtml(i){
 
 async function addToCartWithQty(id){
   try {
-  const qEl = document.getElementById('q_' + id);
-  const qty = qEl ? Number(qEl.value) || 1 : 1;
-  await addToCartById(id, qty);
+    const qEl = document.getElementById('q_' + id);
+    const qty = qEl ? Number(qEl.value) || 1 : 1;
+    await addToCartById(id, qty);
+  } catch(error) {
+    console.error('Error adding to cart:', error);
+    alert('Failed to add item to cart. Please try again.');
+  }
 }
 
 /* ---------- Order Placement (API) ---------- */
