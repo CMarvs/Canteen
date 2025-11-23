@@ -1465,10 +1465,22 @@ async def delete_order(oid: int, request: Request):
                 print(f"[WARNING] Could not parse order items for stock restoration: {items_error}")
                 # Continue with order deletion even if stock restoration fails
         
-        # Delete the order
+        # Delete the order from database
         cur.execute("DELETE FROM orders WHERE id=%s", (oid,))
+        deleted_count = cur.rowcount
         conn.commit()
-        return {"ok": True, "message": f"Order {oid} cancelled successfully and stock restored"}
+        
+        if deleted_count == 0:
+            raise HTTPException(404, f"Order {oid} not found or already deleted")
+        
+        # Verify deletion
+        cur.execute("SELECT id FROM orders WHERE id=%s", (oid,))
+        verify = cur.fetchone()
+        if verify:
+            raise HTTPException(500, f"Order {oid} deletion failed - order still exists in database")
+        
+        print(f"[INFO] Order {oid} permanently deleted from database. Stock restored.")
+        return {"ok": True, "message": f"Order {oid} permanently deleted from database. Stock restored."}
     except HTTPException:
         raise
     except Exception as e:

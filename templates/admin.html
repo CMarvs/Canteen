@@ -463,14 +463,16 @@
       filterOrders();
     }
 
-    /* -------- Cancel Order (only for Pending orders) -------- */
+    /* -------- Cancel/Delete Order (only for Pending orders) -------- */
     async function cancelOrder(orderId) {
       // Get sequential order number for confirmation
       const orderNumberMap = getOrderNumberMap();
       const sequentialNumber = orderNumberMap[orderId] || orderId;
-      if (!confirm(`⚠️ Are you sure you want to cancel Order #${sequentialNumber}?\n\nThis action cannot be undone.`)) return;
+      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${sequentialNumber}?\n\nThis will permanently delete the order from the database.\n\nThis action cannot be undone.`)) return;
       
       try {
+        console.log(`[INFO] Deleting order ${orderId} from database...`);
+        
         const response = await fetch(`/orders/${orderId}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }
@@ -491,24 +493,27 @@
         if (!response.ok) {
           // Handle error response
           const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
-          alert(`Failed to cancel order: ${errorMessage}`);
+          alert(`❌ Failed to delete order: ${errorMessage}`);
+          console.error('Order deletion failed:', errorMessage);
           return;
         }
 
         // Success - show message and refresh
-        alert('✅ Order cancelled successfully!');
+        console.log(`[SUCCESS] Order ${orderId} deleted from database`);
+        alert('✅ Order deleted successfully from database!');
         
-        // Refresh orders list (wrap in try-catch to prevent errors from showing to user)
+        // Refresh orders list immediately
         try {
           await renderAdminOrders();
           filterOrders();
         } catch(refreshError) {
-          console.error('Error refreshing orders after cancel:', refreshError);
-          // Don't show error to user - cancellation was successful, just refresh failed
+          console.error('Error refreshing orders after delete:', refreshError);
+          // Still show success - order was deleted from database
+          alert('✅ Order deleted from database. Please refresh the page to see updated list.');
         }
       } catch(error) {
-        console.error('Error cancelling order:', error);
-        alert('Failed to cancel order. Please check your connection and try again.');
+        console.error('Error deleting order:', error);
+        alert('❌ Failed to delete order. Please check your connection and try again.');
       }
     }
 
