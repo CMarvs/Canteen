@@ -510,7 +510,11 @@ async def place_order(request: Request):
         
         # Insert order with payment information
         payment_method = data.get("payment_method", "cash")
-        payment_status = data.get("payment_status", "pending")
+        # COD orders are automatically marked as paid (payment on delivery)
+        if payment_method == "cod":
+            payment_status = "paid"
+        else:
+            payment_status = data.get("payment_status", "pending")
         
         cur.execute("""
             INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status)
@@ -665,28 +669,10 @@ async def process_payment(request: Request):
             return {"success": True, "message": "Payment already processed", "order_id": order_id}
         
         # Process payment based on method
-        if payment_method == "card":
-            # Simulate card payment processing
-            # In production, integrate with Stripe, PayPal, or other payment gateway
-            card_number = payment_details.get("cardNumber", "")
-            card_expiry = payment_details.get("cardExpiry", "")
-            card_cvv = payment_details.get("cardCVV", "")
-            card_name = payment_details.get("cardName", "")
-            
-            # Basic validation
-            if not card_number or len(card_number) < 13:
-                raise HTTPException(400, "Invalid card number")
-            if not card_expiry or len(card_expiry) != 5:
-                raise HTTPException(400, "Invalid expiry date")
-            if not card_cvv or len(card_cvv) < 3:
-                raise HTTPException(400, "Invalid CVV")
-            if not card_name:
-                raise HTTPException(400, "Cardholder name required")
-            
-            # Simulate payment processing (replace with real gateway API call)
-            # For demo: accept any valid format
+        if payment_method == "cod":
+            # Cash on Delivery - payment is done on delivery, mark as paid
             payment_success = True
-            payment_message = "Card payment processed successfully"
+            payment_message = "Cash on Delivery - Payment will be collected on delivery"
             
         elif payment_method == "gcash":
             # Process GCash payment via PayMongo or direct GCash API
@@ -811,8 +797,8 @@ async def process_payment(request: Request):
         else:
             raise HTTPException(400, f"Unsupported payment method: {payment_method}")
         
-        # Update order payment status (for card payments)
-        if payment_success and payment_method == "card":
+        # Update order payment status (for COD payments)
+        if payment_success and payment_method == "cod":
             cur.execute("""
                 UPDATE orders 
                 SET payment_status = 'paid', payment_method = %s
@@ -825,7 +811,8 @@ async def process_payment(request: Request):
                 "message": payment_message,
                 "order_id": order_id,
                 "payment_method": payment_method,
-                "amount": amount
+                "amount": amount,
+                "status": "paid"
             }
         else:
             # Payment failed
@@ -1328,6 +1315,46 @@ async def update_order(oid: int, request: Request):
     except Exception as e:
         print(f"❌ Update order error: {e}")
         raise HTTPException(500, f"Failed to update order: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Update Payment Status ---
+@app.put("/orders/{oid}/payment")
+async def update_payment_status(oid: int, request: Request):
+    """Update payment status for an order"""
+    data = await request.json()
+    payment_status = data.get("payment_status")
+    
+    if payment_status not in ["paid", "pending", "failed"]:
+        raise HTTPException(400, "Invalid payment status. Must be 'paid', 'pending', or 'failed'")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Verify order exists
+        cur.execute("SELECT id, payment_method FROM orders WHERE id = %s", (oid,))
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(404, f"Order {oid} not found")
+        
+        # Update payment status
+        cur.execute("UPDATE orders SET payment_status = %s WHERE id = %s RETURNING *", 
+                   (payment_status, oid))
+        conn.commit()
+        result = cur.fetchone()
+        
+        if not result:
+            raise HTTPException(404, f"Order {oid} not found")
+        
+        print(f"[INFO] Order {oid} payment status updated to {payment_status}")
+        return {"ok": True, "message": f"Payment status updated to {payment_status}", "order": result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Update payment status error: {e}")
+        raise HTTPException(500, f"Failed to update payment status: {str(e)}")
     finally:
         conn.close()
 

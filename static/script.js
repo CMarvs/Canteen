@@ -383,13 +383,9 @@ async function placeOrder(name, contact, address, paymentMethod){
 
   // Get payment details
   let paymentDetails = {};
-  if (paymentMethod === 'card') {
-    paymentDetails = {
-      cardNumber: document.getElementById('cardNumber').value.replace(/\s/g, ''),
-      cardExpiry: document.getElementById('cardExpiry').value,
-      cardCVV: document.getElementById('cardCVV').value,
-      cardName: document.getElementById('cardName').value.trim()
-    };
+  if (paymentMethod === 'cod') {
+    // COD doesn't need payment details
+    paymentDetails = {};
   } else if (paymentMethod === 'gcash') {
     paymentDetails = {
       gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
@@ -422,7 +418,35 @@ async function placeOrder(name, contact, address, paymentMethod){
     const orderData = await orderResponse.json();
     const orderId = orderData.order?.id || orderData.id;
 
-    // Process payment
+    // For COD, skip payment processing (payment is done on delivery)
+    if (paymentMethod === 'cod') {
+      // COD orders are automatically marked as paid
+      // Clear cart and show success
+      saveCart([]);
+      
+      // Clear form fields
+      const delName = document.getElementById('delName');
+      const delContact = document.getElementById('delContact');
+      const delAddress = document.getElementById('delAddress');
+      if(delName) delName.value = '';
+      if(delContact) delContact.value = '';
+      if(delAddress) delAddress.value = '';
+      
+      // Re-render cart
+      if(typeof renderCart === 'function') {
+        renderCart();
+      }
+      
+      alert(`✅ Order placed successfully!\n\nPayment: Cash on Delivery (COD)\n\nPlease prepare cash payment when your order is delivered.`);
+      
+      // Redirect to orders page
+      setTimeout(() => {
+        location.href = 'orders.html?t=' + Date.now();
+      }, 300);
+      return;
+    }
+
+    // Process payment for GCash
     const paymentResponse = await fetch(`${API_BASE}/payment/process`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -465,12 +489,7 @@ async function placeOrder(name, contact, address, paymentMethod){
       if(delAddress) delAddress.value = '';
       
       // Clear payment fields
-      if (paymentMethod === 'card') {
-        document.getElementById('cardNumber').value = '';
-        document.getElementById('cardExpiry').value = '';
-        document.getElementById('cardCVV').value = '';
-        document.getElementById('cardName').value = '';
-      } else {
+      if (paymentMethod === 'gcash') {
         document.getElementById('gcashNumber').value = '';
       }
       
@@ -480,7 +499,7 @@ async function placeOrder(name, contact, address, paymentMethod){
       }
       
       // Show success message
-      const paymentMethodName = paymentMethod === 'card' ? 'Card' : 'GCash';
+      const paymentMethodName = 'GCash';
       const statusMessage = paymentData.status === 'pending' ? 
         'Payment request sent. Please confirm in your GCash app.' : 
         'Payment successful!';
@@ -864,8 +883,8 @@ function orderCardHtmlForUser(o){
   // Get payment information
   const paymentMethod = o.payment_method || 'cash';
   const paymentStatus = o.payment_status || 'pending';
-  const paymentMethodIcon = paymentMethod === 'card' ? '💳' : paymentMethod === 'gcash' ? '📱' : '💵';
-  const paymentMethodName = paymentMethod === 'card' ? 'Card' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+  const paymentMethodIcon = paymentMethod === 'cod' ? '💵' : paymentMethod === 'gcash' ? '📱' : '💵';
+  const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
   const paymentStatusBadge = paymentStatus === 'paid' ? 
     '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
     paymentStatus === 'failed' ?

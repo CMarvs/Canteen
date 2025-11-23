@@ -283,16 +283,20 @@
         // Get payment information
         const paymentMethod = o.payment_method || 'cash';
         const paymentStatus = o.payment_status || 'pending';
-        const paymentMethodIcon = paymentMethod === 'card' ? '💳' : paymentMethod === 'gcash' ? '📱' : '💵';
-        const paymentMethodName = paymentMethod === 'card' ? 'Card' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+        const paymentMethodIcon = paymentMethod === 'cod' ? '💵' : paymentMethod === 'gcash' ? '📱' : '💵';
+        const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
         const paymentStatusBadge = paymentStatus === 'paid' ? 
           '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
           paymentStatus === 'failed' ?
           '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">❌ Failed</span>' :
           '<span style="background: #d7a24e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">⏳ Pending</span>';
 
+        // Highlight pending GCash payments
+        const isPendingGCash = paymentMethod === 'gcash' && paymentStatus === 'pending';
+        const cardStyle = isPendingGCash ? 'border: 2px solid #ffc107; background: #fffbf0;' : '';
+        
         return `
-          <div class="order-card" data-order-id="${o.id}" data-sequential-number="${sequentialNumber || ''}">
+          <div class="order-card" data-order-id="${o.id}" data-sequential-number="${sequentialNumber || ''}" style="${cardStyle}">
             <div class="order-header">
               <div>
                 <div class="order-id">${orderNumberLabel}</div>
@@ -319,6 +323,26 @@
               💰 Total: ₱${Number(o.total).toFixed(2)}
             </div>
 
+            ${paymentMethod === 'gcash' && paymentStatus === 'pending' ? `
+            <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #ffc107;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="flex: 1;">
+                  <strong style="color: #856404;">⏳ GCash Payment Pending</strong><br>
+                  <span style="font-size: 0.85rem; color: #856404;">Reference: <code style="background: white; padding: 2px 6px; border-radius: 4px;">${o.payment_intent_id || 'N/A'}</code></span>
+                </div>
+                <button class="btn" onclick="markPaymentAsPaid(${o.id})" style="
+                  background: #28a745;
+                  color: white;
+                  border: none;
+                  padding: 8px 16px;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  font-weight: bold;
+                  white-space: nowrap;
+                ">✅ Mark as Paid</button>
+              </div>
+            </div>
+            ` : ''}
             <div class="status-buttons">
               <select class="status-select" onchange="updateOrderStatus(${o.id}, this.value)" value="${o.status || 'Pending'}">
                 <option value="Pending" ${(!o.status || o.status === 'Pending') ? 'selected' : ''}>⏳ Pending</option>
@@ -354,6 +378,32 @@
       });
 
       displayOrders();
+    }
+
+    /* -------- Mark Payment as Paid (GCash) -------- */
+    async function markPaymentAsPaid(orderId) {
+      if (!confirm(`Mark payment as received for Order #${orderId}?\n\nPlease verify the payment in your GCash app before confirming.`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/orders/${orderId}/payment`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: 'paid' })
+        });
+        
+        if (response.ok) {
+          alert('✅ Payment marked as paid successfully!');
+          await renderAdminOrders(); // Refresh orders
+        } else {
+          const error = await response.json();
+          alert(`❌ Failed to update payment status: ${error.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error marking payment as paid:', error);
+        alert('❌ Failed to update payment status. Please try again.');
+      }
     }
 
     /* -------- Update Status (API) -------- */
@@ -1452,6 +1502,10 @@
         const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
                               JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
         
+        // Check for payment status changes (especially GCash payments)
+        const paymentStatusChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, payment_status: o.payment_status || 'pending'}))) !== 
+                                    JSON.stringify(allOrders.map(o => ({id: o.id, payment_status: o.payment_status || 'pending'})));
+        
         // Update allOrders FIRST so sequential numbers are correct
         allOrders = currentOrders;
         filteredOrders = [...allOrders];
@@ -1488,7 +1542,10 @@
         
         // Always refresh display to update sequential numbers (especially when orders are completed)
         // This ensures numbering resets when orders are delivered
-        displayOrders(); // This will recalculate sequential numbers based on active orders
+        // Also refresh if payment status changed (for GCash payments)
+        if (ordersChanged || paymentStatusChanged || document.getElementById('ordersSection').classList.contains('active')) {
+          displayOrders(); // This will recalculate sequential numbers based on active orders
+        }
         renderStats();
       } catch(error) {
         console.error('Error checking for new orders:', error);
