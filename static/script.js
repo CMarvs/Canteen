@@ -81,19 +81,34 @@ async function loginUser(){
       body: JSON.stringify({ email, password: pass })
     });
 
-    const data = await response.json();
+    // Check if response is ok before parsing JSON
+    let data;
+    try {
+      data = await response.json();
+    } catch(jsonError) {
+      console.error('Failed to parse response:', jsonError);
+      alert('❌ Server error. Please try again or contact support.');
+      return;
+    }
     
     if(response.ok) {
-      // Check if user is approved
-      if(data.is_approved === false || data.is_approved === 0) {
+      // Check if user is approved (admins are always approved)
+      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0)) {
         alert('⏳ Your account is pending admin approval. Please wait for approval before logging in.');
+        return;
+      }
+      
+      // Validate required fields
+      if(!data.id || !data.email || !data.role) {
+        console.error('Invalid user data received:', data);
+        alert('❌ Invalid user data. Please try again.');
         return;
       }
       
       // Save user session locally
       saveCurrent({ 
         id: data.id, 
-        name: data.name, 
+        name: data.name || data.email, 
         email: data.email, 
         role: data.role 
       });
@@ -105,11 +120,13 @@ async function loginUser(){
         location.href = 'order.html';
       }
     } else {
-      alert(data.detail || 'Invalid credentials');
+      // Handle error response
+      const errorMsg = data.detail || data.message || 'Invalid credentials';
+      alert(`❌ ${errorMsg}`);
     }
   } catch(error) {
     console.error('Login error:', error);
-    alert('Login failed. Please try again.');
+    alert('❌ Login failed. Please check your connection and try again.');
   }
 }
 

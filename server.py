@@ -363,6 +363,12 @@ async def login(request: Request):
         if is_approved is False or is_approved == 0 or is_approved is None:
             raise HTTPException(403, "Account pending admin approval. Please wait for approval.")
         
+        # Convert user to dict if it's a tuple (shouldn't happen with RealDictCursor, but just in case)
+        if not isinstance(user, dict):
+            # Convert tuple to dict using column names
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+            user = dict(zip(col_names, user)) if col_names else {}
+        
         return user
     except HTTPException:
         raise
