@@ -1482,42 +1482,51 @@ async def approve_user(user_id: int, request: Request):
         if not updates:
             raise HTTPException(400, "No fields to update")
         
-        # If rejecting a user (is_approved = False), delete them instead of just marking as rejected
+        # If rejecting a user (is_approved = False), delete them from database completely
         if "is_approved" in data and is_approved == False:
-            # Check if user has any orders first
+            # Always attempt to delete rejected users
             try:
-                cur.execute("SELECT COUNT(*) as order_count FROM orders WHERE user_id = %s", (user_id,))
-                order_result = cur.fetchone()
-                order_count = order_result.get('order_count') if isinstance(order_result, dict) else (order_result[0] if order_result else 0)
-            except Exception as order_check_error:
-                print(f"[WARNING] Could not check orders for user {user_id}: {order_check_error}")
-                order_count = 0
-            
-            if order_count > 0:
-                # If user has orders, we can't delete them due to foreign key constraints
-                # This shouldn't happen for pending users, but handle it gracefully
-                # Mark them as rejected - they won't show in pending list if we filter properly
-                params.append(user_id)
-                query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *"
-                cur.execute(query, params)
-                conn.commit()
-                result = cur.fetchone()
-                print(f"[INFO] User {user_id} rejected but kept in database (has {order_count} orders)")
-            else:
-                # No orders, safe to delete
+                # First, delete all orders associated with this user (if any)
+                # This handles foreign key constraints
                 try:
-                    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
-                    conn.commit()
-                    print(f"[INFO] User {user_id} rejected and deleted successfully")
-                    return {"ok": True, "message": f"User {user_id} rejected and removed successfully", "deleted": True}
-                except Exception as delete_error:
-                    print(f"[ERROR] Failed to delete user {user_id}: {delete_error}")
-                    # Fall back to marking as rejected
+                    cur.execute("DELETE FROM orders WHERE user_id = %s", (user_id,))
+                    deleted_orders = cur.rowcount
+                    if deleted_orders > 0:
+                        print(f"[INFO] Deleted {deleted_orders} order(s) for user {user_id}")
+                except Exception as orders_delete_error:
+                    print(f"[WARNING] Could not delete orders for user {user_id}: {orders_delete_error}")
+                    # Continue with user deletion attempt anyway
+                
+                # Now delete the user
+                cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                conn.commit()
+                
+                if cur.rowcount > 0:
+                    print(f"[INFO] User {user_id} rejected and deleted successfully from database")
+                    return {"ok": True, "message": f"User rejected and removed from database successfully", "deleted": True}
+                else:
+                    print(f"[WARNING] User {user_id} not found or already deleted")
+                    raise HTTPException(404, f"User {user_id} not found")
+                    
+            except HTTPException:
+                raise
+            except Exception as delete_error:
+                print(f"[ERROR] Failed to delete user {user_id}: {delete_error}")
+                import traceback
+                traceback.print_exc()
+                # If deletion fails, try to at least mark as rejected as fallback
+                # But this should rarely happen
+                try:
                     params.append(user_id)
                     query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *"
                     cur.execute(query, params)
                     conn.commit()
                     result = cur.fetchone()
+                    print(f"[WARNING] User {user_id} could not be deleted, marked as rejected instead")
+                    return {"ok": True, "message": f"User rejected (deletion attempted but failed, marked as rejected)", "deleted": False, "user": result}
+                except Exception as fallback_error:
+                    print(f"[ERROR] Fallback rejection also failed: {fallback_error}")
+                    raise HTTPException(500, f"Failed to reject user: {str(delete_error)}")
         else:
             # Approving user - normal update
             params.append(user_id)

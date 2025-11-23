@@ -1266,7 +1266,7 @@
         if (response.ok) {
           const result = await response.json();
           if (result.deleted) {
-            alert(`✅ User rejected and removed successfully!`);
+            alert(`✅ User rejected and completely removed from database!`);
           } else {
             alert(`✅ User ${isApproved ? 'approved' : 'rejected'} successfully!`);
           }

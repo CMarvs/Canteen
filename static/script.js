@@ -585,6 +585,28 @@ function showGCashPaymentModal(paymentData) {
       </div>
     </div>
     
+    <div style="margin: 20px 0;">
+      <button id="openGCashBtn" style="
+        background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+        color: white;
+        border: none;
+        padding: 16px 32px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 1.1em;
+        font-weight: bold;
+        width: 100%;
+        box-shadow: 0 4px 12px rgba(0,102,204,0.3);
+        transition: transform 0.2s, box-shadow 0.2s;
+      " onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 6px 16px rgba(0,102,204,0.4)';" 
+         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 12px rgba(0,102,204,0.3)';">
+        📱 Open GCash App
+      </button>
+      <div style="font-size: 0.85em; color: #666; margin-top: 8px; text-align: center;">
+        Tap to open GCash app directly
+      </div>
+    </div>
+    
     <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
       <button id="copyNumberBtn" style="
         background: #28a745;
@@ -597,7 +619,7 @@ function showGCashPaymentModal(paymentData) {
         font-weight: bold;
         flex: 1;
         min-width: 150px;
-      ">📱 Copy GCash Number</button>
+      ">📋 Copy Number</button>
       <button id="confirmPaymentBtn" style="
         background: #0066cc;
         color: white;
@@ -626,6 +648,104 @@ function showGCashPaymentModal(paymentData) {
   
   modal.appendChild(modalContent);
   document.body.appendChild(modal);
+  
+  // Function to open GCash app
+  function openGCashApp() {
+    const adminNumber = paymentData.admin_gcash_number || '09947784922';
+    const amount = paymentData.amount || 0;
+    const reference = paymentData.reference || paymentData.payment_intent_id || '';
+    
+    // Detect device type
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    
+    // Show loading state
+    const btn = document.getElementById('openGCashBtn');
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Opening GCash...';
+    btn.style.opacity = '0.7';
+    
+    if (isMobile) {
+      // Mobile device - try to open GCash app
+      
+      // Method 1: Try Android Intent URL (for Android)
+      if (isAndroid) {
+        try {
+          // Android Intent format - opens GCash app
+          const intentUrl = `intent://#Intent;scheme=gcash;package=com.globe.gcash.android;end`;
+          window.location.href = intentUrl;
+        } catch(e) {
+          // Fallback to direct link
+          window.location.href = 'gcash://';
+        }
+      } else if (isIOS) {
+        // iOS: Try GCash URL scheme
+        try {
+          window.location.href = 'gcash://';
+        } catch(e) {
+          // Fallback to App Store
+          window.open('https://apps.apple.com/app/gcash/id1322865881', '_blank');
+        }
+      }
+      
+      // Show instructions after opening app
+      setTimeout(() => {
+        // Create instruction overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.85);
+          z-index: 10001;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 20px;
+        `;
+        
+        overlay.innerHTML = `
+          <div style="background: white; padding: 25px; border-radius: 12px; max-width: 400px; width: 100%; text-align: center;">
+            <h3 style="margin-top: 0; color: #0066cc;">📱 GCash Payment Steps</h3>
+            <div style="text-align: left; margin: 20px 0; line-height: 1.8;">
+              <div style="margin-bottom: 12px;"><strong>1.</strong> Tap <strong>"Send Money"</strong> in GCash</div>
+              <div style="margin-bottom: 12px;"><strong>2.</strong> Enter number: <strong style="color: #0066cc;">${adminNumber}</strong></div>
+              <div style="margin-bottom: 12px;"><strong>3.</strong> Enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong></div>
+              <div style="margin-bottom: 12px;"><strong>4.</strong> Add reference: <strong style="color: #0066cc; font-family: monospace;">${reference}</strong></div>
+              <div><strong>5.</strong> Complete the payment</div>
+            </div>
+            <button onclick="this.closest('div[style*=\"position: fixed\"]').remove(); document.getElementById('openGCashBtn').textContent='${originalText}'; document.getElementById('openGCashBtn').style.opacity='1';" 
+                    style="background: #0066cc; color: white; border: none; padding: 12px 30px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+              Got it!
+            </button>
+          </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        // Auto-close after 30 seconds
+        setTimeout(() => {
+          if (overlay.parentElement) {
+            overlay.remove();
+            btn.textContent = originalText;
+            btn.style.opacity = '1';
+          }
+        }, 30000);
+      }, 500);
+      
+    } else {
+      // Desktop - show instructions
+      btn.textContent = originalText;
+      btn.style.opacity = '1';
+      alert(`📱 Please open GCash app on your phone\n\nSend Payment:\n• Number: ${adminNumber}\n• Amount: ₱${amount.toFixed(2)}\n• Reference: ${reference}`);
+    }
+  }
+  
+  // Open GCash app button
+  document.getElementById('openGCashBtn').onclick = openGCashApp;
   
   // Copy GCash number
   document.getElementById('copyNumberBtn').onclick = () => {
