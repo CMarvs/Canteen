@@ -83,28 +83,8 @@
           <label class="input-label">GCash Mobile Number</label>
           <input type="tel" id="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
                  oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
-          
-          <label class="input-label" style="margin-top: 16px;">📸 Payment Proof (Screenshot)</label>
-          <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
-            <div id="paymentProofPreview" style="display: none; margin-bottom: 12px;">
-              <img id="paymentProofImage" src="" alt="Payment Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #0066cc;">
-              <div style="margin-top: 8px;">
-                <button type="button" class="btn small ghost" onclick="clearPaymentProof()">Remove Screenshot</button>
-              </div>
-            </div>
-            <div id="paymentProofCapture" style="display: block;">
-              <input type="file" id="paymentProofFile" accept="image/*" capture="environment" style="display: none;" onchange="handlePaymentProofCapture(event)">
-              <button type="button" class="btn small" onclick="document.getElementById('paymentProofFile').click()">
-                📸 Upload Payment Screenshot
-              </button>
-              <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-                Upload a screenshot of your GCash payment confirmation. This helps verify your payment quickly.
-              </p>
-            </div>
-          </div>
-          
           <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-            💡 You will receive payment instructions after placing your order. Please upload a screenshot of your payment confirmation.
+            💡 You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
           </p>
         </div>
       </div>
@@ -132,10 +112,6 @@
         if(delName) delName.value = '';
         if(delContact) delContact.value = '';
         if(delAddress) delAddress.value = '';
-        // Clear payment proof if exists
-        if(window.clearPaymentProof) {
-          window.clearPaymentProof();
-        }
       }
     });
 

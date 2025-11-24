@@ -596,11 +596,9 @@ async function placeOrder(name, contact, address, paymentMethod){
     // COD doesn't need payment details
     paymentDetails = {};
   } else if (paymentMethod === 'gcash') {
-    // Get payment proof if available
-    const paymentProof = window.getPaymentProof ? window.getPaymentProof() : null;
     paymentDetails = {
-      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, ''),
-      payment_proof: paymentProof  // Include payment screenshot
+      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
+      // Payment proof will be uploaded in the GCash payment modal
     };
   }
 
@@ -700,6 +698,8 @@ async function placeOrder(name, contact, address, paymentMethod){
 
     // Handle direct GCash transfer (show payment instructions)
     if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
+      // Include order ID in payment data for updating payment proof
+      paymentData.order_id = orderId;
       // Show payment modal with instructions
       showGCashPaymentModal(paymentData);
       return;
@@ -800,6 +800,7 @@ function showGCashPaymentModal(paymentData) {
   const adminNumber = paymentData.admin_gcash_number || '09947784922';
   const amount = paymentData.amount || 0;
   const reference = paymentData.reference || paymentData.payment_intent_id || '';
+  const orderId = paymentData.order_id || null; // Store order ID for updating payment proof
   
   modalContent.innerHTML = `
     <style>
@@ -909,6 +910,51 @@ function showGCashPaymentModal(paymentData) {
               • This helps us verify your payment quickly<br>
               • Keep your payment receipt for reference
             </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Payment Proof Upload Section -->
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #0066cc;">
+        <div style="font-weight: bold; color: #0066cc; margin-bottom: 12px; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+          <span>📸</span> Upload Payment Proof (Screenshot)
+        </div>
+        <div style="background: white; padding: 15px; border-radius: 8px; border: 2px dashed #0066cc;">
+          <div id="paymentProofPreview" style="display: none; margin-bottom: 12px;">
+            <img id="paymentProofImage" src="" alt="Payment Proof" style="max-width: 100%; max-height: 250px; border-radius: 8px; border: 2px solid #0066cc;">
+            <div style="margin-top: 8px;">
+              <button type="button" id="removeProofBtn" style="
+                background: #e74c3c;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.85em;
+              ">Remove Screenshot</button>
+            </div>
+          </div>
+          <div id="paymentProofCapture" style="display: block;">
+            <input type="file" id="paymentProofFile" accept="image/*" capture="environment" style="display: none;">
+            <button type="button" id="uploadProofBtn" style="
+              background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+              color: white;
+              border: none;
+              padding: 12px 24px;
+              border-radius: 8px;
+              cursor: pointer;
+              font-size: 0.95em;
+              font-weight: bold;
+              width: 100%;
+              box-shadow: 0 3px 12px rgba(0,102,204,0.3);
+              transition: all 0.3s;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(0,102,204,0.4)';" 
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(0,102,204,0.3)';">
+              📸 Upload Payment Screenshot
+            </button>
+            <p style="font-size: 0.85rem; color: #666; margin-top: 8px; text-align: center;">
+              Upload a screenshot of your GCash payment confirmation. This helps verify your payment quickly.
+            </p>
           </div>
         </div>
       </div>
@@ -1150,8 +1196,79 @@ function showGCashPaymentModal(paymentData) {
     });
   };
   
+  // Payment proof handling
+  let paymentProofBase64 = null;
+  
+  // Handle payment proof file upload
+  const paymentProofFile = document.getElementById('paymentProofFile');
+  const uploadProofBtn = document.getElementById('uploadProofBtn');
+  const paymentProofPreview = document.getElementById('paymentProofPreview');
+  const paymentProofImage = document.getElementById('paymentProofImage');
+  const removeProofBtn = document.getElementById('removeProofBtn');
+  
+  if (uploadProofBtn && paymentProofFile) {
+    uploadProofBtn.onclick = () => {
+      paymentProofFile.click();
+    };
+    
+    paymentProofFile.onchange = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        paymentProofBase64 = e.target.result;
+        paymentProofImage.src = paymentProofBase64;
+        paymentProofPreview.style.display = 'block';
+        document.getElementById('paymentProofCapture').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    };
+  }
+  
+  if (removeProofBtn) {
+    removeProofBtn.onclick = () => {
+      paymentProofBase64 = null;
+      paymentProofFile.value = '';
+      paymentProofPreview.style.display = 'none';
+      document.getElementById('paymentProofCapture').style.display = 'block';
+    };
+  }
+  
   // Handle confirm payment
-  document.getElementById('confirmPaymentBtn').onclick = () => {
+  document.getElementById('confirmPaymentBtn').onclick = async () => {
+    // If payment proof is uploaded, update the order
+    if (paymentProofBase64 && orderId) {
+      try {
+        const updateResponse = await fetch(`${API_BASE}/orders/${orderId}/payment-proof`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_proof: paymentProofBase64 })
+        });
+        
+        if (updateResponse.ok) {
+          console.log('[PAYMENT] Payment proof uploaded successfully');
+        } else {
+          console.warn('[PAYMENT] Failed to upload payment proof, but order is placed');
+        }
+      } catch(error) {
+        console.error('[PAYMENT] Error uploading payment proof:', error);
+        // Continue even if upload fails - order is already placed
+      }
+    }
+    
     // Clear cart
     saveCart([]);
     
@@ -1174,7 +1291,11 @@ function showGCashPaymentModal(paymentData) {
     // Remove modal
     document.body.removeChild(modal);
     
-    alert(`✅ Payment instructions received!\n\nYour order has been placed. Please send ₱${amount.toFixed(2)} to ${adminNumber} with reference ${reference}.\n\nAdmin will verify your payment and update your order status.`);
+    const proofMessage = paymentProofBase64 ? 
+      '\n\n✅ Payment proof uploaded! Admin will verify your payment.' : 
+      '\n\n💡 Tip: You can upload payment proof later from your orders page.';
+    
+    alert(`✅ Payment instructions received!\n\nYour order has been placed. Please send ₱${amount.toFixed(2)} to ${adminNumber} with reference ${reference}.${proofMessage}`);
     
     // Redirect to orders page
     setTimeout(() => {

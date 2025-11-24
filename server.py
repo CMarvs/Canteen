@@ -1506,6 +1506,53 @@ async def update_order(oid: int, request: Request):
     finally:
         conn.close()
 
+# --- Update Payment Proof ---
+@app.put("/orders/{oid}/payment-proof")
+async def update_payment_proof(oid: int, request: Request):
+    """Update payment proof screenshot for an order"""
+    data = await request.json()
+    payment_proof = data.get("payment_proof")
+    
+    if not payment_proof:
+        raise HTTPException(400, "Payment proof is required")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Check if payment_proof column exists
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'orders' AND column_name = 'payment_proof'
+        """)
+        has_payment_proof = cur.fetchone() is not None
+        
+        if not has_payment_proof:
+            print("[INFO] Adding payment_proof column to orders table...")
+            cur.execute("ALTER TABLE orders ADD COLUMN payment_proof TEXT;")
+            conn.commit()
+        
+        # Update payment proof
+        cur.execute("UPDATE orders SET payment_proof = %s WHERE id = %s RETURNING *", (payment_proof, oid))
+        result = cur.fetchone()
+        conn.commit()
+        
+        if not result:
+            raise HTTPException(404, f"Order {oid} not found")
+        
+        print(f"[INFO] Payment proof updated for order {oid}")
+        return {"ok": True, "message": "Payment proof updated successfully", "order": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Update payment proof error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to update payment proof: {str(e)}")
+    finally:
+        conn.close()
+
 # --- Update Payment Status ---
 @app.put("/orders/{oid}/payment")
 async def update_payment_status(oid: int, request: Request):
