@@ -278,8 +278,26 @@ async def register(request: Request):
         except Exception as col_error:
             print(f"[WARNING] Could not check/add is_approved column: {col_error}")
         
+        # Validate required fields
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        
+        if not name or not name.strip():
+            raise HTTPException(400, "Name is required")
+        if not email or not email.strip():
+            raise HTTPException(400, "Email is required")
+        if not password or not password.strip():
+            raise HTTPException(400, "Password is required")
+        if len(password.strip()) < 4:
+            raise HTTPException(400, "Password must be at least 4 characters")
+        
+        # Normalize email
+        email = email.strip().lower()
+        password = password.strip()
+        name = name.strip()
+        
         # Check if email already exists (case-insensitive)
-        email = data.get("email", "").strip().lower()
         cur.execute("SELECT 1 FROM users WHERE LOWER(email)=%s", (email,))
         if cur.fetchone():
             raise HTTPException(400, "Email already registered")
@@ -312,7 +330,7 @@ async def register(request: Request):
         
         cur.execute(
             "INSERT INTO users(name,email,password,role,id_proof,selfie_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-            (data.get("name"), email, data.get("password"), user_role, id_proof, selfie_proof, is_approved)
+            (name, email, password, user_role, id_proof, selfie_proof, is_approved)
         )
         conn.commit()
         print(f"[INFO] User registered: {email} (Role: {user_role}, Approved: {is_approved})")
@@ -367,10 +385,16 @@ async def login(request: Request):
             col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
             user = dict(zip(col_names, user)) if col_names else {}
         
-        # Check password
-        stored_password = user.get('password', '')
-        if stored_password != password:
+        # Check password - handle None, empty strings, and whitespace
+        stored_password = user.get('password') or ''
+        stored_password = str(stored_password).strip()
+        password = password.strip()
+        
+        print(f"[DEBUG] Password check - Stored: '{stored_password[:10]}...' (len={len(stored_password)}), Provided: '{password[:10]}...' (len={len(password)})")
+        
+        if not stored_password or stored_password != password:
             print(f"[WARNING] Login attempt failed: Incorrect password for '{email}'")
+            print(f"[DEBUG] Password mismatch - stored: '{stored_password}', provided: '{password}'")
             raise HTTPException(400, "Invalid email or password")
         
         print(f"[INFO] Password verified for user: {email}")
@@ -604,16 +628,86 @@ async def place_order(request: Request):
         if payment_method == "gcash" and payment_details:
             payment_proof = payment_details.get("payment_proof")
         
-        # Insert order with payment information and proof
-        cur.execute("""
-            INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status,payment_proof)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            RETURNING *;
-        """, (
-            data.get("user_id"), data.get("fullname"), data.get("contact"),
-            data.get("location"), json.dumps(items), data.get("total"),
-            payment_method, payment_status, payment_proof
-        ))
+        # Check if payment_proof column exists before inserting
+        # This check happens right before the insert to ensure accuracy
+        payment_proof_exists = False
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_proof'
+            """)
+            payment_proof_exists = cur.fetchone() is not None
+            
+            # If column doesn't exist, try to add it
+            if not payment_proof_exists:
+                print("[INFO] payment_proof column not found, adding it...")
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_proof TEXT;")
+                conn.commit()
+                payment_proof_exists = True
+                print("[INFO] payment_proof column added successfully")
+        except Exception as check_error:
+            print(f"[WARNING] Could not check/add payment_proof column: {check_error}")
+            # Assume column doesn't exist and proceed without it
+            payment_proof_exists = False
+        
+        # Try to insert with payment_proof, but handle case where column might not exist
+        try:
+            if payment_proof_exists:
+                # Insert order with payment information and proof
+                cur.execute("""
+                    INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status,payment_proof)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING *;
+                """, (
+                    data.get("user_id"), data.get("fullname"), data.get("contact"),
+                    data.get("location"), json.dumps(items), data.get("total"),
+                    payment_method, payment_status, payment_proof
+                ))
+            else:
+                # Insert without payment_proof if column doesn't exist
+                print("[WARNING] payment_proof column does not exist, inserting without it...")
+                cur.execute("""
+                    INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING *;
+                """, (
+                    data.get("user_id"), data.get("fullname"), data.get("contact"),
+                    data.get("location"), json.dumps(items), data.get("total"),
+                    payment_method, payment_status
+                ))
+        except psycopg2_errors.UndefinedColumn as col_error:
+            # If payment_proof column doesn't exist, try to add it and retry
+            if 'payment_proof' in str(col_error):
+                print("[WARNING] payment_proof column missing, attempting to add it...")
+                try:
+                    cur.execute("ALTER TABLE orders ADD COLUMN payment_proof TEXT;")
+                    conn.commit()
+                    print("[INFO] payment_proof column added, retrying insert...")
+                    # Retry the insert
+                    cur.execute("""
+                        INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status,payment_proof)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        RETURNING *;
+                    """, (
+                        data.get("user_id"), data.get("fullname"), data.get("contact"),
+                        data.get("location"), json.dumps(items), data.get("total"),
+                        payment_method, payment_status, payment_proof
+                    ))
+                except Exception as retry_error:
+                    print(f"[ERROR] Failed to add payment_proof column or retry insert: {retry_error}")
+                    # Fallback: insert without payment_proof
+                    cur.execute("""
+                        INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        RETURNING *;
+                    """, (
+                        data.get("user_id"), data.get("fullname"), data.get("contact"),
+                        data.get("location"), json.dumps(items), data.get("total"),
+                        payment_method, payment_status
+                    ))
+            else:
+                raise  # Re-raise if it's a different column error
         result = cur.fetchone()
         conn.commit()
         return {"ok": True, "message": "Order placed successfully", "order": result}

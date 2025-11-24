@@ -169,8 +169,21 @@ async function loginUser(){
         return;
       }
       
+      // Check if user is approved (for non-admin users)
+      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0 || data.is_approved === null)) {
+        console.log('[LOGIN] User not approved yet');
+        const msg = 'Your account is pending admin approval. Please wait for approval.';
+        if(errorDiv) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = msg;
+        } else {
+          alert('⏳ ' + msg);
+        }
+        return;
+      }
+      
       // Check if user is approved (admins are always approved)
-      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0)) {
+      if(data.role !== 'admin' && (data.is_approved === false || data.is_approved === 0 || data.is_approved === null)) {
         const msg = 'Your account is pending admin approval. Please wait for approval before logging in.';
         console.warn('[LOGIN] User not approved:', data.email);
         if(errorDiv) {
@@ -218,8 +231,18 @@ async function loginUser(){
       }
     } else {
       // Handle error response
-      const errorMsg = data.detail || data.message || 'Invalid credentials';
-      console.error('Login failed:', errorMsg);
+      let errorMsg = data.detail || data.message || 'Invalid credentials';
+      
+      // Handle specific error codes
+      if(response.status === 403) {
+        errorMsg = 'Your account is pending admin approval. Please wait for approval.';
+      } else if(response.status === 400) {
+        errorMsg = errorMsg || 'Invalid email or password. Please check your credentials and try again.';
+      } else if(response.status === 500) {
+        errorMsg = 'Server error. Please try again later.';
+      }
+      
+      console.error('[LOGIN] Login failed:', errorMsg, 'Status:', response.status);
       if(errorDiv) {
         errorDiv.style.display = 'block';
         errorDiv.textContent = errorMsg;
