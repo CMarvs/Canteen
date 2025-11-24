@@ -54,7 +54,7 @@
     }
     
     window.addEventListener('DOMContentLoaded', () => {
-      ensureLoggedIn('user');
+      ensureLoggedIn('user'); // This will check and show approval notification
       // Force reload orders when page loads
       renderUserOrders();
       // Start real-time polling

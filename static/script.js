@@ -182,13 +182,26 @@ async function loginUser(){
         return;
       }
       
-      // Save user session locally
+      // Save user session locally (include approval status)
       const userSession = { 
         id: data.id, 
         name: data.name || data.email, 
         email: data.email, 
-        role: data.role 
+        role: data.role,
+        is_approved: data.is_approved !== false && data.is_approved !== 0  // Store approval status
       };
+      
+      // Check if user was just approved (was pending, now approved)
+      const previousSession = getCurrent();
+      const wasPending = previousSession && previousSession.is_approved === false;
+      const nowApproved = userSession.is_approved === true;
+      const justApproved = wasPending && nowApproved;
+      
+      // Store approval notification flag if just approved
+      if(justApproved) {
+        writeLocal('approval_notification_shown', false); // Mark as not shown yet
+        console.log('[LOGIN] User was just approved! Will show notification.');
+      }
       
       saveCurrent(userSession);
       console.log('[LOGIN] User session saved:', userSession);
@@ -1735,6 +1748,120 @@ async function saveProfile(){
   }
 }
 
+/* ---------- Approval Notification System ---------- */
+function showApprovalNotification() {
+  // Check if notification was already shown
+  const notificationShown = readLocal('approval_notification_shown', false);
+  if(notificationShown) {
+    return; // Already shown
+  }
+  
+  // Check if user is approved
+  const cur = getCurrent();
+  if(!cur || cur.role === 'admin') {
+    return; // Admin doesn't need approval notification
+  }
+  
+  // Create notification banner
+  const notification = document.createElement('div');
+  notification.id = 'approvalNotification';
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+    padding: 20px 30px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(76, 175, 80, 0.4);
+    z-index: 10000;
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+    animation: slideDown 0.5s ease-out;
+    cursor: pointer;
+  `;
+  
+  notification.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+      <div style="font-size: 2rem;">✅</div>
+      <div style="flex: 1;">
+        <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 4px;">Account Approved!</div>
+        <div style="font-size: 0.9rem; opacity: 0.95;">Your registration has been approved. You can now place orders!</div>
+      </div>
+      <button onclick="document.getElementById('approvalNotification').remove(); writeLocal('approval_notification_shown', true);" 
+              style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: all 0.3s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.3)'"
+              onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
+    </div>
+  `;
+  
+  // Add animation style
+  if(!document.getElementById('approvalNotificationStyle')) {
+    const style = document.createElement('style');
+    style.id = 'approvalNotificationStyle';
+    style.textContent = `
+      @keyframes slideDown {
+        from {
+          transform: translateX(-50%) translateY(-100px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(-50%) translateY(0);
+          opacity: 1;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Add to page
+  document.body.appendChild(notification);
+  
+  // Mark as shown
+  writeLocal('approval_notification_shown', true);
+  
+  // Auto-remove after 8 seconds
+  setTimeout(() => {
+    if(document.getElementById('approvalNotification')) {
+      notification.style.animation = 'slideDown 0.5s ease-out reverse';
+      setTimeout(() => {
+        if(document.getElementById('approvalNotification')) {
+          document.getElementById('approvalNotification').remove();
+        }
+      }, 500);
+    }
+  }, 8000);
+  
+  // Play notification sound (optional)
+  try {
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OSdTgwOUKzn8LZjGwY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBtpvfDknU4MDlCs5/C2YxsGOJHX8sx5LAUkd8fw3ZBACg==');
+    audio.volume = 0.3;
+    audio.play().catch(() => {}); // Ignore errors if autoplay is blocked
+  } catch(e) {
+    // Ignore audio errors
+  }
+}
+
+function checkApprovalStatus() {
+  const cur = getCurrent();
+  if(!cur || cur.role === 'admin') {
+    return; // No need to check for admins
+  }
+  
+  // Check if notification should be shown
+  const notificationShown = readLocal('approval_notification_shown', false);
+  if(notificationShown) {
+    return; // Already shown
+  }
+  
+  // Show notification if user is approved
+  if(cur.is_approved !== false && cur.is_approved !== 0) {
+    showApprovalNotification();
+  }
+}
+
 /* ---------- Page Helpers ---------- */
 function ensureLoggedIn(requiredRole){
   const cur = getCurrent();
@@ -1745,6 +1872,11 @@ function ensureLoggedIn(requiredRole){
   if(requiredRole && cur.role !== requiredRole) {
     alert('Access denied.');
     location.href = cur.role === 'admin' ? 'admin.html' : 'order.html';
+  }
+  
+  // Check and show approval notification for regular users
+  if(cur.role === 'user') {
+    checkApprovalStatus();
   }
 }
 

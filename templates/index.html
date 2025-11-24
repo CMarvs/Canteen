@@ -36,6 +36,73 @@
       if(cur && cur.role === 'admin') location.href='admin.html';
       if(cur && cur.role === 'user') location.href='order.html';
     })();
+    
+    // Check approval status for pending users (polling)
+    let approvalCheckInterval = null;
+    async function checkUserApprovalStatus() {
+      const emailInput = document.getElementById('loginEmail');
+      if(!emailInput || !emailInput.value) return;
+      
+      try {
+        // Try to login to check approval status (without actually logging in)
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: emailInput.value.trim().toLowerCase(),
+            password: document.getElementById('loginPass')?.value || ''
+          })
+        });
+        
+        if(response.status === 403) {
+          // Still pending - continue polling
+          return;
+        } else if(response.ok) {
+          // User was approved! Show notification
+          const data = await response.json();
+          if(data.is_approved !== false && data.is_approved !== 0) {
+            // Stop polling
+            if(approvalCheckInterval) {
+              clearInterval(approvalCheckInterval);
+              approvalCheckInterval = null;
+            }
+            
+            // Show success message
+            const errorDiv = document.getElementById('loginError');
+            if(errorDiv) {
+              errorDiv.style.display = 'block';
+              errorDiv.style.color = '#4CAF50';
+              errorDiv.style.background = '#e8f5e9';
+              errorDiv.style.padding = '12px';
+              errorDiv.style.borderRadius = '8px';
+              errorDiv.style.border = '2px solid #4CAF50';
+              errorDiv.textContent = '✅ Your account has been approved! You can now login.';
+            }
+          }
+        }
+      } catch(e) {
+        // Ignore errors
+      }
+    }
+    
+    // Start checking approval status if user has entered email
+    document.addEventListener('DOMContentLoaded', function() {
+      const emailInput = document.getElementById('loginEmail');
+      if(emailInput) {
+        emailInput.addEventListener('blur', function() {
+          // When user leaves email field, start checking if they're waiting for approval
+          if(this.value.trim()) {
+            // Check immediately
+            checkUserApprovalStatus();
+            // Then check every 10 seconds
+            if(approvalCheckInterval) {
+              clearInterval(approvalCheckInterval);
+            }
+            approvalCheckInterval = setInterval(checkUserApprovalStatus, 10000);
+          }
+        });
+      }
+    });
 
     function togglePassword(id){
       const el = document.getElementById(id);
