@@ -935,25 +935,42 @@ function showGCashPaymentModal(paymentData) {
             </div>
           </div>
           <div id="paymentProofCapture" style="display: block;">
-            <input type="file" id="paymentProofFile" accept="image/*" capture="environment" style="display: none;">
-            <button type="button" id="uploadProofBtn" style="
-              background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
-              color: white;
-              border: none;
-              padding: 12px 24px;
-              border-radius: 8px;
-              cursor: pointer;
-              font-size: 0.95em;
-              font-weight: bold;
-              width: 100%;
-              box-shadow: 0 3px 12px rgba(0,102,204,0.3);
-              transition: all 0.3s;
-            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(0,102,204,0.4)';" 
-               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(0,102,204,0.3)';">
-              📸 Upload Payment Screenshot
-            </button>
+            <input type="file" id="paymentProofFile" accept="image/*" style="display: none;">
+            <input type="file" id="paymentProofFileCamera" accept="image/*" capture="environment" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <button type="button" id="uploadProofBtnGallery" style="
+                background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.9em;
+                font-weight: bold;
+                box-shadow: 0 3px 12px rgba(0,102,204,0.3);
+                transition: all 0.3s;
+              " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(0,102,204,0.4)';" 
+                 onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(0,102,204,0.3)';">
+                📁 Choose from Gallery
+              </button>
+              <button type="button" id="uploadProofBtnCamera" style="
+                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.9em;
+                font-weight: bold;
+                box-shadow: 0 3px 12px rgba(40,167,69,0.3);
+                transition: all 0.3s;
+              " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 16px rgba(40,167,69,0.4)';" 
+                 onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(40,167,69,0.3)';">
+                📸 Take Photo
+              </button>
+            </div>
             <p style="font-size: 0.85rem; color: #666; margin-top: 8px; text-align: center;">
-              Upload a screenshot of your GCash payment confirmation. This helps verify your payment quickly.
+              Choose from your gallery or take a new photo of your GCash payment confirmation.
             </p>
           </div>
         </div>
@@ -1199,51 +1216,78 @@ function showGCashPaymentModal(paymentData) {
   // Payment proof handling
   let paymentProofBase64 = null;
   
-  // Handle payment proof file upload
-  const paymentProofFile = document.getElementById('paymentProofFile');
-  const uploadProofBtn = document.getElementById('uploadProofBtn');
-  const paymentProofPreview = document.getElementById('paymentProofPreview');
-  const paymentProofImage = document.getElementById('paymentProofImage');
-  const removeProofBtn = document.getElementById('removeProofBtn');
+  // Function to handle file selection (shared for both gallery and camera)
+  function handlePaymentProofFile(file) {
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      paymentProofBase64 = e.target.result;
+      const paymentProofImage = document.getElementById('paymentProofImage');
+      const paymentProofPreview = document.getElementById('paymentProofPreview');
+      if (paymentProofImage && paymentProofPreview) {
+        paymentProofImage.src = paymentProofBase64;
+        paymentProofPreview.style.display = 'block';
+        document.getElementById('paymentProofCapture').style.display = 'none';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
   
-  if (uploadProofBtn && paymentProofFile) {
-    uploadProofBtn.onclick = () => {
+  // Handle payment proof file upload - Gallery
+  const paymentProofFile = document.getElementById('paymentProofFile');
+  const uploadProofBtnGallery = document.getElementById('uploadProofBtnGallery');
+  
+  if (uploadProofBtnGallery && paymentProofFile) {
+    uploadProofBtnGallery.onclick = () => {
       paymentProofFile.click();
     };
     
     paymentProofFile.onchange = (event) => {
       const file = event.target.files[0];
-      if (!file) return;
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        paymentProofBase64 = e.target.result;
-        paymentProofImage.src = paymentProofBase64;
-        paymentProofPreview.style.display = 'block';
-        document.getElementById('paymentProofCapture').style.display = 'none';
-      };
-      reader.readAsDataURL(file);
+      handlePaymentProofFile(file);
     };
   }
   
+  // Handle payment proof file upload - Camera
+  const paymentProofFileCamera = document.getElementById('paymentProofFileCamera');
+  const uploadProofBtnCamera = document.getElementById('uploadProofBtnCamera');
+  
+  if (uploadProofBtnCamera && paymentProofFileCamera) {
+    uploadProofBtnCamera.onclick = () => {
+      paymentProofFileCamera.click();
+    };
+    
+    paymentProofFileCamera.onchange = (event) => {
+      const file = event.target.files[0];
+      handlePaymentProofFile(file);
+    };
+  }
+  
+  // Handle remove proof button
+  const removeProofBtn = document.getElementById('removeProofBtn');
   if (removeProofBtn) {
     removeProofBtn.onclick = () => {
       paymentProofBase64 = null;
-      paymentProofFile.value = '';
-      paymentProofPreview.style.display = 'none';
-      document.getElementById('paymentProofCapture').style.display = 'block';
+      if (paymentProofFile) paymentProofFile.value = '';
+      if (paymentProofFileCamera) paymentProofFileCamera.value = '';
+      const paymentProofPreview = document.getElementById('paymentProofPreview');
+      if (paymentProofPreview) {
+        paymentProofPreview.style.display = 'none';
+        document.getElementById('paymentProofCapture').style.display = 'block';
+      }
     };
   }
   
