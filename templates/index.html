@@ -16,7 +16,10 @@
       <input type="email" id="loginEmail" placeholder="you@example.com" required>
 
       <label class="input-label">Password</label>
-      <input type="password" id="loginPass" placeholder="Enter your password" required>
+      <div class="password-row">
+        <input type="password" id="loginPass" placeholder="Enter your password" required>
+        <button type="button" onclick="togglePasswordVisibility('loginPass', 'loginPassToggle')" id="loginPassToggle" title="Show password">👁️</button>
+      </div>
 
       <button class="btn mt-8" onclick="handleLogin()" id="loginBtn">Login</button>
       
@@ -104,9 +107,20 @@
       }
     });
 
-    function togglePassword(id){
-      const el = document.getElementById(id);
-      el.type = el.type === 'password' ? 'text' : 'password';
+    function togglePasswordVisibility(inputId, buttonId){
+      const input = document.getElementById(inputId);
+      const button = document.getElementById(buttonId);
+      if(input && button) {
+        if(input.type === 'password') {
+          input.type = 'text';
+          button.textContent = '🙈';
+          button.title = 'Hide password';
+        } else {
+          input.type = 'password';
+          button.textContent = '👁️';
+          button.title = 'Show password';
+        }
+      }
     }
 
     async function handleLogin(){

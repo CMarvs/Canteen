@@ -103,7 +103,8 @@
 
 /* Better input styling for auth pages */
 .auth-card input[type="text"],
-.auth-card input[type="email"] {
+.auth-card input[type="email"],
+.auth-card input[type="password"] {
   color: #3b2f2f !important;
   background: #ffffff !important;
   border: 2px solid #ddd !important;
@@ -115,7 +116,8 @@
 }
 
 .auth-card input[type="text"]:focus,
-.auth-card input[type="email"]:focus {
+.auth-card input[type="email"]:focus,
+.auth-card input[type="password"]:focus {
   border-color: #d4a373 !important;
   box-shadow: 0 0 8px rgba(212,163,115,0.4) !important;
 }
