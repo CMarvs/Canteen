@@ -573,26 +573,36 @@ async function placeOrder(name, contact, address, paymentMethod){
     // COD doesn't need payment details
     paymentDetails = {};
   } else if (paymentMethod === 'gcash') {
+    // Get payment proof if available
+    const paymentProof = window.getPaymentProof ? window.getPaymentProof() : null;
     paymentDetails = {
-      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
+      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, ''),
+      payment_proof: paymentProof  // Include payment screenshot
     };
   }
 
   try {
     // First, create the order
+    const orderData = {
+      user_id: cur.id,
+      fullname: name.trim(),
+      contact: contactDigits,
+      location: address.trim(),
+      items: cart,
+      total: total,
+      payment_method: paymentMethod,
+      payment_status: 'pending'
+    };
+    
+    // Include payment details if GCash (including payment proof if provided)
+    if (paymentMethod === 'gcash') {
+      orderData.payment_details = paymentDetails;
+    }
+    
     const orderResponse = await fetch(`${API_BASE}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: cur.id,
-        fullname: name.trim(),
-        contact: contactDigits,
-        location: address.trim(),
-        items: cart,
-        total: total,
-        payment_method: paymentMethod,
-        payment_status: 'pending'
-      })
+      body: JSON.stringify(orderData)
     });
 
     if(!orderResponse.ok) {

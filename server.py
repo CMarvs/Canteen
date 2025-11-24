@@ -598,14 +598,21 @@ async def place_order(request: Request):
         else:
             payment_status = data.get("payment_status", "pending")
         
+        # Get payment proof if provided (for GCash payments)
+        payment_proof = None
+        payment_details = data.get("payment_details", {})
+        if payment_method == "gcash" and payment_details:
+            payment_proof = payment_details.get("payment_proof")
+        
+        # Insert order with payment information and proof
         cur.execute("""
-            INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO orders(user_id,fullname,contact,location,items,total,payment_method,payment_status,payment_proof)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING *;
         """, (
             data.get("user_id"), data.get("fullname"), data.get("contact"),
             data.get("location"), json.dumps(items), data.get("total"),
-            payment_method, payment_status
+            payment_method, payment_status, payment_proof
         ))
         result = cur.fetchone()
         conn.commit()
