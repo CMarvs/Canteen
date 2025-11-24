@@ -634,8 +634,8 @@ async function placeOrder(name, contact, address, paymentMethod){
       return;
     }
 
-    const orderData = await orderResponse.json();
-    const orderId = orderData.order?.id || orderData.id;
+    const orderResponseData = await orderResponse.json();
+    const orderId = orderResponseData.order?.id || orderResponseData.id;
 
     // For COD, skip payment processing (payment is done on delivery)
     if (paymentMethod === 'cod') {
