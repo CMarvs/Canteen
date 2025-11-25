@@ -36,6 +36,49 @@
       </div>
     </section>
 
+    <!-- Service Rating Section -->
+    <section class="card" style="margin-top: 20px;">
+      <h3 style="margin-top: 0; color: #8B4513;">⭐ Rate Our Service</h3>
+      <p style="color: #666; margin-bottom: 16px;">Help us improve by sharing your experience!</p>
+      
+      <div id="ratingDisplay" style="margin-bottom: 20px; padding: 16px; background: #fff8f1; border-radius: 8px; display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <strong>Your Rating:</strong>
+            <div id="userRatingStars" style="display: inline-block; margin-left: 8px;"></div>
+          </div>
+          <button class="btn small ghost" onclick="editRating()" style="padding: 4px 12px;">Edit</button>
+        </div>
+        <div id="userRatingComment" style="color: #666; font-style: italic; margin-top: 8px;"></div>
+      </div>
+
+      <div id="ratingForm">
+        <label class="input-label">Rating (1-5 stars)</label>
+        <div id="starRating" style="display: flex; gap: 8px; margin-bottom: 16px; font-size: 2rem; cursor: pointer;">
+          <span data-rating="1" onmouseover="hoverRating(1)" onmouseout="resetRating()" onclick="selectRating(1)">☆</span>
+          <span data-rating="2" onmouseover="hoverRating(2)" onmouseout="resetRating()" onclick="selectRating(2)">☆</span>
+          <span data-rating="3" onmouseover="hoverRating(3)" onmouseout="resetRating()" onclick="selectRating(3)">☆</span>
+          <span data-rating="4" onmouseover="hoverRating(4)" onmouseout="resetRating()" onclick="selectRating(4)">☆</span>
+          <span data-rating="5" onmouseover="hoverRating(5)" onmouseout="resetRating()" onclick="selectRating(5)">☆</span>
+        </div>
+        <div id="ratingText" style="color: #8B4513; font-weight: 600; margin-bottom: 16px; min-height: 24px;"></div>
+
+        <label class="input-label" for="ratingComment">Comment (Optional)</label>
+        <textarea id="ratingComment" name="ratingComment" placeholder="Tell us about your experience..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px; font-family: inherit;"></textarea>
+
+        <div style="margin-top: 16px;">
+          <button class="btn" onclick="submitServiceRating()">Submit Rating</button>
+        </div>
+      </div>
+
+      <!-- Average Rating Display -->
+      <div id="averageRatingDisplay" style="margin-top: 20px; padding: 16px; background: #f9f9f9; border-radius: 8px; text-align: center;">
+        <p style="margin: 0; color: #666; font-size: 0.9rem;">Overall Service Rating</p>
+        <div id="averageRatingStars" style="font-size: 1.5rem; margin: 8px 0;"></div>
+        <p id="averageRatingText" style="margin: 0; color: #8B4513; font-weight: 600;"></p>
+      </div>
+    </section>
+
   </main>
 
   <script src="/static/script.js"></script>
@@ -86,7 +129,212 @@
       }
       
       loadProfilePage();
+      loadUserRating();
+      loadAverageRating();
     });
+
+    let selectedRating = 0;
+    let currentUserRating = null;
+
+    function selectRating(rating) {
+      selectedRating = rating;
+      updateStarDisplay();
+      updateRatingText();
+    }
+
+    function hoverRating(rating) {
+      const stars = document.querySelectorAll('#starRating span');
+      stars.forEach((star, index) => {
+        if (index < rating) {
+          star.textContent = '★';
+          star.style.color = '#ffc107';
+        } else {
+          star.textContent = '☆';
+          star.style.color = '#ddd';
+        }
+      });
+    }
+
+    function resetRating() {
+      if (selectedRating > 0) {
+        updateStarDisplay();
+      } else {
+        const stars = document.querySelectorAll('#starRating span');
+        stars.forEach(star => {
+          star.textContent = '☆';
+          star.style.color = '#ddd';
+        });
+      }
+    }
+
+    function updateStarDisplay() {
+      const stars = document.querySelectorAll('#starRating span');
+      stars.forEach((star, index) => {
+        if (index < selectedRating) {
+          star.textContent = '★';
+          star.style.color = '#ffc107';
+        } else {
+          star.textContent = '☆';
+          star.style.color = '#ddd';
+        }
+      });
+    }
+
+    function updateRatingText() {
+      const texts = {
+        1: 'Poor',
+        2: 'Fair',
+        3: 'Good',
+        4: 'Very Good',
+        5: 'Excellent'
+      };
+      const textEl = document.getElementById('ratingText');
+      if (textEl) {
+        textEl.textContent = selectedRating > 0 ? texts[selectedRating] : '';
+      }
+    }
+
+    async function loadUserRating() {
+      try {
+        const currentUser = getCurrent();
+        if (!currentUser || !currentUser.id) return;
+
+        const response = await fetch(`/ratings/user/${currentUser.id}`);
+        if (response.ok) {
+          const rating = await response.json();
+          if (rating) {
+            currentUserRating = rating;
+            displayUserRating(rating);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user rating:', error);
+      }
+    }
+
+    function displayUserRating(rating) {
+      const displayDiv = document.getElementById('ratingDisplay');
+      const formDiv = document.getElementById('ratingForm');
+      
+      if (displayDiv && formDiv) {
+        displayDiv.style.display = 'block';
+        formDiv.style.display = 'none';
+        
+        const starsEl = document.getElementById('userRatingStars');
+        const commentEl = document.getElementById('userRatingComment');
+        
+        if (starsEl) {
+          starsEl.innerHTML = getStarDisplay(rating.rating);
+        }
+        
+        if (commentEl && rating.comment) {
+          commentEl.textContent = rating.comment;
+        } else if (commentEl) {
+          commentEl.textContent = 'No comment provided.';
+        }
+      }
+    }
+
+    function editRating() {
+      const displayDiv = document.getElementById('ratingDisplay');
+      const formDiv = document.getElementById('ratingForm');
+      
+      if (displayDiv && formDiv && currentUserRating) {
+        displayDiv.style.display = 'none';
+        formDiv.style.display = 'block';
+        
+        selectedRating = currentUserRating.rating;
+        updateStarDisplay();
+        updateRatingText();
+        
+        const commentEl = document.getElementById('ratingComment');
+        if (commentEl) {
+          commentEl.value = currentUserRating.comment || '';
+        }
+      }
+    }
+
+    async function submitServiceRating() {
+      try {
+        const currentUser = getCurrent();
+        if (!currentUser || !currentUser.id) {
+          alert('Please login first');
+          return;
+        }
+
+        if (selectedRating === 0) {
+          alert('Please select a rating');
+          return;
+        }
+
+        const commentEl = document.getElementById('ratingComment');
+        const comment = commentEl ? commentEl.value.trim() : '';
+
+        const response = await fetch('/ratings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user_id: currentUser.id,
+            rating: selectedRating,
+            comment: comment
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          currentUserRating = result;
+          displayUserRating(result);
+          alert('Thank you for your rating!');
+          loadAverageRating(); // Refresh average rating
+        } else {
+          const error = await response.json();
+          alert(`Failed to submit rating: ${error.detail || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('Error submitting rating:', error);
+        alert('Failed to submit rating. Please try again.');
+      }
+    }
+
+    async function loadAverageRating() {
+      try {
+        const response = await fetch('/ratings/stats');
+        if (response.ok) {
+          const stats = await response.json();
+          const avgEl = document.getElementById('averageRatingStars');
+          const textEl = document.getElementById('averageRatingText');
+          
+          if (avgEl && stats.average_rating) {
+            const avg = parseFloat(stats.average_rating).toFixed(1);
+            avgEl.innerHTML = getStarDisplay(Math.round(avg));
+            if (textEl) {
+              textEl.textContent = `${avg} out of 5 (${stats.total_ratings || 0} ${stats.total_ratings === 1 ? 'rating' : 'ratings'})`;
+            }
+          } else if (avgEl) {
+            avgEl.innerHTML = '☆☆☆☆☆';
+            if (textEl) {
+              textEl.textContent = 'No ratings yet';
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading average rating:', error);
+      }
+    }
+
+    function getStarDisplay(rating) {
+      let html = '';
+      for (let i = 1; i <= 5; i++) {
+        if (i <= rating) {
+          html += '<span style="color: #ffc107;">★</span>';
+        } else {
+          html += '<span style="color: #ddd;">☆</span>';
+        }
+      }
+      return html;
+    }
   </script>
 </body>
 </html>
