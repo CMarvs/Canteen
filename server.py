@@ -2295,7 +2295,13 @@ async def get_user_details(user_id: int):
         user = cur.fetchone()
         
         if not user:
+            print(f"❌ User not found: {user_id}")
             raise HTTPException(404, "User not found")
+        
+        # Convert user to dict if needed (RealDictRow handling)
+        if not isinstance(user, dict):
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+            user = dict(zip(col_names, user)) if col_names else {}
         
         # Get user's orders
         cur.execute("""
@@ -2306,25 +2312,62 @@ async def get_user_details(user_id: int):
         """, (user_id,))
         orders = cur.fetchall()
         
-        # Get user's rating if exists
-        cur.execute("""
-            SELECT rating, comment, created_at
-            FROM service_ratings
-            WHERE user_id = %s
-        """, (user_id,))
-        rating = cur.fetchone()
+        # Convert orders to list of dicts if needed
+        if orders:
+            orders_list = []
+            for order in orders:
+                if not isinstance(order, dict):
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    orders_list.append(dict(zip(col_names, order)) if col_names else {})
+                else:
+                    orders_list.append(order)
+            orders = orders_list
         
-        return {
+        # Get user's rating if exists
+        rating = None
+        try:
+            cur.execute("""
+                SELECT rating, comment, created_at
+                FROM service_ratings
+                WHERE user_id = %s
+            """, (user_id,))
+            rating_result = cur.fetchone()
+            if rating_result:
+                if not isinstance(rating_result, dict):
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    rating = dict(zip(col_names, rating_result)) if col_names else {}
+                else:
+                    rating = rating_result
+        except Exception as rating_error:
+            print(f"[WARNING] Could not fetch rating: {rating_error}")
+            # Rating is optional, continue without it
+        
+        # Calculate total spent
+        total_spent = 0.0
+        if orders:
+            for order in orders:
+                try:
+                    total = order.get("total") or 0
+                    total_spent += float(total)
+                except (ValueError, TypeError):
+                    pass
+        
+        result = {
             "user": user,
             "orders": orders if orders else [],
             "rating": rating,
             "total_orders": len(orders) if orders else 0,
-            "total_spent": sum(float(o.get("total", 0) or 0) for o in (orders if orders else []))
+            "total_spent": round(total_spent, 2)
         }
+        
+        print(f"[INFO] User details fetched successfully for user_id: {user_id}")
+        return result
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Get user details error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get user details: {str(e)}")
     finally:
         conn.close()
