@@ -36,9 +36,6 @@
         <button id="tabUsers" onclick="switchTab('users')">
           👥 User Management <span class="tab-badge" id="usersBadge">0</span>
         </button>
-        <button id="tabRatings" onclick="switchTab('ratings')">
-          ⭐ Service Ratings
-        </button>
       </div>
 
       <!-- ORDER STATUS UPDATE TAB -->
@@ -117,19 +114,6 @@
         <div id="usersList"></div>
       </section>
 
-      <!-- SERVICE RATINGS TAB -->
-      <section id="ratingsSection" class="tab-content">
-        <h2>⭐ Service Ratings</h2>
-        <p style="color: var(--text); margin-bottom: 20px;">
-          View customer ratings and feedback about the service.
-        </p>
-        
-        <!-- Rating Statistics -->
-        <div id="ratingStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;"></div>
-        
-        <!-- All Ratings List -->
-        <div id="ratingsList"></div>
-      </section>
     </div>
   </main>
 
@@ -216,10 +200,6 @@
         document.getElementById('tabUsers').classList.add('active');
         document.getElementById('usersSection').classList.add('active');
         renderAdminUsers();
-      } else if (tab === 'ratings') {
-        document.getElementById('tabRatings').classList.add('active');
-        document.getElementById('ratingsSection').classList.add('active');
-        renderAdminRatings();
       }
     }
 
@@ -1845,128 +1825,6 @@
       }
     }
 
-    /* -------- Rating Management Functions -------- */
-    async function renderAdminRatings() {
-      try {
-        // Get rating statistics
-        const statsResponse = await fetch('/ratings/stats');
-        const stats = await statsResponse.json();
-        
-        // Display statistics
-        const statsContainer = document.getElementById('ratingStats');
-        if (statsContainer) {
-          const avgRating = parseFloat(stats.average_rating || 0).toFixed(1);
-          const totalRatings = stats.total_ratings || 0;
-          
-          statsContainer.innerHTML = `
-            <div class="card" style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; text-align: center;">
-              <div style="font-size: 3rem; font-weight: bold; margin-bottom: 8px;">${avgRating}</div>
-              <div style="font-size: 1.2rem; margin-bottom: 4px;">${getStarDisplay(avgRating)}</div>
-              <div style="font-size: 0.9rem; opacity: 0.9;">Average Rating</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: var(--primary); margin-bottom: 4px;">${totalRatings}</div>
-              <div style="color: var(--muted);">Total Ratings</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: #4CAF50; margin-bottom: 4px;">${stats.rating_5 || 0}</div>
-              <div style="color: var(--muted);">5 Stars</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: #2196F3; margin-bottom: 4px;">${stats.rating_4 || 0}</div>
-              <div style="color: var(--muted);">4 Stars</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: #FF9800; margin-bottom: 4px;">${stats.rating_3 || 0}</div>
-              <div style="color: var(--muted);">3 Stars</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: #FF5722; margin-bottom: 4px;">${stats.rating_2 || 0}</div>
-              <div style="color: var(--muted);">2 Stars</div>
-            </div>
-            <div class="card" style="text-align: center;">
-              <div style="font-size: 2rem; font-weight: bold; color: #e74c3c; margin-bottom: 4px;">${stats.rating_1 || 0}</div>
-              <div style="color: var(--muted);">1 Star</div>
-            </div>
-          `;
-        }
-        
-        // Get all ratings
-        const ratingsResponse = await fetch('/ratings');
-        const ratings = await ratingsResponse.json();
-        
-        const ratingsList = document.getElementById('ratingsList');
-        if (!ratingsList) return;
-        
-        if (ratings.length === 0) {
-          ratingsList.innerHTML = `
-            <div class="empty-state">
-              <div class="empty-state-icon">⭐</div>
-              <div class="empty-state-text">No ratings yet</div>
-            </div>
-          `;
-          return;
-        }
-        
-        ratingsList.innerHTML = ratings.map(rating => {
-          const userName = rating.user_name || 'Unknown User';
-          const userEmail = rating.user_email || 'N/A';
-          const ratingDate = new Date(rating.created_at).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-          
-          return `
-            <div class="order-card" style="margin-bottom: 16px;">
-              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 4px;">${userName}</div>
-                  <div style="color: var(--muted); font-size: 0.9rem;">${userEmail}</div>
-                  <div style="color: var(--muted); font-size: 0.85rem; margin-top: 4px;">${ratingDate}</div>
-                </div>
-                <div style="text-align: right;">
-                  <div style="font-size: 2rem; color: #FFD700; margin-bottom: 4px;">${getStarDisplay(rating.rating)}</div>
-                  <div style="font-weight: 600; color: var(--primary);">${rating.rating}/5</div>
-                </div>
-              </div>
-              ${rating.comment ? `
-              <div style="padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513; margin-top: 12px;">
-                <div style="color: #333; word-wrap: break-word;">${escapeHtmlRating(rating.comment)}</div>
-              </div>
-              ` : ''}
-            </div>
-          `;
-        }).join('');
-      } catch(error) {
-        console.error('Error loading ratings:', error);
-        const ratingsList = document.getElementById('ratingsList');
-        if (ratingsList) {
-          ratingsList.innerHTML = '<p class="muted">Failed to load ratings</p>';
-        }
-      }
-    }
-    
-    function getStarDisplay(rating) {
-      const numRating = parseFloat(rating);
-      const fullStars = Math.floor(numRating);
-      let stars = '';
-      for (let i = 0; i < fullStars; i++) {
-        stars += '★';
-      }
-      for (let i = fullStars; i < 5; i++) {
-        stars += '☆';
-      }
-      return stars;
-    }
-    
-    function escapeHtmlRating(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
 
 
     /* -------- Initialize -------- */
