@@ -39,21 +39,34 @@
       // Wait a bit for script.js to be fully loaded
       setTimeout(function() {
         // Check if already logged in -> redirect to appropriate page
+        let currentUser = null;
+        
         if (typeof getCurrent === 'function') {
-          const currentUser = getCurrent();
-          if(currentUser && currentUser.role === 'admin') location.href='admin.html';
-          if(currentUser && currentUser.role === 'user') location.href='order.html';
-        } else {
-          // Fallback: check localStorage directly
+          try {
+            currentUser = getCurrent();
+          } catch(e) {
+            console.warn('getCurrent error:', e);
+          }
+        }
+        
+        // Fallback: check localStorage directly
+        if (!currentUser) {
           try {
             const stored = localStorage.getItem('canteen_current_v2');
             if (stored) {
-              const currentUser = JSON.parse(stored);
-              if(currentUser && currentUser.role === 'admin') location.href='admin.html';
-              if(currentUser && currentUser.role === 'user') location.href='order.html';
+              currentUser = JSON.parse(stored);
             }
           } catch(e) {
             // Ignore errors
+          }
+        }
+        
+        // Redirect if logged in
+        if (currentUser && currentUser.role) {
+          if (currentUser.role === 'admin') {
+            location.href = 'admin.html';
+          } else if (currentUser.role === 'user') {
+            location.href = 'order.html';
           }
         }
       }, 100);
@@ -175,22 +188,56 @@
             body: JSON.stringify({ email, password })
           });
           
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Login failed');
+          let data = null;
+          let errorMessage = '';
+          
+          try {
+            const responseText = await response.text();
+            if (responseText && responseText.trim()) {
+              data = JSON.parse(responseText);
+            }
+          } catch(parseError) {
+            console.error('Failed to parse response:', parseError);
+            if (!response.ok) {
+              errorMessage = `Server error (${response.status}). Please try again.`;
+            }
           }
           
-          const data = await response.json();
+          if (!response.ok) {
+            // Handle different error cases
+            if (response.status === 400) {
+              errorMessage = data?.detail || data?.message || 'Invalid email or password';
+            } else if (response.status === 403) {
+              errorMessage = data?.detail || data?.message || 'Your account is pending approval. Please wait for admin approval.';
+            } else {
+              errorMessage = data?.detail || data?.message || `Login failed (${response.status}). Please try again.`;
+            }
+            throw new Error(errorMessage);
+          }
+          
+          // Check if user data exists
+          if (!data) {
+            throw new Error('No response from server. Please try again.');
+          }
+          
+          // Server returns user data directly (not wrapped in 'user' property)
+          // Check if data has user properties or if it's wrapped
+          const userData = data.user || data;
+          
+          if (!userData || !userData.id || !userData.email || !userData.role) {
+            throw new Error('Invalid response from server. Please try again.');
+          }
           
           // Save user session
           if (typeof saveCurrent === 'function') {
-            saveCurrent(data.user);
+            saveCurrent(userData);
           } else {
-            localStorage.setItem('canteen_current_v2', JSON.stringify(data.user));
+            localStorage.setItem('canteen_current_v2', JSON.stringify(userData));
           }
           
           // Redirect based on role
-          if (data.user.role === 'admin') {
+          const userRole = userData.role || 'user';
+          if (userRole === 'admin') {
             location.href = 'admin.html';
           } else {
             location.href = 'order.html';
