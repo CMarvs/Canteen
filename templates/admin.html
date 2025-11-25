@@ -173,32 +173,43 @@
 
     /* -------- Tab Switching -------- */
     function switchTab(tab) {
-      document.getElementById('tabOrders').classList.remove('active');
-      document.getElementById('tabChats').classList.remove('active');
-      document.getElementById('tabMenu').classList.remove('active');
-      document.getElementById('tabUsers').classList.remove('active');
-      document.getElementById('tabRatings').classList.remove('active');
-      document.getElementById('ordersSection').classList.remove('active');
-      document.getElementById('chatsSection').classList.remove('active');
-      document.getElementById('menuSection').classList.remove('active');
-      document.getElementById('usersSection').classList.remove('active');
-      document.getElementById('ratingsSection').classList.remove('active');
+      // Remove active class from all tabs and sections (with null checks)
+      const tabs = ['tabOrders', 'tabChats', 'tabMenu', 'tabUsers'];
+      const sections = ['ordersSection', 'chatsSection', 'menuSection', 'usersSection'];
+      
+      tabs.forEach(tabId => {
+        const el = document.getElementById(tabId);
+        if (el) el.classList.remove('active');
+      });
+      
+      sections.forEach(sectionId => {
+        const el = document.getElementById(sectionId);
+        if (el) el.classList.remove('active');
+      });
 
       if (tab === 'orders') {
-        document.getElementById('tabOrders').classList.add('active');
-        document.getElementById('ordersSection').classList.add('active');
+        const tabEl = document.getElementById('tabOrders');
+        const sectionEl = document.getElementById('ordersSection');
+        if (tabEl) tabEl.classList.add('active');
+        if (sectionEl) sectionEl.classList.add('active');
         renderAdminOrders();
       } else if (tab === 'chats') {
-        document.getElementById('tabChats').classList.add('active');
-        document.getElementById('chatsSection').classList.add('active');
+        const tabEl = document.getElementById('tabChats');
+        const sectionEl = document.getElementById('chatsSection');
+        if (tabEl) tabEl.classList.add('active');
+        if (sectionEl) sectionEl.classList.add('active');
         renderAdminChats();
       } else if (tab === 'menu') {
-        document.getElementById('tabMenu').classList.add('active');
-        document.getElementById('menuSection').classList.add('active');
+        const tabEl = document.getElementById('tabMenu');
+        const sectionEl = document.getElementById('menuSection');
+        if (tabEl) tabEl.classList.add('active');
+        if (sectionEl) sectionEl.classList.add('active');
         renderAdminMenuList();
       } else if (tab === 'users') {
-        document.getElementById('tabUsers').classList.add('active');
-        document.getElementById('usersSection').classList.add('active');
+        const tabEl = document.getElementById('tabUsers');
+        const sectionEl = document.getElementById('usersSection');
+        if (tabEl) tabEl.classList.add('active');
+        if (sectionEl) sectionEl.classList.add('active');
         renderAdminUsers();
       }
     }
