@@ -11,7 +11,7 @@
   <header class="topbar">
     <div class="brand">🍽️ RMLCanteen Admin</div>
     <nav class="nav">
-      <a href="#" onclick="if(typeof logoutUser === 'function') { logoutUser(); } else { if(typeof clearCurrent === 'function') clearCurrent(); localStorage.removeItem('canteen_cart_v2'); location.href='index.html'; }">🚪 Logout</a>
+      <a href="#" onclick="handleLogout(event)">🚪 Logout</a>
     </nav>
   </header>
 
@@ -2171,42 +2171,81 @@
 
     /* -------- Initialize -------- */
 
+    // Handle logout with proper cleanup
+    function handleLogout(event) {
+      if (event) event.preventDefault();
+      
+      try {
+        // Try to use logoutUser from script.js if available
+        if (typeof logoutUser === 'function') {
+          logoutUser();
+          return;
+        }
+        
+        // Fallback: manual logout
+        if (typeof clearCurrent === 'function') {
+          clearCurrent();
+        } else {
+          // Clear from localStorage directly
+          localStorage.removeItem('canteen_current_v2');
+        }
+        
+        // Clear cart
+        localStorage.removeItem('canteen_cart_v2');
+        
+        // Stop all polling/intervals
+        if (typeof stopOrderPolling === 'function') stopOrderPolling();
+        if (typeof stopChatPolling === 'function') stopChatPolling();
+        if (orderPollInterval) clearInterval(orderPollInterval);
+        if (chatPollInterval) clearInterval(chatPollInterval);
+        
+        // Redirect to login
+        window.location.href = 'index.html';
+      } catch(error) {
+        console.error('Logout error:', error);
+        // Force redirect even if there's an error
+        localStorage.clear();
+        window.location.href = 'index.html';
+      }
+    }
+    
     // Initialize admin dashboard
     function initializeAdminDashboard() {
-      // Check if functions are available (they should be from script.js)
-      if (typeof ensureLoggedIn === 'function') {
-        ensureLoggedIn('admin');
+      // Check authentication - use fallback method to avoid ensureLoggedIn issues
+      let isAuthenticated = false;
+      
+      if (typeof getCurrent === 'function') {
+        const currentUser = getCurrent();
+        if (currentUser && currentUser.role === 'admin') {
+          isAuthenticated = true;
+        }
       } else {
-        console.warn('ensureLoggedIn function not found. Using fallback authentication.');
-        // Fallback: check login manually
-        if (typeof getCurrent === 'function') {
-          const currentUser = getCurrent();
-          if (!currentUser || currentUser.role !== 'admin') {
-            alert('Please login as admin');
-            location.href = 'index.html';
-            return;
-          }
-        } else {
-          // Last resort: check localStorage directly
-          try {
-            const stored = localStorage.getItem('canteen_current_v2');
-            if (stored) {
-              const currentUser = JSON.parse(stored);
-              if (!currentUser || currentUser.role !== 'admin') {
-                alert('Please login as admin');
-                location.href = 'index.html';
-                return;
-              }
-            } else {
-              alert('Please login as admin');
-              location.href = 'index.html';
-              return;
+        // Fallback: check localStorage directly
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            const currentUser = JSON.parse(stored);
+            if (currentUser && currentUser.role === 'admin') {
+              isAuthenticated = true;
             }
-          } catch(e) {
-            alert('Please login as admin');
-            location.href = 'index.html';
-            return;
           }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        alert('Please login as admin');
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Try to call ensureLoggedIn if available (but don't fail if it's not)
+      if (typeof ensureLoggedIn === 'function') {
+        try {
+          ensureLoggedIn('admin');
+        } catch(e) {
+          console.warn('ensureLoggedIn error (continuing anyway):', e);
         }
       }
       
@@ -2222,7 +2261,7 @@
     
     window.addEventListener('DOMContentLoaded', () => {
       // Wait for script.js to load
-      if (window.scriptJsLoaded || typeof ensureLoggedIn === 'function') {
+      if (window.scriptJsLoaded || typeof getCurrent === 'function') {
         // Script already loaded
         initializeAdminDashboard();
       } else {
