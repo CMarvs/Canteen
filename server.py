@@ -2286,12 +2286,28 @@ async def get_user_details(user_id: int):
     try:
         cur = conn.cursor()
         
-        # Get user information
+        # Check if created_at column exists
         cur.execute("""
-            SELECT id, name, email, role, id_proof, selfie_proof, is_approved, created_at
-            FROM users
-            WHERE id = %s
-        """, (user_id,))
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'created_at'
+        """)
+        has_created_at = cur.fetchone() is not None
+        
+        # Build SELECT query based on available columns
+        if has_created_at:
+            cur.execute("""
+                SELECT id, name, email, role, id_proof, selfie_proof, is_approved, created_at
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+        else:
+            cur.execute("""
+                SELECT id, name, email, role, id_proof, selfie_proof, is_approved
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+        
         user = cur.fetchone()
         
         if not user:
@@ -2302,6 +2318,10 @@ async def get_user_details(user_id: int):
         if not isinstance(user, dict):
             col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
             user = dict(zip(col_names, user)) if col_names else {}
+        
+        # Add created_at as None if it doesn't exist
+        if 'created_at' not in user:
+            user['created_at'] = None
         
         # Get user's orders
         cur.execute("""
