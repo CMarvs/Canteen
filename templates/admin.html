@@ -355,13 +355,6 @@
               <p><strong>👤 Customer:</strong> ${buyerName}</p>
               <p><strong>📞 Contact:</strong> ${buyerContact}</p>
               <p><strong>📍 Address:</strong> ${buyerAddress}</p>
-              ${o.user_id ? `
-              <div style="margin-top: 8px;">
-                <button class="btn small" onclick="viewUserInfo(${o.user_id})" style="background: #2196F3; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
-                  👤 View User Info & Photos
-                </button>
-              </div>
-              ` : ''}
             </div>
 
             <div class="order-items">
@@ -1975,199 +1968,6 @@
       return div.innerHTML;
     }
 
-    /* -------- View User Info Modal -------- */
-    async function viewUserInfo(userId) {
-      try {
-        const response = await fetch(`/users/${userId}/details`);
-        if (!response.ok) {
-          alert('Failed to load user information');
-          return;
-        }
-        
-        const data = await response.json();
-        const user = data.user;
-        const orders = data.orders || [];
-        const rating = data.rating;
-        
-        // Create modal
-        const modal = document.createElement('div');
-        modal.id = 'userInfoModal';
-        modal.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.7);
-          z-index: 20000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-          overflow-y: auto;
-        `;
-        
-        const orderHistoryHtml = orders.length > 0 ? orders.map(order => {
-          const orderDate = new Date(order.created_at).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-          const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-          return `
-            <div style="border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 8px; background: #f9f9f9;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <strong>Order #${order.id}</strong>
-                <span style="padding: 4px 8px; background: ${order.status === 'Delivered' ? '#4CAF50' : order.status === 'Pending' ? '#ffc107' : '#2196F3'}; color: white; border-radius: 4px; font-size: 0.8rem;">${order.status}</span>
-              </div>
-              <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">${orderDate}</div>
-              <div style="font-size: 0.85rem;">${items.map(it => `${it.name} × ${it.qty}`).join(', ')}</div>
-              <div style="font-weight: 600; color: var(--primary); margin-top: 4px;">₱${Number(order.total).toFixed(2)}</div>
-            </div>
-          `;
-        }).join('') : '<p style="color: var(--muted); text-align: center; padding: 20px;">No orders yet</p>';
-        
-        modal.innerHTML = `
-          <div style="background: white; border-radius: 12px; padding: 24px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;">
-            <button onclick="document.getElementById('userInfoModal').remove()" 
-                    style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
-            
-            <h2 style="margin: 0 0 20px 0; color: #8b4513;">👤 User Information</h2>
-            
-            <!-- User Profile Section -->
-            <div style="background: #fff8f1; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #8B4513;">
-              <h3 style="margin: 0 0 12px 0; color: #8b4513;">Profile Information</h3>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                <div>
-                  <strong>Name:</strong> ${user.name || 'N/A'}
-                </div>
-                <div>
-                  <strong>Email:</strong> ${user.email || 'N/A'}
-                </div>
-                <div>
-                  <strong>Role:</strong> ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
-                </div>
-                <div>
-                  <strong>Status:</strong> ${user.is_approved ? '<span style="color: #4CAF50;">✅ Approved</span>' : '<span style="color: #ff9800;">⏳ Pending</span>'}
-                </div>
-                <div>
-                  <strong>Member Since:</strong> ${new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                </div>
-                <div>
-                  <strong>Total Orders:</strong> ${data.total_orders}
-                </div>
-                <div>
-                  <strong>Total Spent:</strong> ₱${Number(data.total_spent || 0).toFixed(2)}
-                </div>
-                ${rating ? `
-                <div>
-                  <strong>Service Rating:</strong> ${'★'.repeat(rating.rating)}${'☆'.repeat(5 - rating.rating)} (${rating.rating}/5)
-                </div>
-                ` : ''}
-              </div>
-            </div>
-            
-            <!-- Registration Photos Section -->
-            <div style="margin-bottom: 20px;">
-              <h3 style="margin: 0 0 12px 0; color: #8b4513;">📷 Registration Photos</h3>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                ${user.id_proof ? `
-                <div>
-                  <strong style="display: block; margin-bottom: 8px; color: #8b4513;">📷 ID Proof</strong>
-                  <img src="${user.id_proof}" 
-                       alt="ID Proof" 
-                       onclick="showImageModal('${user.id_proof}', 'ID Proof')"
-                       style="width: 100%; max-height: 300px; object-fit: contain; border: 2px solid #8b4513; border-radius: 8px; cursor: pointer; background: #f9f9f9; padding: 8px;"
-                       onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'"
-                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
-                  <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; text-align: center;">Click to view full size</p>
-                </div>
-                ` : '<div><strong>📷 ID Proof:</strong> <span style="color: #f44336;">Not provided</span></div>'}
-                
-                ${user.selfie_proof ? `
-                <div>
-                  <strong style="display: block; margin-bottom: 8px; color: #2196F3;">🤳 Selfie Proof</strong>
-                  <img src="${user.selfie_proof}" 
-                       alt="Selfie Proof" 
-                       onclick="showImageModal('${user.selfie_proof}', 'Selfie Proof')"
-                       style="width: 100%; max-height: 300px; object-fit: contain; border: 2px solid #2196F3; border-radius: 8px; cursor: pointer; background: #f9f9f9; padding: 8px;"
-                       onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'"
-                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
-                  <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; text-align: center;">Click to view full size</p>
-                </div>
-                ` : '<div><strong>🤳 Selfie Proof:</strong> <span style="color: #f44336;">Not provided</span></div>'}
-              </div>
-              ${user.id_proof && user.selfie_proof ? `
-              <div style="margin-top: 12px; padding: 8px; background: #e3f2fd; border-radius: 6px; font-size: 0.85rem; color: #1976d2;">
-                💡 <strong>Compare:</strong> Verify that the ID and selfie belong to the same person
-              </div>
-              ` : ''}
-            </div>
-            
-            <!-- Order History Section -->
-            <div>
-              <h3 style="margin: 0 0 12px 0; color: #8b4513;">📦 Order History (${data.total_orders} orders)</h3>
-              <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa;">
-                ${orderHistoryHtml}
-              </div>
-            </div>
-          </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Close on background click
-        modal.addEventListener('click', (e) => {
-          if (e.target === modal) {
-            modal.remove();
-          }
-        });
-      } catch(error) {
-        console.error('Error loading user info:', error);
-        alert('Failed to load user information. Please try again.');
-      }
-    }
-    
-    function showImageModal(imageSrc, title) {
-      const modal = document.createElement('div');
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.9);
-        z-index: 30000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        cursor: pointer;
-      `;
-      
-      modal.innerHTML = `
-        <div style="position: relative; max-width: 90%; max-height: 90%;">
-          <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
-                  style="position: absolute; top: -40px; right: 0; background: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1.2rem;">
-            ✕ Close
-          </button>
-          <h3 style="color: white; margin-bottom: 16px; text-align: center;">${title}</h3>
-          <img src="${imageSrc}" 
-               alt="${title}" 
-               style="max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-        </div>
-      `;
-      
-      modal.onclick = (e) => {
-        if(e.target === modal) {
-          modal.remove();
-        }
-      };
-      
-      document.body.appendChild(modal);
-    }
 
     /* -------- Initialize -------- */
 
@@ -2243,7 +2043,10 @@
       // Try to call ensureLoggedIn if available (but don't fail if it's not)
       if (typeof ensureLoggedIn === 'function') {
         try {
-          ensureLoggedIn('admin');
+          // Call in isolated scope to avoid variable conflicts
+          (function() {
+            ensureLoggedIn('admin');
+          })();
         } catch(e) {
           console.warn('ensureLoggedIn error (continuing anyway):', e);
         }
