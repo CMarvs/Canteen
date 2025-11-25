@@ -2280,7 +2280,6 @@ function escapeHtml(text) {
 }
 
 /* ---------- Page Init ---------- */
-window.addEventListener('DOMContentLoaded', () => {
-  renderCart();
-});
+// Removed global DOMContentLoaded listener to avoid conflicts with page-specific initialization
+// Each page should handle its own initialization
 

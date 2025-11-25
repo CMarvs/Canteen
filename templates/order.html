@@ -96,13 +96,32 @@
     </section>
   </main>
 
-  <script src="/static/script.js" onload="window.scriptJsLoaded = true; if(window.initializeOrderPageWhenReady) window.initializeOrderPageWhenReady();" onerror="console.error('Failed to load script.js');"></script>
+  <script src="/static/script.js"></script>
   <script>
+    // Wait for script.js to be fully loaded
+    function waitForScript(callback, maxAttempts = 20) {
+      let attempts = 0;
+      const checkScript = () => {
+        attempts++;
+        if (typeof getCurrent === 'function' && typeof loadMenuToPage === 'function' && typeof renderCart === 'function') {
+          callback();
+        } else if (attempts < maxAttempts) {
+          setTimeout(checkScript, 100);
+        } else {
+          console.error('script.js functions not available after waiting');
+          // Try to continue anyway
+          callback();
+        }
+      };
+      checkScript();
+    }
+    
     function initializeOrderPage() {
-      // Check authentication - use fallback to avoid ensureLoggedIn issues
+      // Check authentication
       let isAuthenticated = false;
       let currentUserData = null;
       
+      // Try getCurrent first
       if (typeof getCurrent === 'function') {
         try {
           currentUserData = getCurrent();
@@ -114,8 +133,8 @@
         }
       }
       
+      // Fallback: check localStorage directly
       if (!isAuthenticated) {
-        // Fallback: check localStorage directly
         try {
           const stored = localStorage.getItem('canteen_current_v2');
           if (stored) {
@@ -151,63 +170,37 @@
         }
       }
       
-      // Load menu and cart - check if functions exist with retry logic
-      function tryLoadMenu() {
-        if (typeof loadMenuToPage === 'function') {
+      // Load menu and cart
+      if (typeof loadMenuToPage === 'function') {
+        try {
           loadMenuToPage();
-          return true;
+        } catch(e) {
+          console.error('Error loading menu:', e);
         }
-        return false;
       }
       
-      function tryRenderCart() {
-        if (typeof renderCart === 'function') {
+      if (typeof renderCart === 'function') {
+        try {
           renderCart();
-          return true;
+        } catch(e) {
+          console.error('Error rendering cart:', e);
         }
-        return false;
-      }
-      
-      // Try immediately
-      if (!tryLoadMenu()) {
-        // Retry with increasing delays
-        let retries = 0;
-        const maxRetries = 5;
-        const retryInterval = setInterval(() => {
-          retries++;
-          if (tryLoadMenu() || retries >= maxRetries) {
-            clearInterval(retryInterval);
-            if (retries >= maxRetries && typeof loadMenuToPage !== 'function') {
-              console.error('loadMenuToPage function not available after multiple retries');
-            }
-          }
-        }, 300);
-      }
-      
-      if (!tryRenderCart()) {
-        let retries = 0;
-        const maxRetries = 5;
-        const retryInterval = setInterval(() => {
-          retries++;
-          if (tryRenderCart() || retries >= maxRetries) {
-            clearInterval(retryInterval);
-            if (retries >= maxRetries && typeof renderCart !== 'function') {
-              console.error('renderCart function not available after multiple retries');
-            }
-          }
-        }, 300);
       }
       
       // Clear form if cart is empty (user just placed an order)
       if (typeof getCart === 'function') {
-        const cart = getCart();
-        if(cart.length === 0) {
-          const delName = document.getElementById('delName');
-          const delContact = document.getElementById('delContact');
-          const delAddress = document.getElementById('delAddress');
-          if(delName) delName.value = '';
-          if(delContact) delContact.value = '';
-          if(delAddress) delAddress.value = '';
+        try {
+          const cart = getCart();
+          if(cart.length === 0) {
+            const delName = document.getElementById('delName');
+            const delContact = document.getElementById('delContact');
+            const delAddress = document.getElementById('delAddress');
+            if(delName) delName.value = '';
+            if(delContact) delContact.value = '';
+            if(delAddress) delAddress.value = '';
+          }
+        } catch(e) {
+          console.warn('Error checking cart:', e);
         }
       }
     }
@@ -266,39 +259,12 @@
       }
     }
     
-    // Function to initialize when script.js is ready
-    window.initializeOrderPageWhenReady = function() {
-      if (typeof getCurrent === 'function' && typeof loadMenuToPage === 'function') {
-        initializeOrderPage();
-        setupPaymentMethodHandlers();
-      }
-    };
-    
+    // Initialize when DOM and scripts are ready
     window.addEventListener('DOMContentLoaded', () => {
-      // Wait for script.js to load
-      if (window.scriptJsLoaded && typeof getCurrent === 'function' && typeof loadMenuToPage === 'function') {
-        // Script already loaded
+      waitForScript(() => {
         initializeOrderPage();
         setupPaymentMethodHandlers();
-      } else {
-        // Wait for script.js to load with multiple retries
-        let retries = 0;
-        const maxRetries = 10;
-        const checkInterval = setInterval(() => {
-          retries++;
-          if ((window.scriptJsLoaded || typeof getCurrent === 'function') && typeof loadMenuToPage === 'function') {
-            clearInterval(checkInterval);
-            initializeOrderPage();
-            setupPaymentMethodHandlers();
-          } else if (retries >= maxRetries) {
-            clearInterval(checkInterval);
-            console.error('script.js failed to load after multiple retries');
-            // Still try to initialize with what we have
-            initializeOrderPage();
-            setupPaymentMethodHandlers();
-          }
-        }, 200);
-      }
+      });
     });
 
     function showConfirmBox(){
