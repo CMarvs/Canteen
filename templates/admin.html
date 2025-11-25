@@ -11,7 +11,7 @@
   <header class="topbar">
     <div class="brand">🍽️ RMLCanteen Admin</div>
     <nav class="nav">
-      <a href="#" onclick="logoutUser()">🚪 Logout</a>
+      <a href="#" onclick="if(typeof logoutUser === 'function') { logoutUser(); } else { if(typeof clearCurrent === 'function') clearCurrent(); localStorage.removeItem('canteen_cart_v2'); location.href='index.html'; }">🚪 Logout</a>
     </nav>
   </header>
 
@@ -2171,7 +2171,21 @@
     /* -------- Initialize -------- */
 
     window.addEventListener('DOMContentLoaded', () => {
-      ensureLoggedIn('admin');
+      // Check if functions are available (they should be from script.js)
+      if (typeof ensureLoggedIn === 'function') {
+        ensureLoggedIn('admin');
+      } else {
+        console.error('ensureLoggedIn function not found. Please check if script.js is loaded.');
+        // Fallback: check login manually
+        if (typeof getCurrent === 'function') {
+          const currentUser = getCurrent();
+          if (!currentUser || currentUser.role !== 'admin') {
+            alert('Please login as admin');
+            location.href = 'index.html';
+            return;
+          }
+        }
+      }
       renderStats();
       renderAdminOrders();
       renderAdminMenuList(); // Load menu items on page load
