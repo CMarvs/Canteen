@@ -142,6 +142,15 @@
 
     /* -------- Statistics Dashboard -------- */
     async function renderStats() {
+      const statsGrid = document.getElementById('statsGrid');
+      if (!statsGrid) return;
+      
+      // Show loading state if stats are being calculated
+      if (!allOrders.length) {
+        statsGrid.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
+        return;
+      }
+      
       const orders = allOrders;
       const stats = {
         total: orders.length,
@@ -151,8 +160,6 @@
         delivered: orders.filter(o => o.status === 'Delivered').length,
         revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0)
       };
-
-      const statsGrid = document.getElementById('statsGrid');
       if (!statsGrid) return;
 
       statsGrid.innerHTML = `
@@ -215,6 +222,15 @@
         if (tabEl) tabEl.classList.add('active');
         if (sectionEl) sectionEl.classList.add('active');
         renderAdminChats();
+        // Start auto-refresh for chats list when on chats tab
+        if (chatListRefreshInterval) {
+          clearInterval(chatListRefreshInterval);
+        }
+        chatListRefreshInterval = setInterval(() => {
+          if (document.getElementById('chatsSection')?.classList.contains('active')) {
+            renderAdminChats();
+          }
+        }, 15000); // Refresh every 15 seconds
       } else if (tab === 'menu') {
         const tabEl = document.getElementById('tabMenu');
         const sectionEl = document.getElementById('menuSection');
@@ -238,8 +254,22 @@
 
     /* -------- Render Orders (API) -------- */
     async function renderAdminOrders() {
+      // Show loading state
+      const ordersList = document.getElementById('ordersList');
+      if (ordersList) {
+        ordersList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading orders...</div></div>';
+      }
+      
       try {
-        const response = await fetch('/orders');
+        const response = await fetch(`/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load orders: ${response.status}`);
+        }
+        
         const orders = await response.json();
         allOrders = orders.reverse();
         filteredOrders = [...allOrders];
@@ -254,7 +284,17 @@
         }
       } catch(error) {
         console.error('Error loading orders:', error);
-        document.getElementById('ordersList').innerHTML = '<p class="muted">Failed to load orders</p>';
+        const ordersList = document.getElementById('ordersList');
+        if (ordersList) {
+          ordersList.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load orders</div>
+              <button onclick="renderAdminOrders()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+        showNotification('Failed to load orders. Please try again.', 'error');
       }
     }
 
@@ -437,24 +477,33 @@
       }).join('');
     }
 
-    /* -------- Filter Orders -------- */
+    /* -------- Filter Orders (with debouncing) -------- */
+    let filterTimeout = null;
     function filterOrders() {
-      const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+      // Clear previous timeout
+      if (filterTimeout) {
+        clearTimeout(filterTimeout);
+      }
+      
+      // Debounce search - wait 300ms after user stops typing
+      filterTimeout = setTimeout(() => {
+        const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
 
-      filteredOrders = allOrders.filter(o => {
-        const buyerName = (o.fullname || o.name || '').toLowerCase();
-        const buyerContact = (o.contact || o.number || '').toLowerCase();
-        const orderId = (o.id || '').toLowerCase();
-        
-        const matchesSearch = !searchTerm || 
-          buyerName.includes(searchTerm) || 
-          buyerContact.includes(searchTerm) ||
-          orderId.includes(searchTerm);
-        
-        return matchesSearch;
-      });
+        filteredOrders = allOrders.filter(o => {
+          const buyerName = (o.fullname || o.name || '').toLowerCase();
+          const buyerContact = (o.contact || o.number || '').toLowerCase();
+          const orderId = String(o.id || '').toLowerCase();
+          
+          const matchesSearch = !searchTerm || 
+            buyerName.includes(searchTerm) || 
+            buyerContact.includes(searchTerm) ||
+            orderId.includes(searchTerm);
+          
+          return matchesSearch;
+        });
 
-      displayOrders();
+        displayOrders();
+      }, 300);
     }
 
     /* -------- Mark Payment as Paid (GCash) -------- */
@@ -1010,27 +1059,42 @@
 
     /* -------- View User Profile -------- */
     async function viewUserProfile(userId) {
+      if (!userId) {
+        showNotification('User ID is missing. Cannot load profile.', 'error');
+        return;
+      }
+      
+      // Show loading state
+      const loadingOverlay = document.createElement('div');
+      loadingOverlay.className = 'loading-overlay';
+      loadingOverlay.id = 'profileLoadingOverlay';
+      loadingOverlay.innerHTML = `
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <div>Loading user profile...</div>
+        </div>
+      `;
+      document.body.appendChild(loadingOverlay);
+      
       try {
-        if (!userId) {
-          alert('User ID is missing. Cannot load profile.');
-          return;
-        }
-        
-        console.log('Loading user profile for user ID:', userId);
-        const response = await fetch(`/users/${userId}/details`);
+        const response = await fetch(`/users/${userId}/details?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Error response:', response.status, errorText);
-          throw new Error(`Failed to fetch user details: ${response.status} ${response.statusText}`);
+          const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(errorData.detail || `Failed to fetch user details: ${response.status}`);
         }
         
         const data = await response.json();
-        console.log('User profile data received:', data);
         
         if (!data || !data.user) {
           throw new Error('Invalid response format: user data not found');
         }
+        
+        // Remove loading overlay
+        loadingOverlay.remove();
         
         const user = data.user;
         const orders = data.orders || [];
@@ -1183,7 +1247,9 @@
           stack: error.stack,
           userId: userId
         });
-        alert(`Failed to load user profile: ${error.message}\n\nPlease check the console for more details.`);
+        loadingOverlay.remove();
+        showNotification(`Failed to load user profile: ${error.message}`, 'error');
+        console.error('Error loading user profile:', error);
       }
     }
 
@@ -2112,8 +2178,8 @@
         }
       });
 
-      // Poll every 5 seconds
-      orderPollInterval = setInterval(checkForNewOrders, 5000);
+      // Poll every 8 seconds (reduced frequency for better performance)
+      orderPollInterval = setInterval(checkForNewOrders, 8000);
     }
 
     // Stop polling
@@ -2125,40 +2191,99 @@
     }
 
     /* -------- Chat Management Functions -------- */
+    let chatFetchController = null;
     async function renderAdminChats() {
+      // Cancel previous request if still pending
+      if (chatFetchController) {
+        chatFetchController.abort();
+      }
+      chatFetchController = new AbortController();
+      
+      // Show loading state
+      const chatsList = document.getElementById('chatsList');
+      if (chatsList) {
+        chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
+      }
+      
       try {
         // Get all orders
-        const ordersResponse = await fetch('/orders');
+        const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          signal: chatFetchController.signal
+        });
+        
+        if (!ordersResponse.ok) {
+          throw new Error(`Failed to load orders: ${ordersResponse.status}`);
+        }
+        
         const orders = await ordersResponse.json();
         
-        // Get messages for all orders
+        // Get messages for all orders (limit concurrent requests)
         const chatsWithMessages = [];
-        for (const order of orders) {
-          try {
-            const messagesResponse = await fetch(`/orders/${order.id}/messages`);
-            if (messagesResponse.ok) {
-              const messages = await messagesResponse.json();
-              if (messages && messages.length > 0) {
-                // Count unread messages (messages from users that admin hasn't read)
-                const unreadCount = messages.filter(m => 
-                  m.sender_role === 'user' && !m.is_read
-                ).length;
+        const batchSize = 5; // Process 5 orders at a time
+        
+        for (let i = 0; i < orders.length; i += batchSize) {
+          const batch = orders.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (order) => {
+            try {
+              const messagesResponse = await fetch(`/orders/${order.id}/messages?t=${Date.now()}`, {
+                cache: 'no-cache',
+                signal: chatFetchController.signal
+              });
+              if (messagesResponse.ok) {
+                const messages = await messagesResponse.json();
+                // Ensure messages is an array
+                const messagesArray = Array.isArray(messages) ? messages : [];
                 
-                // Get last message
-                const lastMessage = messages[messages.length - 1];
-                
-                chatsWithMessages.push({
-                  order: order,
-                  messageCount: messages.length,
-                  unreadCount: unreadCount,
-                  lastMessage: lastMessage,
-                  lastMessageTime: lastMessage.created_at
-                });
+                if (messagesArray.length > 0) {
+                  // Convert messages to plain objects if needed (handle RealDictRow)
+                  const plainMessages = messagesArray.map(m => {
+                    if (typeof m === 'object' && m !== null) {
+                      return {
+                        id: m.id || m.get('id'),
+                        order_id: m.order_id || m.get('order_id'),
+                        user_id: m.user_id || m.get('user_id'),
+                        sender_role: m.sender_role || m.get('sender_role'),
+                        sender_name: m.sender_name || m.get('sender_name'),
+                        message: m.message || m.get('message'),
+                        is_read: m.is_read || m.get('is_read'),
+                        read_at: m.read_at || m.get('read_at'),
+                        created_at: m.created_at || m.get('created_at')
+                      };
+                    }
+                    return m;
+                  });
+                  
+                  // Count unread messages (messages from users that admin hasn't read)
+                  const unreadCount = plainMessages.filter(m => 
+                    m.sender_role === 'user' && !m.is_read
+                  ).length;
+                  
+                  // Get last message
+                  const lastMessage = plainMessages[plainMessages.length - 1];
+                  
+                  return {
+                    order: order,
+                    messageCount: plainMessages.length,
+                    unreadCount: unreadCount,
+                    lastMessage: lastMessage,
+                    lastMessageTime: lastMessage.created_at
+                  };
+                }
               }
+              return null;
+            } catch (err) {
+              if (err.name !== 'AbortError') {
+                console.error(`Error fetching messages for order ${order.id}:`, err);
+              }
+              return null;
             }
-          } catch (err) {
-            console.error(`Error fetching messages for order ${order.id}:`, err);
-          }
+          });
+          
+          const batchResults = await Promise.all(batchPromises);
+          batchResults.forEach(result => {
+            if (result) chatsWithMessages.push(result);
+          });
         }
         
         // Sort by last message time (newest first)
@@ -2235,8 +2360,23 @@
           `;
         }).join('');
       } catch(error) {
+        if (error.name === 'AbortError') {
+          return; // Request was cancelled, don't show error
+        }
         console.error('Error loading chats:', error);
-        document.getElementById('chatsList').innerHTML = '<p class="muted">Failed to load chats</p>';
+        const chatsList = document.getElementById('chatsList');
+        if (chatsList) {
+          chatsList.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load chats</div>
+              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+        showNotification('Failed to load chats. Please try again.', 'error');
+      } finally {
+        chatFetchController = null;
       }
     }
     
@@ -2283,15 +2423,32 @@
     
     // Poll for unread chats
     let chatPollInterval = null;
+    let chatListRefreshInterval = null;
+    
     function startChatPolling() {
       checkUnreadChats();
-      chatPollInterval = setInterval(checkUnreadChats, 5000);
+      // Poll every 8 seconds (reduced frequency)
+      chatPollInterval = setInterval(checkUnreadChats, 8000);
+      
+      // Also refresh the chats list if we're on the chats tab
+      if (document.getElementById('chatsSection')?.classList.contains('active')) {
+        renderAdminChats();
+        chatListRefreshInterval = setInterval(() => {
+          if (document.getElementById('chatsSection')?.classList.contains('active')) {
+            renderAdminChats();
+          }
+        }, 15000); // Refresh every 15 seconds (increased to reduce load)
+      }
     }
     
     function stopChatPolling() {
       if (chatPollInterval) {
         clearInterval(chatPollInterval);
         chatPollInterval = null;
+      }
+      if (chatListRefreshInterval) {
+        clearInterval(chatListRefreshInterval);
+        chatListRefreshInterval = null;
       }
     }
 

@@ -2097,7 +2097,32 @@ async def get_order_messages(order_id: int, request: Request):
             ORDER BY created_at ASC
         """, (order_id,))
         messages = cur.fetchall()
-        return messages if messages else []
+        
+        # Convert RealDictRow to plain dict for JSON serialization
+        if messages:
+            messages_list = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    messages_list.append(dict(msg))
+                else:
+                    # Handle tuple response
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    if col_names:
+                        messages_list.append(dict(zip(col_names, msg)))
+                    else:
+                        messages_list.append({
+                            'id': msg[0] if len(msg) > 0 else None,
+                            'order_id': msg[1] if len(msg) > 1 else None,
+                            'user_id': msg[2] if len(msg) > 2 else None,
+                            'sender_role': msg[3] if len(msg) > 3 else None,
+                            'sender_name': msg[4] if len(msg) > 4 else None,
+                            'message': msg[5] if len(msg) > 5 else None,
+                            'is_read': msg[6] if len(msg) > 6 else None,
+                            'read_at': msg[7] if len(msg) > 7 else None,
+                            'created_at': msg[8] if len(msg) > 8 else None
+                        })
+            return messages_list
+        return []
     except HTTPException:
         raise
     except Exception as e:
