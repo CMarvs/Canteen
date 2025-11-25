@@ -845,7 +845,7 @@ function showGCashPaymentModal(paymentData) {
     
       <!-- QR Code -->
       <div style="text-align: center; margin-bottom: 20px;">
-        <img src="/static/gcash-qr.png" alt="GCash QR Code" 
+        <img src="/static/gcash-qr.jpg" alt="GCash QR Code" 
              style="max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto;">
       </div>
       
