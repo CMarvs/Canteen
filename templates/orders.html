@@ -56,12 +56,12 @@
     // Check for unread chat messages
     async function checkUnreadChatMessages() {
       try {
-        const cur = getCurrent();
-        if (!cur) return;
+        const currentUser = getCurrent();
+        if (!currentUser) return;
         
         const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`);
         const allOrders = await response.json();
-        const myOrders = allOrders.filter(o => o.user_id === cur.id);
+        const myOrders = allOrders.filter(o => o.user_id === currentUser.id);
         
         let totalUnread = 0;
         for (const order of myOrders) {
@@ -111,7 +111,49 @@
     }
     
     window.addEventListener('DOMContentLoaded', () => {
-      ensureLoggedIn('user'); // This will check and show approval notification
+      // Check authentication - use fallback to avoid ensureLoggedIn issues
+      let isAuthenticated = false;
+      
+      if (typeof getCurrent === 'function') {
+        try {
+          const currentUser = getCurrent();
+          if (currentUser && currentUser.role === 'user') {
+            isAuthenticated = true;
+          }
+        } catch(e) {
+          console.warn('getCurrent error:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        // Fallback: check localStorage directly
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            const currentUser = JSON.parse(stored);
+            if (currentUser && currentUser.role === 'user') {
+              isAuthenticated = true;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        alert('Please login first');
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Try to call ensureLoggedIn if available (but don't fail if it's not)
+      if (typeof ensureLoggedIn === 'function') {
+        try {
+          ensureLoggedIn('user'); // This will check and show approval notification
+        } catch(e) {
+          console.warn('ensureLoggedIn error (continuing anyway):', e);
+        }
+      }
       // Force reload orders when page loads
       renderUserOrders();
       // Start real-time polling

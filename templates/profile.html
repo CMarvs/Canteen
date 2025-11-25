@@ -87,11 +87,11 @@
 
     // Load user's existing rating
     async function loadUserRating() {
-      const cur = getCurrent();
-      if (!cur) return;
+      const currentUser = getCurrent();
+      if (!currentUser) return;
 
       try {
-        const response = await fetch(`${API_BASE}/ratings/user/${cur.id}`);
+        const response = await fetch(`${API_BASE}/ratings/user/${currentUser.id}`);
         if (response.ok) {
           const rating = await response.json();
           if (rating) {
@@ -196,8 +196,8 @@
     }
 
     async function submitRating() {
-      const cur = getCurrent();
-      if (!cur) {
+      const currentUser = getCurrent();
+      if (!currentUser) {
         alert('Please login first');
         return;
       }
@@ -214,7 +214,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: cur.id,
+            user_id: currentUser.id,
             rating: selectedRating,
             comment: comment
           })
@@ -244,7 +244,50 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      ensureLoggedIn();
+      // Check authentication
+      let isAuthenticated = false;
+      
+      if (typeof getCurrent === 'function') {
+        try {
+          const currentUser = getCurrent();
+          if (currentUser) {
+            isAuthenticated = true;
+          }
+        } catch(e) {
+          console.warn('getCurrent error:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        // Fallback: check localStorage directly
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            const currentUser = JSON.parse(stored);
+            if (currentUser) {
+              isAuthenticated = true;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        alert('Please login first');
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Try to call ensureLoggedIn if available (but don't fail if it's not)
+      if (typeof ensureLoggedIn === 'function') {
+        try {
+          ensureLoggedIn();
+        } catch(e) {
+          console.warn('ensureLoggedIn error (continuing anyway):', e);
+        }
+      }
+      
       loadProfilePage();
       loadUserRating();
       loadAverageRating();

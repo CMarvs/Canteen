@@ -14,7 +14,7 @@
       <a href="order.html" class="active">Menu</a>
       <a href="orders.html">My Orders</a>
       <a href="profile.html">Profile</a>
-      <a href="#" onclick="logoutUser()">Logout</a>
+      <a href="#" onclick="if(typeof logoutUser === 'function') { logoutUser(); } else { if(typeof clearCurrent === 'function') clearCurrent(); localStorage.removeItem('canteen_cart_v2'); location.href='index.html'; }">Logout</a>
     </nav>
   </header>
 
@@ -99,19 +99,64 @@
   <script src="/static/script.js"></script>
   <script>
     window.addEventListener('DOMContentLoaded', () => {
-      ensureLoggedIn('user');
+      // Check authentication - use fallback to avoid ensureLoggedIn issues
+      let isAuthenticated = false;
+      
+      if (typeof getCurrent === 'function') {
+        try {
+          const currentUser = getCurrent();
+          if (currentUser && currentUser.role === 'user') {
+            isAuthenticated = true;
+          }
+        } catch(e) {
+          console.warn('getCurrent error:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        // Fallback: check localStorage directly
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            const currentUser = JSON.parse(stored);
+            if (currentUser && currentUser.role === 'user') {
+              isAuthenticated = true;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+      if (!isAuthenticated) {
+        alert('Please login first');
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      // Try to call ensureLoggedIn if available (but don't fail if it's not)
+      if (typeof ensureLoggedIn === 'function') {
+        try {
+          ensureLoggedIn('user');
+        } catch(e) {
+          console.warn('ensureLoggedIn error (continuing anyway):', e);
+        }
+      }
+      
       loadMenuToPage();
       renderCart();
       
       // Clear form if cart is empty (user just placed an order)
-      const cart = getCart();
-      if(cart.length === 0) {
-        const delName = document.getElementById('delName');
-        const delContact = document.getElementById('delContact');
-        const delAddress = document.getElementById('delAddress');
-        if(delName) delName.value = '';
-        if(delContact) delContact.value = '';
-        if(delAddress) delAddress.value = '';
+      if (typeof getCart === 'function') {
+        const cart = getCart();
+        if(cart.length === 0) {
+          const delName = document.getElementById('delName');
+          const delContact = document.getElementById('delContact');
+          const delAddress = document.getElementById('delAddress');
+          if(delName) delName.value = '';
+          if(delContact) delContact.value = '';
+          if(delAddress) delAddress.value = '';
+        }
       }
     });
 
@@ -122,48 +167,75 @@
       const codDetails = document.getElementById('codDetails');
       const gcashDetails = document.getElementById('gcashDetails');
       
+      if (!paymentMethods.length || !paymentDetails || !codDetails || !gcashDetails) {
+        console.warn('Payment method elements not found');
+        return;
+      }
+      
       paymentMethods.forEach(method => {
         method.addEventListener('change', () => {
           if (method.value === 'cod') {
-            codDetails.style.display = 'block';
-            gcashDetails.style.display = 'none';
-            paymentDetails.style.display = 'block';
+            if (codDetails) codDetails.style.display = 'block';
+            if (gcashDetails) gcashDetails.style.display = 'none';
+            if (paymentDetails) paymentDetails.style.display = 'block';
           } else if (method.value === 'gcash') {
-            codDetails.style.display = 'none';
-            gcashDetails.style.display = 'block';
-            paymentDetails.style.display = 'block';
+            if (codDetails) codDetails.style.display = 'none';
+            if (gcashDetails) gcashDetails.style.display = 'block';
+            if (paymentDetails) paymentDetails.style.display = 'block';
           }
           
           // Update label styles
           document.querySelectorAll('label[for^="payment"]').forEach(label => {
             const input = label.querySelector('input');
-            if (input.checked) {
-              label.style.borderColor = '#8B4513';
-              label.style.background = '#fff8f1';
-            } else {
-              label.style.borderColor = '#ddd';
-              label.style.background = '';
+            if (input && label) {
+              if (input.checked) {
+                label.style.borderColor = '#8B4513';
+                label.style.background = '#fff8f1';
+              } else {
+                label.style.borderColor = '#ddd';
+                label.style.background = '';
+              }
             }
           });
         });
       });
       
       // Initialize with COD selected
-      if (document.getElementById('paymentCOD').checked) {
+      const paymentCOD = document.getElementById('paymentCOD');
+      const codLabel = document.querySelector('label[for="paymentCOD"]');
+      
+      if (paymentCOD && paymentCOD.checked && codDetails && paymentDetails) {
         codDetails.style.display = 'block';
         paymentDetails.style.display = 'block';
-        document.querySelector('label[for="paymentCOD"]').style.borderColor = '#8B4513';
-        document.querySelector('label[for="paymentCOD"]').style.background = '#fff8f1';
+        if (codLabel) {
+          codLabel.style.borderColor = '#8B4513';
+          codLabel.style.background = '#fff8f1';
+        }
       }
     });
 
     function showConfirmBox(){
-      const name = document.getElementById('delName').value.trim();
-      const contact = document.getElementById('delContact').value.trim();
-      const address = document.getElementById('delAddress').value.trim();
-      const cart = getCart();
+      const name = document.getElementById('delName')?.value.trim() || '';
+      const contact = document.getElementById('delContact')?.value.trim() || '';
+      const address = document.getElementById('delAddress')?.value.trim() || '';
       
-      if(cart.length === 0) {
+      // Get cart
+      let cart = [];
+      if (typeof getCart === 'function') {
+        cart = getCart();
+      } else {
+        // Fallback: get from localStorage
+        try {
+          const stored = localStorage.getItem('canteen_cart_v2');
+          if (stored) {
+            cart = JSON.parse(stored);
+          }
+        } catch(e) {
+          console.error('Error getting cart:', e);
+        }
+      }
+      
+      if(!cart || cart.length === 0) {
         alert('Cart is empty.');
         return;
       }
@@ -209,7 +281,19 @@
       // Update contact to digits only
       const validContact = contactDigits;
       
-      const subtotal = calcSubtotal();
+      // Get subtotal and grand total
+      let subtotal = 0;
+      const DELIVERY_FEE = 10;
+      
+      if (typeof calcSubtotal === 'function') {
+        subtotal = calcSubtotal();
+      } else {
+        // Fallback: calculate manually
+        if (typeof getCart === 'function') {
+          const cartItems = getCart();
+          subtotal = cartItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.qty)), 0);
+        }
+      }
       const grand = subtotal + DELIVERY_FEE;
       
       const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'GCash';
