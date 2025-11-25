@@ -1489,6 +1489,121 @@ async def delete_menu_item(item_id: int):
     finally:
         conn.close()
 
+# --- Admin: Process Refund ---
+@app.post("/orders/{order_id}/refund")
+async def process_refund(order_id: int, request: Request):
+    """Process a refund for an order and notify the user"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Check if refund_status column exists, if not add it
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'refund_status'
+            """)
+            has_refund_status = cur.fetchone() is not None
+            
+            if not has_refund_status:
+                print("[INFO] Adding refund_status column to orders table...")
+                cur.execute("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT NULL;")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add refund_status column: {col_error}")
+        
+        # Get order details
+        cur.execute("SELECT id, user_id, total, status, refund_status FROM orders WHERE id = %s", (order_id,))
+        order = cur.fetchone()
+        
+        if not order:
+            raise HTTPException(404, "Order not found")
+        
+        # Convert to dict if needed
+        if not isinstance(order, dict):
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+            order = dict(zip(col_names, order)) if col_names else {}
+        
+        # Check if already refunded
+        if order.get('refund_status') == 'refunded':
+            raise HTTPException(400, "This order has already been refunded")
+        
+        # Check if order is delivered (can't refund delivered orders)
+        if order.get('status') == 'Delivered':
+            raise HTTPException(400, "Cannot refund delivered orders")
+        
+        # Check if updated_at column exists
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'updated_at'
+            """)
+            has_updated_at = cur.fetchone() is not None
+            
+            if has_updated_at:
+                cur.execute("""
+                    UPDATE orders 
+                    SET refund_status = 'refunded', status = 'Cancelled', updated_at = NOW()
+                    WHERE id = %s
+                """, (order_id,))
+            else:
+                cur.execute("""
+                    UPDATE orders 
+                    SET refund_status = 'refunded', status = 'Cancelled'
+                    WHERE id = %s
+                """, (order_id,))
+        except Exception as update_error:
+            print(f"[WARNING] Could not update refund status: {update_error}")
+            # Fallback without updated_at
+            cur.execute("""
+                UPDATE orders 
+                SET refund_status = 'refunded', status = 'Cancelled'
+                WHERE id = %s
+            """, (order_id,))
+        
+        # Send notification to user via chat
+        user_id = order.get('user_id')
+        order_total = order.get('total', 0)
+        
+        if user_id:
+            try:
+                # Ensure chat_messages table exists
+                ensure_chat_table_exists()
+                
+                # Send refund notification message
+                cur.execute("""
+                    INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    order_id,
+                    user_id,
+                    'admin',
+                    'Admin',
+                    f'💰 Your refund of ₱{float(order_total):.2f} for Order #{order_id} has been processed. The amount will be credited to your account within 3-5 business days.'
+                ))
+            except Exception as chat_error:
+                print(f"[WARNING] Could not send refund notification: {chat_error}")
+        
+        conn.commit()
+        
+        return {
+            "success": True,
+            "message": "Refund processed successfully",
+            "order_id": order_id,
+            "refund_amount": float(order_total)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Process refund error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to process refund: {str(e)}")
+    finally:
+        conn.close()
+
 # --- Admin: Update order status or details ---
 @app.put("/orders/{oid}")
 async def update_order(oid: int, request: Request):

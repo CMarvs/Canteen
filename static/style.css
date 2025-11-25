@@ -97,6 +97,37 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
   }
 }
 
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
 .chat-box [id^="chatMessages_"] {
   /* Standard scrollbar styling */
   scrollbar-width: thin;

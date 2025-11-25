@@ -426,6 +426,11 @@
               <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
               <button class="btn small" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat</button>
               ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
+              ${o.refund_status === 'refunded' ? `
+                <span style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block;">✅ Refunded</span>
+              ` : (o.status !== 'Delivered' && o.status !== 'Cancelled') ? `
+                <button class="btn small" onclick="processRefund(${o.id})" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💰 Refund</button>
+              ` : ''}
             </div>
           </div>
         `;
@@ -533,6 +538,45 @@
       // Success - update the UI silently
       await renderAdminOrders();
       filterOrders();
+    }
+
+    /* -------- Process Refund -------- */
+    async function processRefund(orderId) {
+      // Get order details for confirmation
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+      
+      const orderTotal = Number(order.total || 0).toFixed(2);
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      
+      if (!confirm(`💰 Process Refund for Order #${sequentialNumber}?\n\nRefund Amount: ₱${orderTotal}\n\nThis will:\n- Mark the order as refunded\n- Cancel the order\n- Notify the customer\n\nContinue?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/orders/${orderId}/refund`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          showNotification(`✅ Refund processed successfully! Amount: ₱${result.refund_amount.toFixed(2)}`, 'success');
+          
+          // Refresh orders to show updated status
+          await renderAdminOrders();
+        } else {
+          const error = await response.json();
+          showNotification(`❌ Failed to process refund: ${error.detail || 'Unknown error'}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error processing refund:', error);
+        showNotification('❌ Failed to process refund. Please try again.', 'error');
+      }
     }
 
     /* -------- Cancel/Delete Order (only for Pending orders) -------- */
@@ -1863,6 +1907,45 @@
       } catch(e) {
         console.log('Could not play notification sound:', e);
       }
+    }
+
+    // Show general notification
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        background: ${type === 'success' ? 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)' : type === 'error' ? 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)' : 'linear-gradient(135deg, #8B4513 0%, #A0522D 100%)'};
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid ${type === 'success' ? '#FFD700' : type === 'error' ? '#fff' : '#FFD700'};
+      `;
+
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="flex: 1; font-weight: 500;">${message}</div>
+          <button onclick="this.parentElement.parentElement.remove()" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      container.appendChild(notification);
+
+      // Auto-remove after 5 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 5000);
     }
 
     // Show notification

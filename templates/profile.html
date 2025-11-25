@@ -38,44 +38,56 @@
 
     <!-- Service Rating Section -->
     <section class="card" style="margin-top: 20px;">
-      <h3 style="margin-top: 0; color: #8B4513;">⭐ Rate Our Service</h3>
-      <p style="color: #666; margin-bottom: 16px;">Help us improve by sharing your experience!</p>
+      <h3 style="margin-top: 0; color: #8B4513; margin-bottom: 8px;">⭐ Rate Our Service</h3>
+      <p style="color: #666; margin-bottom: 24px; font-size: 0.95rem;">Help us improve by sharing your experience!</p>
       
-      <div id="ratingDisplay" style="margin-bottom: 20px; padding: 16px; background: #fff8f1; border-radius: 8px; display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <div>
-            <strong>Your Rating:</strong>
-            <div id="userRatingStars" style="display: inline-block; margin-left: 8px;"></div>
+      <!-- User's Current Rating Display -->
+      <div id="ratingDisplay" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, #fff8f1 0%, #ffe8d1 100%); border: 2px solid #8B4513; border-radius: 12px; display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: #8B4513; margin-bottom: 8px; font-size: 1.1rem;">Your Rating</div>
+            <div id="userRatingStars" style="font-size: 2rem; margin-bottom: 12px;"></div>
+            <div id="userRatingComment" style="color: #555; font-style: italic; padding: 12px; background: white; border-radius: 8px; border-left: 3px solid #8B4513;"></div>
           </div>
-          <button class="btn small ghost" onclick="editRating()" style="padding: 4px 12px;">Edit</button>
+          <button class="btn small" onclick="editRating()" style="background: #8B4513; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; margin-left: 16px;">✏️ Edit</button>
         </div>
-        <div id="userRatingComment" style="color: #666; font-style: italic; margin-top: 8px;"></div>
       </div>
 
+      <!-- Rating Form -->
       <div id="ratingForm">
-        <label class="input-label">Rating (1-5 stars)</label>
-        <div id="starRating" style="display: flex; gap: 8px; margin-bottom: 16px; font-size: 2rem; cursor: pointer;">
-          <span data-rating="1" onmouseover="hoverRating(1)" onmouseout="resetRating()" onclick="selectRating(1)">☆</span>
-          <span data-rating="2" onmouseover="hoverRating(2)" onmouseout="resetRating()" onclick="selectRating(2)">☆</span>
-          <span data-rating="3" onmouseover="hoverRating(3)" onmouseout="resetRating()" onclick="selectRating(3)">☆</span>
-          <span data-rating="4" onmouseover="hoverRating(4)" onmouseout="resetRating()" onclick="selectRating(4)">☆</span>
-          <span data-rating="5" onmouseover="hoverRating(5)" onmouseout="resetRating()" onclick="selectRating(5)">☆</span>
+        <!-- Star Rating Section -->
+        <div style="margin-bottom: 24px;">
+          <label class="input-label" style="display: block; margin-bottom: 12px; font-weight: 600; color: #333;">How would you rate our service?</label>
+          <div style="text-align: center; padding: 20px; background: #f9f9f9; border-radius: 12px; border: 2px dashed #ddd;">
+            <div id="starRating" style="display: flex; gap: 12px; justify-content: center; margin-bottom: 12px; font-size: 3rem; cursor: pointer;">
+              <span data-rating="1" onmouseover="hoverRating(1)" onmouseout="resetRating()" onclick="selectRating(1)" style="transition: all 0.2s; user-select: none;">☆</span>
+              <span data-rating="2" onmouseover="hoverRating(2)" onmouseout="resetRating()" onclick="selectRating(2)" style="transition: all 0.2s; user-select: none;">☆</span>
+              <span data-rating="3" onmouseover="hoverRating(3)" onmouseout="resetRating()" onclick="selectRating(3)" style="transition: all 0.2s; user-select: none;">☆</span>
+              <span data-rating="4" onmouseover="hoverRating(4)" onmouseout="resetRating()" onclick="selectRating(4)" style="transition: all 0.2s; user-select: none;">☆</span>
+              <span data-rating="5" onmouseover="hoverRating(5)" onmouseout="resetRating()" onclick="selectRating(5)" style="transition: all 0.2s; user-select: none;">☆</span>
+            </div>
+            <div id="ratingText" style="color: #8B4513; font-weight: 600; font-size: 1.2rem; min-height: 28px; margin-top: 8px;"></div>
+            <p style="color: #999; font-size: 0.85rem; margin-top: 8px; margin-bottom: 0;">Click on a star to rate</p>
+          </div>
         </div>
-        <div id="ratingText" style="color: #8B4513; font-weight: 600; margin-bottom: 16px; min-height: 24px;"></div>
 
-        <label class="input-label" for="ratingComment">Comment (Optional)</label>
-        <textarea id="ratingComment" name="ratingComment" placeholder="Tell us about your experience..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px; font-family: inherit;"></textarea>
+        <!-- Comment Section -->
+        <div style="margin-bottom: 24px;">
+          <label class="input-label" for="ratingComment" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Share your feedback (Optional)</label>
+          <textarea id="ratingComment" name="ratingComment" placeholder="Tell us what you liked or how we can improve..." style="width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 8px; min-height: 100px; font-family: inherit; font-size: 0.95rem; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#8B4513'" onblur="this.style.borderColor='#ddd'"></textarea>
+        </div>
 
-        <div style="margin-top: 16px;">
-          <button class="btn" onclick="submitServiceRating()">Submit Rating</button>
+        <!-- Submit Button -->
+        <div style="display: flex; gap: 12px;">
+          <button class="btn" onclick="submitServiceRating()" style="flex: 1; background: #8B4513; color: white; padding: 14px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; border: none; transition: background 0.2s;" onmouseover="this.style.background='#a0522d'" onmouseout="this.style.background='#8B4513'">⭐ Submit Rating</button>
         </div>
       </div>
 
       <!-- Average Rating Display -->
-      <div id="averageRatingDisplay" style="margin-top: 20px; padding: 16px; background: #f9f9f9; border-radius: 8px; text-align: center;">
-        <p style="margin: 0; color: #666; font-size: 0.9rem;">Overall Service Rating</p>
-        <div id="averageRatingStars" style="font-size: 1.5rem; margin: 8px 0;"></div>
-        <p id="averageRatingText" style="margin: 0; color: #8B4513; font-weight: 600;"></p>
+      <div id="averageRatingDisplay" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f9f9f9 0%, #e8e8e8 100%); border-radius: 12px; text-align: center; border: 1px solid #ddd;">
+        <p style="margin: 0 0 12px 0; color: #666; font-size: 0.95rem; font-weight: 600;">Overall Service Rating</p>
+        <div id="averageRatingStars" style="font-size: 2rem; margin: 12px 0;"></div>
+        <p id="averageRatingText" style="margin: 8px 0 0 0; color: #8B4513; font-weight: 600; font-size: 1.1rem;"></p>
       </div>
     </section>
 
@@ -148,9 +160,11 @@
         if (index < rating) {
           star.textContent = '★';
           star.style.color = '#ffc107';
+          star.style.transform = 'scale(1.15)';
         } else {
           star.textContent = '☆';
           star.style.color = '#ddd';
+          star.style.transform = 'scale(1)';
         }
       });
     }
@@ -173,9 +187,11 @@
         if (index < selectedRating) {
           star.textContent = '★';
           star.style.color = '#ffc107';
+          star.style.transform = 'scale(1.1)';
         } else {
           star.textContent = '☆';
           star.style.color = '#ddd';
+          star.style.transform = 'scale(1)';
         }
       });
     }
@@ -227,10 +243,15 @@
           starsEl.innerHTML = getStarDisplay(rating.rating);
         }
         
-        if (commentEl && rating.comment) {
-          commentEl.textContent = rating.comment;
-        } else if (commentEl) {
-          commentEl.textContent = 'No comment provided.';
+        if (commentEl) {
+          if (rating.comment && rating.comment.trim()) {
+            commentEl.textContent = `"${rating.comment}"`;
+            commentEl.style.display = 'block';
+          } else {
+            commentEl.textContent = 'No comment provided.';
+            commentEl.style.fontStyle = 'italic';
+            commentEl.style.color = '#999';
+          }
         }
       }
     }

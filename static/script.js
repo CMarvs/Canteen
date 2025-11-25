@@ -1398,6 +1398,11 @@ async function renderUserOrders(){
     
     if(no) no.style.display = 'none';
     list.innerHTML = mine.map(o => orderCardHtmlForUser(o)).join('');
+    
+    // Check for refund notifications after loading orders
+    if (typeof checkRefundNotifications === 'function') {
+      setTimeout(() => checkRefundNotifications(), 500);
+    }
   } catch(error) {
     console.error('Error loading orders:', error);
     list.innerHTML = '<p class="muted">Failed to load orders</p>';
@@ -1446,9 +1451,10 @@ function orderCardHtmlForUser(o){
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
   const itemsText = items.map(i => `${i.name} ×${i.qty}`).join('<br>');
   const canCancel = o.status === 'Pending';
+  const isRefunded = o.refund_status === 'refunded';
   
   return `
-    <div class="order-card">
+    <div class="order-card" ${isRefunded ? 'style="border: 2px solid #4CAF50; background: #f0fdf4;"' : ''}>
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <strong>${orderNumberLabel}</strong>
@@ -1456,6 +1462,11 @@ function orderCardHtmlForUser(o){
           <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
             ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}
           </div>
+          ${isRefunded ? `
+          <div style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; border-radius: 8px; font-size: 0.85rem; font-weight: 600; display: inline-block;">
+            💰 Refunded: ₱${Number(o.total).toFixed(2)}
+          </div>
+          ` : ''}
         </div>
         <div>${statusBadge}</div>
       </div>
@@ -2013,34 +2024,40 @@ function showRatingModal(hasExistingRating) {
   `;
 
   modal.innerHTML = `
-    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 15px;">
-        <h2 style="margin: 0; color: #8B4513;">⭐ Rate Our Service</h2>
-        <button id="closeRatingModal" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">&times;</button>
+    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 550px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #8B4513; padding-bottom: 15px;">
+        <h2 style="margin: 0; color: #8B4513; font-size: 1.5rem;">⭐ Rate Our Service</h2>
+        <button id="closeRatingModal" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='#c0392b'" onmouseout="this.style.background='#e74c3c'">&times;</button>
       </div>
       
-      <p style="color: #666; margin-bottom: 20px;">${hasExistingRating ? 'Update your rating:' : 'Help us improve by sharing your experience!'}</p>
+      <p style="color: #666; margin-bottom: 24px; font-size: 0.95rem;">${hasExistingRating ? 'Update your rating to help us improve:' : 'Help us improve by sharing your experience!'}</p>
       
-      <div style="margin-bottom: 20px;">
-        <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #333;">Rating (1-5 stars)</label>
-        <div id="modalStarRating" style="display: flex; gap: 12px; font-size: 2.5rem; cursor: pointer; justify-content: center; margin-bottom: 12px;">
-          <span data-rating="1" onmouseover="hoverModalRating(1)" onmouseout="resetModalRating()" onclick="selectModalRating(1)">☆</span>
-          <span data-rating="2" onmouseover="hoverModalRating(2)" onmouseout="resetModalRating()" onclick="selectModalRating(2)">☆</span>
-          <span data-rating="3" onmouseover="hoverModalRating(3)" onmouseout="resetModalRating()" onclick="selectModalRating(3)">☆</span>
-          <span data-rating="4" onmouseover="hoverModalRating(4)" onmouseout="resetModalRating()" onclick="selectModalRating(4)">☆</span>
-          <span data-rating="5" onmouseover="hoverModalRating(5)" onmouseout="resetModalRating()" onclick="selectModalRating(5)">☆</span>
+      <!-- Star Rating Section -->
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #333; font-size: 1rem;">How would you rate our service?</label>
+        <div style="text-align: center; padding: 24px; background: #f9f9f9; border-radius: 12px; border: 2px dashed #ddd;">
+          <div id="modalStarRating" style="display: flex; gap: 12px; font-size: 3rem; cursor: pointer; justify-content: center; margin-bottom: 12px;">
+            <span data-rating="1" onmouseover="hoverModalRating(1)" onmouseout="resetModalRating()" onclick="selectModalRating(1)" style="transition: all 0.2s; user-select: none;">☆</span>
+            <span data-rating="2" onmouseover="hoverModalRating(2)" onmouseout="resetModalRating()" onclick="selectModalRating(2)" style="transition: all 0.2s; user-select: none;">☆</span>
+            <span data-rating="3" onmouseover="hoverModalRating(3)" onmouseout="resetModalRating()" onclick="selectModalRating(3)" style="transition: all 0.2s; user-select: none;">☆</span>
+            <span data-rating="4" onmouseover="hoverModalRating(4)" onmouseout="resetModalRating()" onclick="selectModalRating(4)" style="transition: all 0.2s; user-select: none;">☆</span>
+            <span data-rating="5" onmouseover="hoverModalRating(5)" onmouseout="resetModalRating()" onclick="selectModalRating(5)" style="transition: all 0.2s; user-select: none;">☆</span>
+          </div>
+          <div id="modalRatingText" style="text-align: center; color: #8B4513; font-weight: 600; font-size: 1.2rem; min-height: 28px; margin-top: 8px;"></div>
+          <p style="color: #999; font-size: 0.85rem; margin-top: 8px; margin-bottom: 0;">Click on a star to rate</p>
         </div>
-        <div id="modalRatingText" style="text-align: center; color: #8B4513; font-weight: 600; font-size: 1.1rem; min-height: 28px;"></div>
       </div>
 
-      <div style="margin-bottom: 20px;">
-        <label for="modalRatingComment" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Comment (Optional)</label>
-        <textarea id="modalRatingComment" name="modalRatingComment" placeholder="Tell us about your experience..." style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; min-height: 100px; font-family: inherit; resize: vertical;"></textarea>
+      <!-- Comment Section -->
+      <div style="margin-bottom: 24px;">
+        <label for="modalRatingComment" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333; font-size: 1rem;">Share your feedback (Optional)</label>
+        <textarea id="modalRatingComment" name="modalRatingComment" placeholder="Tell us what you liked or how we can improve..." style="width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 8px; min-height: 100px; font-family: inherit; font-size: 0.95rem; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#8B4513'" onblur="this.style.borderColor='#ddd'"></textarea>
       </div>
 
-      <div style="display: flex; gap: 10px;">
-        <button onclick="submitModalRating()" style="flex: 1; background: #8B4513; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">Submit Rating</button>
-        <button onclick="closeRatingModal()" style="background: #999; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">Cancel</button>
+      <!-- Buttons -->
+      <div style="display: flex; gap: 12px;">
+        <button onclick="submitModalRating()" style="flex: 1; background: #8B4513; color: white; border: none; padding: 14px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; transition: background 0.2s;" onmouseover="this.style.background='#a0522d'" onmouseout="this.style.background='#8B4513'">⭐ Submit Rating</button>
+        <button onclick="closeRatingModal()" style="background: #999; color: white; border: none; padding: 14px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; transition: background 0.2s;" onmouseover="this.style.background='#777'" onmouseout="this.style.background='#999'">Cancel</button>
       </div>
     </div>
   `;
@@ -2075,9 +2092,11 @@ function hoverModalRating(rating) {
     if (index < rating) {
       star.textContent = '★';
       star.style.color = '#ffc107';
+      star.style.transform = 'scale(1.15)';
     } else {
       star.textContent = '☆';
       star.style.color = '#ddd';
+      star.style.transform = 'scale(1)';
     }
   });
 }
@@ -2100,9 +2119,11 @@ function updateModalStarDisplay() {
     if (index < ratingModalSelectedRating) {
       star.textContent = '★';
       star.style.color = '#ffc107';
+      star.style.transform = 'scale(1.1)';
     } else {
       star.textContent = '☆';
       star.style.color = '#ddd';
+      star.style.transform = 'scale(1)';
     }
   });
 }

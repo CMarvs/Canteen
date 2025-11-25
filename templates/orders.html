@@ -20,6 +20,18 @@
 
   <main class="container">
     <h2 class="headline">My Orders <span id="chatNotificationBadge" style="display:none; background: #e74c3c; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; margin-left: 8px;">0</span></h2>
+    
+    <!-- Refund Notification Banner -->
+    <div id="refundNotificationBanner" style="display: none; margin-bottom: 20px; padding: 16px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="flex: 1;">
+          <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 4px;">💰 Refund Processed!</div>
+          <div style="font-size: 0.9rem; opacity: 0.95;" id="refundNotificationMessage"></div>
+        </div>
+        <button onclick="document.getElementById('refundNotificationBanner').style.display='none'" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+      </div>
+    </div>
+    
     <div id="ordersList" class="orders-list"></div>
     <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
   </main>
@@ -161,7 +173,71 @@
       // Check for unread chat messages
       checkUnreadChatMessages();
       startChatNotificationPolling();
+      // Check for refund notifications
+      checkRefundNotifications();
     });
+    
+    // Check for refund notifications
+    async function checkRefundNotifications() {
+      try {
+        const currentUser = getCurrent();
+        if (!currentUser) return;
+        
+        const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`);
+        const allOrders = await response.json();
+        const myOrders = allOrders.filter(o => o.user_id === currentUser.id);
+        
+        // Check for refunded orders
+        const refundedOrders = myOrders.filter(o => o.refund_status === 'refunded');
+        
+        if (refundedOrders.length > 0) {
+          // Check if notification was already shown (using localStorage)
+          const lastRefundCheck = localStorage.getItem('lastRefundCheck') || '0';
+          const newRefunded = refundedOrders.filter(o => {
+            // Use created_at as fallback if updated_at doesn't exist
+            const orderDate = new Date(o.updated_at || o.created_at || Date.now()).getTime();
+            return orderDate > parseInt(lastRefundCheck);
+          });
+          
+          if (newRefunded.length > 0) {
+            // Show notification for the most recent refund
+            const latestRefund = newRefunded.sort((a, b) => {
+              const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
+              const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
+              return dateB - dateA;
+            })[0];
+            
+            const refundAmount = Number(latestRefund.total || 0).toFixed(2);
+            const orderNumberMap = getUserOrderNumberMap ? getUserOrderNumberMap() : {};
+            const sequentialNumber = orderNumberMap[latestRefund.id] || latestRefund.id;
+            const banner = document.getElementById('refundNotificationBanner');
+            const message = document.getElementById('refundNotificationMessage');
+            
+            if (banner && message) {
+              message.textContent = `Your refund of ₱${refundAmount} for Order #${sequentialNumber} has been processed. The amount will be credited to your account within 3-5 business days.`;
+              banner.style.display = 'block';
+              banner.style.animation = 'slideInRight 0.3s ease-out';
+              
+              // Update last check time
+              const now = Date.now();
+              localStorage.setItem('lastRefundCheck', now.toString());
+              
+              // Auto-hide after 15 seconds
+              setTimeout(() => {
+                if (banner && banner.style.display !== 'none') {
+                  banner.style.animation = 'fadeOut 0.5s ease-out';
+                  setTimeout(() => {
+                    if (banner) banner.style.display = 'none';
+                  }, 500);
+                }
+              }, 15000);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking refund notifications:', error);
+      }
+    }
     
     // Also reload when page becomes visible (handles tab switching, back button)
     document.addEventListener('visibilitychange', () => {
