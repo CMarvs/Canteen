@@ -14,7 +14,7 @@
       <a href="order.html" class="active">Menu</a>
       <a href="orders.html">My Orders</a>
       <a href="profile.html">Profile</a>
-      <a href="#" onclick="if(typeof logoutUser === 'function') { logoutUser(); } else { if(typeof clearCurrent === 'function') clearCurrent(); localStorage.removeItem('canteen_cart_v2'); location.href='index.html'; }">Logout</a>
+      <a href="#" id="logoutLink" style="cursor: pointer;">Logout</a>
     </nav>
   </header>
 
@@ -96,24 +96,37 @@
     </section>
   </main>
 
-  <script src="/static/script.js"></script>
+  <script src="/static/script.js" defer></script>
   <script>
     // Wait for script.js to be fully loaded
-    function waitForScript(callback, maxAttempts = 20) {
+    function waitForScript(callback, maxAttempts = 50) {
       let attempts = 0;
       const checkScript = () => {
         attempts++;
-        if (typeof getCurrent === 'function' && typeof loadMenuToPage === 'function' && typeof renderCart === 'function') {
+        // Check if all required functions are available
+        const hasGetCurrent = typeof getCurrent === 'function';
+        const hasLoadMenu = typeof loadMenuToPage === 'function';
+        const hasRenderCart = typeof renderCart === 'function';
+        
+        if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
           callback();
         } else if (attempts < maxAttempts) {
-          setTimeout(checkScript, 100);
+          setTimeout(checkScript, 150);
         } else {
-          console.error('script.js functions not available after waiting');
-          // Try to continue anyway
+          console.warn('script.js functions not fully available after waiting');
+          console.warn('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
+          // Try to continue anyway with what we have
           callback();
         }
       };
-      checkScript();
+      // Start checking after a small delay to let defer work
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          setTimeout(checkScript, 100);
+        });
+      } else {
+        setTimeout(checkScript, 100);
+      }
     }
     
     function initializeOrderPage() {
@@ -170,22 +183,65 @@
         }
       }
       
-      // Load menu and cart
-      if (typeof loadMenuToPage === 'function') {
-        try {
-          loadMenuToPage();
-        } catch(e) {
-          console.error('Error loading menu:', e);
+      // Load menu and cart - ensure functions are available with retry logic
+      let menuLoadAttempts = 0;
+      let cartRenderAttempts = 0;
+      const maxMenuAttempts = 10;
+      const maxCartAttempts = 10;
+      
+      function loadMenu() {
+        menuLoadAttempts++;
+        if (typeof loadMenuToPage === 'function') {
+          try {
+            loadMenuToPage();
+            console.log('Menu loaded successfully');
+          } catch(e) {
+            console.error('Error loading menu:', e);
+            // Retry after a delay if we haven't exceeded max attempts
+            if (menuLoadAttempts < maxMenuAttempts) {
+              setTimeout(loadMenu, 500);
+            } else {
+              console.error('Failed to load menu after multiple attempts');
+            }
+          }
+        } else {
+          if (menuLoadAttempts < maxMenuAttempts) {
+            console.warn('loadMenuToPage not available, retrying...', menuLoadAttempts);
+            setTimeout(loadMenu, 300);
+          } else {
+            console.error('loadMenuToPage function not available after multiple attempts');
+          }
         }
       }
       
-      if (typeof renderCart === 'function') {
-        try {
-          renderCart();
-        } catch(e) {
-          console.error('Error rendering cart:', e);
+      function renderCartItems() {
+        cartRenderAttempts++;
+        if (typeof renderCart === 'function') {
+          try {
+            renderCart();
+            console.log('Cart rendered successfully');
+          } catch(e) {
+            console.error('Error rendering cart:', e);
+            // Retry after a delay if we haven't exceeded max attempts
+            if (cartRenderAttempts < maxCartAttempts) {
+              setTimeout(renderCartItems, 500);
+            } else {
+              console.error('Failed to render cart after multiple attempts');
+            }
+          }
+        } else {
+          if (cartRenderAttempts < maxCartAttempts) {
+            console.warn('renderCart not available, retrying...', cartRenderAttempts);
+            setTimeout(renderCartItems, 300);
+          } else {
+            console.error('renderCart function not available after multiple attempts');
+          }
         }
       }
+      
+      // Start loading menu and cart immediately
+      loadMenu();
+      renderCartItems();
       
       // Clear form if cart is empty (user just placed an order)
       if (typeof getCart === 'function') {
@@ -259,13 +315,58 @@
       }
     }
     
+    // Setup logout handler
+    function setupLogout() {
+      const logoutLink = document.getElementById('logoutLink');
+      if (logoutLink) {
+        logoutLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          if (typeof logoutUser === 'function') {
+            try {
+              logoutUser();
+            } catch(err) {
+              console.error('Logout error:', err);
+              // Fallback logout
+              if (typeof clearCurrent === 'function') {
+                clearCurrent();
+              } else {
+                localStorage.removeItem('canteen_current_v2');
+              }
+              localStorage.removeItem('canteen_cart_v2');
+              location.href = 'index.html';
+            }
+          } else {
+            // Fallback logout
+            if (typeof clearCurrent === 'function') {
+              clearCurrent();
+            } else {
+              localStorage.removeItem('canteen_current_v2');
+            }
+            localStorage.removeItem('canteen_cart_v2');
+            location.href = 'index.html';
+          }
+        });
+      }
+    }
+    
     // Initialize when DOM and scripts are ready
-    window.addEventListener('DOMContentLoaded', () => {
+    // Use a single initialization to avoid conflicts
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        setupLogout(); // Setup logout immediately
+        waitForScript(() => {
+          initializeOrderPage();
+          setupPaymentMethodHandlers();
+        });
+      });
+    } else {
+      // DOM already loaded
+      setupLogout(); // Setup logout immediately
       waitForScript(() => {
         initializeOrderPage();
         setupPaymentMethodHandlers();
       });
-    });
+    }
 
     function showConfirmBox(){
       const name = document.getElementById('delName')?.value.trim() || '';
