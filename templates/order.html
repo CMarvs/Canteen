@@ -96,9 +96,9 @@
     </section>
   </main>
 
-  <script src="/static/script.js"></script>
+  <script src="/static/script.js" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js');"></script>
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    function initializeOrderPage() {
       // Check authentication - use fallback to avoid ensureLoggedIn issues
       let isAuthenticated = false;
       
@@ -135,16 +135,39 @@
       }
       
       // Try to call ensureLoggedIn if available (but don't fail if it's not)
+      // We wrap it in a separate scope to avoid variable conflicts
       if (typeof ensureLoggedIn === 'function') {
         try {
-          ensureLoggedIn('user');
+          // Call in isolated scope to avoid 'cur' variable conflicts
+          (function() {
+            ensureLoggedIn('user');
+          })();
         } catch(e) {
           console.warn('ensureLoggedIn error (continuing anyway):', e);
         }
       }
       
-      loadMenuToPage();
-      renderCart();
+      // Load menu and cart - check if functions exist
+      if (typeof loadMenuToPage === 'function') {
+        loadMenuToPage();
+      } else {
+        console.warn('loadMenuToPage not available yet, retrying...');
+        setTimeout(() => {
+          if (typeof loadMenuToPage === 'function') {
+            loadMenuToPage();
+          }
+        }, 200);
+      }
+      
+      if (typeof renderCart === 'function') {
+        renderCart();
+      } else {
+        setTimeout(() => {
+          if (typeof renderCart === 'function') {
+            renderCart();
+          }
+        }, 200);
+      }
       
       // Clear form if cart is empty (user just placed an order)
       if (typeof getCart === 'function') {
@@ -158,10 +181,10 @@
           if(delAddress) delAddress.value = '';
         }
       }
-    });
-
+    }
+    
     // Handle payment method selection
-    document.addEventListener('DOMContentLoaded', () => {
+    function setupPaymentMethodHandlers() {
       const paymentMethods = document.querySelectorAll('input[name="paymentMethod"]');
       const paymentDetails = document.getElementById('paymentDetails');
       const codDetails = document.getElementById('codDetails');
@@ -212,6 +235,22 @@
           codLabel.style.background = '#fff8f1';
         }
       }
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      // Wait for script.js to load
+      if (window.scriptJsLoaded || typeof getCurrent === 'function') {
+        // Script already loaded
+        initializeOrderPage();
+      } else {
+        // Wait a bit for script.js to load
+        setTimeout(() => {
+          initializeOrderPage();
+        }, 300);
+      }
+      
+      // Setup payment method handlers
+      setupPaymentMethodHandlers();
     });
 
     function showConfirmBox(){
