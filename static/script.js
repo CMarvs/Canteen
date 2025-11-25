@@ -1468,6 +1468,9 @@ function orderCardHtmlForUser(o){
           <button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">✏️ Edit</button>
           <button class="btn delete small" onclick="cancelUserOrder(${o.id})" style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">❌ Cancel</button>
           ` : ''}
+          ${o.status === 'Delivered' ? `
+          <button class="btn small" onclick="openRatingModal()" style="background: #ffc107; color: #333; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">⭐ Rate Service</button>
+          ` : ''}
           <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with Admin</button>
         </div>
       </div>
@@ -1945,6 +1948,230 @@ async function saveProfile(){
     console.error('Profile update error:', error);
     alert('Failed to update profile. Please check your connection and try again.');
   }
+}
+
+/* ---------- Service Rating Modal ---------- */
+let ratingModalSelectedRating = 0;
+
+function openRatingModal() {
+  const cur = getCurrent();
+  if (!cur) {
+    alert('Please login first');
+    location.href = 'index.html';
+    return;
+  }
+
+  // Check if user already has a rating
+  loadUserRatingForModal(cur.id).then(hasRating => {
+    if (hasRating) {
+      if (confirm('You already have a rating. Would you like to update it?')) {
+        showRatingModal(true);
+      }
+    } else {
+      showRatingModal(false);
+    }
+  }).catch(() => {
+    showRatingModal(false);
+  });
+}
+
+async function loadUserRatingForModal(userId) {
+  try {
+    const response = await fetch(`/ratings/user/${userId}`);
+    if (response.ok) {
+      const rating = await response.json();
+      return rating !== null;
+    }
+  } catch (error) {
+    console.error('Error checking user rating:', error);
+  }
+  return false;
+}
+
+function showRatingModal(hasExistingRating) {
+  // Remove existing modal if any
+  const existingModal = document.getElementById('ratingModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  ratingModalSelectedRating = 0;
+
+  const modal = document.createElement('div');
+  modal.id = 'ratingModal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+  `;
+
+  modal.innerHTML = `
+    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 15px;">
+        <h2 style="margin: 0; color: #8B4513;">⭐ Rate Our Service</h2>
+        <button id="closeRatingModal" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">&times;</button>
+      </div>
+      
+      <p style="color: #666; margin-bottom: 20px;">${hasExistingRating ? 'Update your rating:' : 'Help us improve by sharing your experience!'}</p>
+      
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #333;">Rating (1-5 stars)</label>
+        <div id="modalStarRating" style="display: flex; gap: 12px; font-size: 2.5rem; cursor: pointer; justify-content: center; margin-bottom: 12px;">
+          <span data-rating="1" onmouseover="hoverModalRating(1)" onmouseout="resetModalRating()" onclick="selectModalRating(1)">☆</span>
+          <span data-rating="2" onmouseover="hoverModalRating(2)" onmouseout="resetModalRating()" onclick="selectModalRating(2)">☆</span>
+          <span data-rating="3" onmouseover="hoverModalRating(3)" onmouseout="resetModalRating()" onclick="selectModalRating(3)">☆</span>
+          <span data-rating="4" onmouseover="hoverModalRating(4)" onmouseout="resetModalRating()" onclick="selectModalRating(4)">☆</span>
+          <span data-rating="5" onmouseover="hoverModalRating(5)" onmouseout="resetModalRating()" onclick="selectModalRating(5)">☆</span>
+        </div>
+        <div id="modalRatingText" style="text-align: center; color: #8B4513; font-weight: 600; font-size: 1.1rem; min-height: 28px;"></div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <label for="modalRatingComment" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Comment (Optional)</label>
+        <textarea id="modalRatingComment" name="modalRatingComment" placeholder="Tell us about your experience..." style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; min-height: 100px; font-family: inherit; resize: vertical;"></textarea>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button onclick="submitModalRating()" style="flex: 1; background: #8B4513; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">Submit Rating</button>
+        <button onclick="closeRatingModal()" style="background: #999; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  // Close button functionality
+  const closeBtn = modal.querySelector('#closeRatingModal');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      closeRatingModal();
+    });
+  }
+
+  // Close when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeRatingModal();
+    }
+  });
+
+  document.body.appendChild(modal);
+}
+
+function selectModalRating(rating) {
+  ratingModalSelectedRating = rating;
+  updateModalStarDisplay();
+  updateModalRatingText();
+}
+
+function hoverModalRating(rating) {
+  const stars = document.querySelectorAll('#modalStarRating span');
+  stars.forEach((star, index) => {
+    if (index < rating) {
+      star.textContent = '★';
+      star.style.color = '#ffc107';
+    } else {
+      star.textContent = '☆';
+      star.style.color = '#ddd';
+    }
+  });
+}
+
+function resetModalRating() {
+  if (ratingModalSelectedRating > 0) {
+    updateModalStarDisplay();
+  } else {
+    const stars = document.querySelectorAll('#modalStarRating span');
+    stars.forEach(star => {
+      star.textContent = '☆';
+      star.style.color = '#ddd';
+    });
+  }
+}
+
+function updateModalStarDisplay() {
+  const stars = document.querySelectorAll('#modalStarRating span');
+  stars.forEach((star, index) => {
+    if (index < ratingModalSelectedRating) {
+      star.textContent = '★';
+      star.style.color = '#ffc107';
+    } else {
+      star.textContent = '☆';
+      star.style.color = '#ddd';
+    }
+  });
+}
+
+function updateModalRatingText() {
+  const texts = {
+    1: 'Poor',
+    2: 'Fair',
+    3: 'Good',
+    4: 'Very Good',
+    5: 'Excellent'
+  };
+  const textEl = document.getElementById('modalRatingText');
+  if (textEl) {
+    textEl.textContent = ratingModalSelectedRating > 0 ? texts[ratingModalSelectedRating] : '';
+  }
+}
+
+async function submitModalRating() {
+  try {
+    const cur = getCurrent();
+    if (!cur || !cur.id) {
+      alert('Please login first');
+      return;
+    }
+
+    if (ratingModalSelectedRating === 0) {
+      alert('Please select a rating');
+      return;
+    }
+
+    const commentEl = document.getElementById('modalRatingComment');
+    const comment = commentEl ? commentEl.value.trim() : '';
+
+    const response = await fetch('/ratings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        user_id: cur.id,
+        rating: ratingModalSelectedRating,
+        comment: comment
+      })
+    });
+
+    if (response.ok) {
+      alert('Thank you for your rating! Your feedback helps us improve.');
+      closeRatingModal();
+      // Refresh orders to update the UI
+      if (typeof renderUserOrders === 'function') {
+        renderUserOrders();
+      }
+    } else {
+      const error = await response.json();
+      alert(`Failed to submit rating: ${error.detail || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Error submitting rating:', error);
+    alert('Failed to submit rating. Please try again.');
+  }
+}
+
+function closeRatingModal() {
+  const modal = document.getElementById('ratingModal');
+  if (modal) {
+    modal.remove();
+  }
+  ratingModalSelectedRating = 0;
 }
 
 /* ---------- Approval Notification System ---------- */
