@@ -1446,7 +1446,6 @@ function orderCardHtmlForUser(o){
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
   const itemsText = items.map(i => `${i.name} ×${i.qty}`).join('<br>');
   const canCancel = o.status === 'Pending';
-  const isDelivered = o.status === 'Delivered';
   
   return `
     <div class="order-card">
@@ -1464,15 +1463,13 @@ function orderCardHtmlForUser(o){
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
-        ${canCancel ? `
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          ${canCancel ? `
           <button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">✏️ Edit</button>
           <button class="btn delete small" onclick="cancelUserOrder(${o.id})" style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">❌ Cancel</button>
+          ` : ''}
+          <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with Admin</button>
         </div>
-        ` : ''}
-        ${isDelivered ? `
-        <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with Admin</button>
-        ` : ''}
       </div>
     </div>
   `;
@@ -2127,7 +2124,7 @@ async function openChatBox(orderId, userType) {
         <strong>💬 Chat - Order #${orderId}</strong>
         <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Admin Support'}</div>
       </div>
-      <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold;">×</button>
+      <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
     </div>
     <div id="chatMessages_${orderId}" style="flex: 1; overflow-y: auto; padding: 16px; background: #f9f9f9;">
       <div style="text-align: center; color: #999; padding: 20px;">Loading messages...</div>
