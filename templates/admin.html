@@ -133,8 +133,9 @@
     </div>
   </main>
 
-  <script src="/static/script.js"></script>
+  <script src="/static/script.js" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js');"></script>
   <script>
+    // Wait for script.js to fully load before using its functions
     // Global state for filtering
     let allOrders = [];
     let filteredOrders = [];
@@ -2170,12 +2171,13 @@
 
     /* -------- Initialize -------- */
 
-    window.addEventListener('DOMContentLoaded', () => {
+    // Initialize admin dashboard
+    function initializeAdminDashboard() {
       // Check if functions are available (they should be from script.js)
       if (typeof ensureLoggedIn === 'function') {
         ensureLoggedIn('admin');
       } else {
-        console.error('ensureLoggedIn function not found. Please check if script.js is loaded.');
+        console.warn('ensureLoggedIn function not found. Using fallback authentication.');
         // Fallback: check login manually
         if (typeof getCurrent === 'function') {
           const currentUser = getCurrent();
@@ -2184,8 +2186,30 @@
             location.href = 'index.html';
             return;
           }
+        } else {
+          // Last resort: check localStorage directly
+          try {
+            const stored = localStorage.getItem('canteen_current_v2');
+            if (stored) {
+              const currentUser = JSON.parse(stored);
+              if (!currentUser || currentUser.role !== 'admin') {
+                alert('Please login as admin');
+                location.href = 'index.html';
+                return;
+              }
+            } else {
+              alert('Please login as admin');
+              location.href = 'index.html';
+              return;
+            }
+          } catch(e) {
+            alert('Please login as admin');
+            location.href = 'index.html';
+            return;
+          }
         }
       }
+      
       renderStats();
       renderAdminOrders();
       renderAdminMenuList(); // Load menu items on page load
@@ -2194,6 +2218,19 @@
       
       // Start real-time order notifications
       startOrderPolling();
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      // Wait for script.js to load
+      if (window.scriptJsLoaded || typeof ensureLoggedIn === 'function') {
+        // Script already loaded
+        initializeAdminDashboard();
+      } else {
+        // Wait a bit for script.js to load
+        setTimeout(() => {
+          initializeAdminDashboard();
+        }, 300);
+      }
     });
 
     // Stop polling when page is hidden (save resources)
