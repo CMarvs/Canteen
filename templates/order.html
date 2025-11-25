@@ -97,29 +97,66 @@
   </main>
 
   <script>
-    // Load script.js with better error handling
-    const script = document.createElement('script');
-    script.src = '/static/script.js';
-    script.onload = function() {
-      console.log('script.js loaded successfully');
-      window.scriptJsLoaded = true;
-      // Trigger a custom event when script loads
-      window.dispatchEvent(new Event('scriptJsLoaded'));
-    };
-    script.onerror = function() {
-      console.error('Failed to load script.js - check server and file path');
-      window.scriptJsLoaded = false;
-      alert('Error: Failed to load required scripts. Please refresh the page.');
-    };
-    document.head.appendChild(script);
+    // Load script.js with better error handling - prevent duplicate loads
+    if (!window.scriptJsLoading && !window.scriptJsLoaded) {
+      window.scriptJsLoading = true;
+      const script = document.createElement('script');
+      script.src = '/static/script.js';
+      script.onload = function() {
+        console.log('script.js loaded successfully');
+        window.scriptJsLoaded = true;
+        window.scriptJsLoading = false;
+        // Check if functions are actually available
+        setTimeout(() => {
+          // Test if script.js executed at all by checking for a global variable
+          const hasAPIBase = typeof API_BASE !== 'undefined';
+          const hasGetCurrent = typeof getCurrent === 'function';
+          const hasLoadMenu = typeof loadMenuToPage === 'function';
+          const hasRenderCart = typeof renderCart === 'function';
+          console.log('Script execution check:', {
+            API_BASE: hasAPIBase,
+            getCurrent: hasGetCurrent, 
+            loadMenu: hasLoadMenu, 
+            renderCart: hasRenderCart
+          });
+          if (!hasAPIBase) {
+            console.error('❌ script.js did not execute - API_BASE not defined. Check for syntax errors.');
+          } else if (!hasGetCurrent || !hasLoadMenu || !hasRenderCart) {
+            console.error('⚠️ script.js executed but functions not available - possible error during execution');
+            console.error('Check browser console for JavaScript errors in script.js');
+          }
+        }, 200);
+        // Trigger a custom event when script loads
+        window.dispatchEvent(new Event('scriptJsLoaded'));
+      };
+      script.onerror = function() {
+        console.error('Failed to load script.js - check server and file path');
+        window.scriptJsLoaded = false;
+        window.scriptJsLoading = false;
+        alert('Error: Failed to load required scripts. Please refresh the page.');
+      };
+      // Add error handler to catch syntax errors
+      window.addEventListener('error', function(e) {
+        if (e.filename && e.filename.includes('script.js')) {
+          console.error('❌ Syntax error in script.js:', e.message, 'at line', e.lineno);
+          window.scriptJsSyntaxError = true;
+        }
+      }, true);
+      document.head.appendChild(script);
+    } else {
+      console.log('script.js already loading or loaded');
+    }
   </script>
   <script>
     // Wait for script.js to be fully loaded
     function waitForScript(callback, maxAttempts = 100) {
       let attempts = 0;
       let checkInterval = null;
+      let hasCalledCallback = false;
       
       const checkScript = () => {
+        if (hasCalledCallback) return; // Prevent multiple callbacks
+        
         attempts++;
         // Check if all required functions are available
         const hasGetCurrent = typeof getCurrent === 'function';
@@ -129,18 +166,29 @@
         if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
           console.log('✅ All script.js functions loaded successfully');
           if (checkInterval) clearInterval(checkInterval);
+          hasCalledCallback = true;
           callback();
         } else if (attempts < maxAttempts) {
           // Continue checking
           if (attempts % 10 === 0) {
             console.log(`Waiting for script.js... (attempt ${attempts}/${maxAttempts})`);
             console.log('Status:', {getCurrent: hasGetCurrent, loadMenu: hasLoadMenu, renderCart: hasRenderCart});
+            // Check for syntax errors
+            if (window.scriptJsSyntaxError) {
+              console.error('⚠️ Syntax error detected in script.js - functions may not be available');
+            }
           }
         } else {
           console.error('❌ script.js functions not fully available after waiting');
           console.error('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
           console.error('scriptJsLoaded flag:', window.scriptJsLoaded);
+          console.error('Possible causes:');
+          console.error('1. Syntax error in script.js preventing execution');
+          console.error('2. script.js not being served correctly by server');
+          console.error('3. CORS or network issues');
+          console.error('Please check browser Network tab for script.js request');
           if (checkInterval) clearInterval(checkInterval);
+          hasCalledCallback = true;
           // Try to continue anyway with what we have
           callback();
         }
@@ -149,12 +197,12 @@
       // Listen for script load event
       window.addEventListener('scriptJsLoaded', () => {
         console.log('Script load event received, checking functions...');
-        setTimeout(checkScript, 100);
+        setTimeout(checkScript, 200);
       });
       
       // Start checking immediately and continue
       checkInterval = setInterval(checkScript, 200);
-      // Also check immediately
+      // Also check immediately after a delay
       setTimeout(checkScript, 500);
     }
     
