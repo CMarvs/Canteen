@@ -35,13 +35,219 @@
         <button class="btn" onclick="saveProfile()">Save</button>
       </div>
     </section>
+
+    <!-- Service Rating Section -->
+    <section class="card" style="margin-top: 20px;">
+      <h3 style="margin-top: 0; color: var(--primary);">⭐ Rate Our Service</h3>
+      <p style="color: var(--muted); margin-bottom: 16px;">Help us improve by rating your experience with RMLCanteen</p>
+      
+      <div id="ratingSection">
+        <div style="margin-bottom: 12px;">
+          <div style="font-weight: 500; margin-bottom: 8px;">Your Rating:</div>
+          <div id="starRating" style="display: flex; gap: 8px; font-size: 2rem; cursor: pointer;">
+            <span class="star" data-rating="1" onclick="selectRating(1)" onmouseover="hoverRating(1)" onmouseout="resetRating()">☆</span>
+            <span class="star" data-rating="2" onclick="selectRating(2)" onmouseover="hoverRating(2)" onmouseout="resetRating()">☆</span>
+            <span class="star" data-rating="3" onclick="selectRating(3)" onmouseover="hoverRating(3)" onmouseout="resetRating()">☆</span>
+            <span class="star" data-rating="4" onclick="selectRating(4)" onmouseover="hoverRating(4)" onmouseout="resetRating()">☆</span>
+            <span class="star" data-rating="5" onclick="selectRating(5)" onmouseover="hoverRating(5)" onmouseout="resetRating()">☆</span>
+          </div>
+          <div id="ratingText" style="margin-top: 8px; color: var(--muted); font-size: 0.9rem;"></div>
+        </div>
+        
+        <div style="margin-bottom: 12px;">
+          <label class="input-label">Comment (optional)</label>
+          <textarea id="ratingComment" placeholder="Share your feedback..." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px; resize: vertical;"></textarea>
+        </div>
+        
+        <button class="btn" onclick="submitRating()" id="submitRatingBtn" style="background: #8B4513; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+          Submit Rating
+        </button>
+        
+        <div id="ratingSuccess" style="display: none; margin-top: 12px; padding: 12px; background: #d4edda; color: #155724; border-radius: 8px; border-left: 4px solid #28a745;">
+          ✅ Thank you for your rating!
+        </div>
+      </div>
+    </section>
+
+    <!-- Average Rating Display -->
+    <section class="card" style="margin-top: 20px; background: #fff8f1;">
+      <h3 style="margin-top: 0; color: var(--primary);">📊 Service Rating</h3>
+      <div id="averageRatingDisplay" style="text-align: center; padding: 20px;">
+        <div style="font-size: 2.5rem; font-weight: bold; color: #8B4513;" id="avgRatingNumber">-</div>
+        <div id="avgRatingStars" style="font-size: 1.5rem; margin: 8px 0;">-</div>
+        <div style="color: var(--muted); font-size: 0.9rem;" id="avgRatingCount">Loading...</div>
+      </div>
+    </section>
   </main>
 
   <script src="/static/script.js"></script>
   <script>
+    let selectedRating = 0;
+    let currentUserRating = null;
+
+    // Load user's existing rating
+    async function loadUserRating() {
+      const cur = getCurrent();
+      if (!cur) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/ratings/user/${cur.id}`);
+        if (response.ok) {
+          const rating = await response.json();
+          if (rating) {
+            currentUserRating = rating;
+            selectedRating = rating.rating;
+            updateStarDisplay();
+            if (rating.comment) {
+              document.getElementById('ratingComment').value = rating.comment;
+            }
+            document.getElementById('submitRatingBtn').textContent = 'Update Rating';
+          }
+        }
+      } catch (error) {
+        console.error('Error loading rating:', error);
+      }
+    }
+
+    // Load average rating
+    async function loadAverageRating() {
+      try {
+        const response = await fetch(`${API_BASE}/ratings/stats`);
+        if (response.ok) {
+          const stats = await response.json();
+          const avg = parseFloat(stats.average_rating || 0).toFixed(1);
+          const count = stats.total_ratings || 0;
+          
+          document.getElementById('avgRatingNumber').textContent = avg;
+          document.getElementById('avgRatingCount').textContent = 
+            count > 0 ? `Based on ${count} rating${count !== 1 ? 's' : ''}` : 'No ratings yet';
+          
+          // Display stars
+          const starsHtml = Array.from({length: 5}, (_, i) => {
+            const starValue = i + 1;
+            if (starValue <= Math.floor(avg)) {
+              return '★';
+            } else if (starValue - 0.5 <= avg) {
+              return '☆';
+            } else {
+              return '☆';
+            }
+          }).join('');
+          document.getElementById('avgRatingStars').textContent = starsHtml;
+        }
+      } catch (error) {
+        console.error('Error loading average rating:', error);
+      }
+    }
+
+    function selectRating(rating) {
+      selectedRating = rating;
+      updateStarDisplay();
+      updateRatingText();
+    }
+
+    function hoverRating(rating) {
+      const stars = document.querySelectorAll('.star');
+      stars.forEach((star, index) => {
+        if (index < rating) {
+          star.textContent = '★';
+          star.style.color = '#FFD700';
+        } else {
+          star.textContent = '☆';
+          star.style.color = '#ccc';
+        }
+      });
+    }
+
+    function resetRating() {
+      updateStarDisplay();
+    }
+
+    function updateStarDisplay() {
+      const stars = document.querySelectorAll('.star');
+      stars.forEach((star, index) => {
+        const starValue = index + 1;
+        if (starValue <= selectedRating) {
+          star.textContent = '★';
+          star.style.color = '#FFD700';
+        } else {
+          star.textContent = '☆';
+          star.style.color = '#ccc';
+        }
+      });
+      updateRatingText();
+    }
+
+    function updateRatingText() {
+      const texts = {
+        1: 'Poor',
+        2: 'Fair',
+        3: 'Good',
+        4: 'Very Good',
+        5: 'Excellent'
+      };
+      const textEl = document.getElementById('ratingText');
+      if (selectedRating > 0) {
+        textEl.textContent = texts[selectedRating] || '';
+        textEl.style.color = 'var(--primary)';
+      } else {
+        textEl.textContent = '';
+      }
+    }
+
+    async function submitRating() {
+      const cur = getCurrent();
+      if (!cur) {
+        alert('Please login first');
+        return;
+      }
+
+      if (selectedRating === 0) {
+        alert('Please select a rating');
+        return;
+      }
+
+      const comment = document.getElementById('ratingComment').value.trim();
+
+      try {
+        const response = await fetch(`${API_BASE}/ratings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: cur.id,
+            rating: selectedRating,
+            comment: comment
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          alert(`Failed to submit rating: ${error.detail || 'Unknown error'}`);
+          return;
+        }
+
+        // Show success message
+        document.getElementById('ratingSuccess').style.display = 'block';
+        document.getElementById('submitRatingBtn').textContent = 'Update Rating';
+        
+        // Reload average rating
+        await loadAverageRating();
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          document.getElementById('ratingSuccess').style.display = 'none';
+        }, 3000);
+      } catch (error) {
+        console.error('Error submitting rating:', error);
+        alert('Failed to submit rating. Please try again.');
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       ensureLoggedIn();
       loadProfilePage();
+      loadUserRating();
+      loadAverageRating();
     });
   </script>
 </body>

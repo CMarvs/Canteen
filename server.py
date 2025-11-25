@@ -160,17 +160,76 @@ def ensure_chat_table_exists():
                     sender_role TEXT NOT NULL,
                     sender_name TEXT NOT NULL,
                     message TEXT NOT NULL,
+                    is_read BOOLEAN DEFAULT FALSE,
+                    read_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_order_id ON chat_messages(order_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_messages(created_at);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_is_read ON chat_messages(is_read);")
             conn.commit()
             print("[SUCCESS] chat_messages table created successfully!")
         else:
             print("[INFO] chat_messages table already exists")
+            # Check and add is_read column if missing
+            try:
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'chat_messages' AND column_name = 'is_read'
+                """)
+                has_is_read = cur.fetchone()
+                if not has_is_read:
+                    print("[INFO] Adding is_read and read_at columns to chat_messages table...")
+                    cur.execute("ALTER TABLE chat_messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE;")
+                    cur.execute("ALTER TABLE chat_messages ADD COLUMN read_at TIMESTAMP;")
+                    cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_is_read ON chat_messages(is_read);")
+                    conn.commit()
+                    print("[SUCCESS] is_read and read_at columns added successfully!")
+            except Exception as col_error:
+                print(f"[WARNING] Could not check/add is_read column: {col_error}")
     except Exception as e:
         print(f"[ERROR] Error ensuring chat table exists: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+# --- Initialize service_ratings table if it doesn't exist ---
+def ensure_ratings_table_exists():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Check if table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'service_ratings'
+            ) as exists;
+        """)
+        result = cur.fetchone()
+        table_exists = result.get('exists') if isinstance(result, dict) else (result[0] if result else False)
+        
+        if not table_exists:
+            print("[INFO] Creating service_ratings table...")
+            cur.execute("""
+                CREATE TABLE service_ratings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                    comment TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(user_id)
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON service_ratings(user_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ratings_created_at ON service_ratings(created_at);")
+            conn.commit()
+            print("[SUCCESS] service_ratings table created successfully!")
+        else:
+            print("[INFO] service_ratings table already exists")
+    except Exception as e:
+        print(f"[ERROR] Error ensuring ratings table exists: {e}")
         conn.rollback()
     finally:
         conn.close()
@@ -179,6 +238,7 @@ def ensure_chat_table_exists():
 try:
     ensure_menu_table_exists()
     ensure_chat_table_exists()
+    ensure_ratings_table_exists()
 except Exception as e:
     print(f"[WARNING] Could not initialize tables on startup: {e}")
     print("[INFO] The tables will be created automatically when needed.")
@@ -1905,7 +1965,7 @@ async def get_order_messages(order_id: int, request: Request):
         
         # Get messages for this order
         cur.execute("""
-            SELECT id, order_id, user_id, sender_role, sender_name, message, created_at
+            SELECT id, order_id, user_id, sender_role, sender_name, message, is_read, read_at, created_at
             FROM chat_messages
             WHERE order_id = %s
             ORDER BY created_at ASC
@@ -1971,17 +2031,289 @@ async def send_order_message(order_id: int, request: Request):
         
         # Insert message
         cur.execute("""
-            INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, order_id, user_id, sender_role, sender_name, message, created_at
-        """, (order_id, user_id, sender_role, sender_name, message_text))
+            INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message, is_read)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, order_id, user_id, sender_role, sender_name, message, is_read, read_at, created_at
+        """, (order_id, user_id, sender_role, sender_name, message_text, False))
         conn.commit()
         message = cur.fetchone()
+        
+        # If admin sent a message, mark all previous user messages as read
+        if sender_role == 'admin':
+            cur.execute("""
+                UPDATE chat_messages 
+                SET is_read = TRUE, read_at = NOW()
+                WHERE order_id = %s AND sender_role = 'user' AND is_read = FALSE
+            """, (order_id,))
+            conn.commit()
+        
         return message
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Send message error: {e}")
         raise HTTPException(500, f"Failed to send message: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Chat: Mark messages as read ---
+@app.put("/orders/{order_id}/messages/read")
+async def mark_messages_read(order_id: int, request: Request):
+    """Mark all unread messages for an order as read"""
+    # Ensure chat table exists
+    try:
+        ensure_chat_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure chat table exists: {e}")
+    
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    
+    reader_role = data.get("reader_role", "admin")  # Who is reading (admin or user)
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Verify order exists
+        cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(404, "Order not found")
+        
+        # Mark messages as read based on who is reading
+        # If admin is reading, mark user messages as read
+        # If user is reading, mark admin messages as read
+        if reader_role == 'admin':
+            cur.execute("""
+                UPDATE chat_messages 
+                SET is_read = TRUE, read_at = NOW()
+                WHERE order_id = %s AND sender_role = 'user' AND is_read = FALSE
+            """, (order_id,))
+        else:
+            cur.execute("""
+                UPDATE chat_messages 
+                SET is_read = TRUE, read_at = NOW()
+                WHERE order_id = %s AND sender_role = 'admin' AND is_read = FALSE
+            """, (order_id,))
+        
+        conn.commit()
+        return {"ok": True, "message": "Messages marked as read"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Mark messages read error: {e}")
+        raise HTTPException(500, f"Failed to mark messages as read: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Service Rating: Submit rating ---
+@app.post("/ratings")
+async def submit_rating(request: Request):
+    """Submit or update a service rating"""
+    # Ensure ratings table exists
+    try:
+        ensure_ratings_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure ratings table exists: {e}")
+    
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(400, "Invalid JSON in request body")
+    
+    user_id = data.get("user_id")
+    rating = data.get("rating")
+    comment = data.get("comment", "").strip()
+    
+    if not user_id:
+        raise HTTPException(400, "user_id is required")
+    
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        raise HTTPException(400, "Rating must be an integer between 1 and 5")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Verify user exists
+        cur.execute("SELECT id, name FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+        
+        # Check if user already has a rating
+        cur.execute("SELECT id FROM service_ratings WHERE user_id = %s", (user_id,))
+        existing = cur.fetchone()
+        
+        if existing:
+            # Update existing rating
+            cur.execute("""
+                UPDATE service_ratings 
+                SET rating = %s, comment = %s, created_at = NOW()
+                WHERE user_id = %s
+                RETURNING id, user_id, rating, comment, created_at
+            """, (rating, comment, user_id))
+        else:
+            # Insert new rating
+            cur.execute("""
+                INSERT INTO service_ratings (user_id, rating, comment)
+                VALUES (%s, %s, %s)
+                RETURNING id, user_id, rating, comment, created_at
+            """, (user_id, rating, comment))
+        
+        conn.commit()
+        result = cur.fetchone()
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Submit rating error: {e}")
+        raise HTTPException(500, f"Failed to submit rating: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Service Rating: Get user's rating ---
+@app.get("/ratings/user/{user_id}")
+async def get_user_rating(user_id: int):
+    """Get a specific user's rating"""
+    # Ensure ratings table exists
+    try:
+        ensure_ratings_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure ratings table exists: {e}")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, user_id, rating, comment, created_at
+            FROM service_ratings
+            WHERE user_id = %s
+        """, (user_id,))
+        rating = cur.fetchone()
+        return rating if rating else None
+    except Exception as e:
+        print(f"❌ Get user rating error: {e}")
+        raise HTTPException(500, f"Failed to get rating: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Service Rating: Get all ratings (Admin) ---
+@app.get("/ratings")
+async def get_all_ratings():
+    """Get all service ratings with user information"""
+    # Ensure ratings table exists
+    try:
+        ensure_ratings_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure ratings table exists: {e}")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT r.id, r.user_id, r.rating, r.comment, r.created_at, u.name as user_name, u.email as user_email
+            FROM service_ratings r
+            LEFT JOIN users u ON r.user_id = u.id
+            ORDER BY r.created_at DESC
+        """)
+        ratings = cur.fetchall()
+        return ratings if ratings else []
+    except Exception as e:
+        print(f"❌ Get all ratings error: {e}")
+        raise HTTPException(500, f"Failed to get ratings: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Service Rating: Get statistics (Admin) ---
+@app.get("/ratings/stats")
+async def get_rating_stats():
+    """Get rating statistics"""
+    # Ensure ratings table exists
+    try:
+        ensure_ratings_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure ratings table exists: {e}")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Get total count, average rating, and distribution
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total_ratings,
+                COALESCE(AVG(rating), 0) as average_rating,
+                COUNT(CASE WHEN rating = 5 THEN 1 END) as rating_5,
+                COUNT(CASE WHEN rating = 4 THEN 1 END) as rating_4,
+                COUNT(CASE WHEN rating = 3 THEN 1 END) as rating_3,
+                COUNT(CASE WHEN rating = 2 THEN 1 END) as rating_2,
+                COUNT(CASE WHEN rating = 1 THEN 1 END) as rating_1
+            FROM service_ratings
+        """)
+        stats = cur.fetchone()
+        return stats if stats else {
+            "total_ratings": 0,
+            "average_rating": 0,
+            "rating_5": 0,
+            "rating_4": 0,
+            "rating_3": 0,
+            "rating_2": 0,
+            "rating_1": 0
+        }
+    except Exception as e:
+        print(f"❌ Get rating stats error: {e}")
+        raise HTTPException(500, f"Failed to get rating stats: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Admin: Get user details with photos and orders ---
+@app.get("/users/{user_id}/details")
+async def get_user_details(user_id: int):
+    """Get detailed user information including profile, photos, and order history"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Get user information
+        cur.execute("""
+            SELECT id, name, email, role, id_proof, selfie_proof, is_approved, created_at
+            FROM users
+            WHERE id = %s
+        """, (user_id,))
+        user = cur.fetchone()
+        
+        if not user:
+            raise HTTPException(404, "User not found")
+        
+        # Get user's orders
+        cur.execute("""
+            SELECT id, fullname, contact, location, items, total, status, payment_method, payment_status, created_at
+            FROM orders
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+        """, (user_id,))
+        orders = cur.fetchall()
+        
+        # Get user's rating if exists
+        cur.execute("""
+            SELECT rating, comment, created_at
+            FROM service_ratings
+            WHERE user_id = %s
+        """, (user_id,))
+        rating = cur.fetchone()
+        
+        return {
+            "user": user,
+            "orders": orders if orders else [],
+            "rating": rating,
+            "total_orders": len(orders) if orders else 0,
+            "total_spent": sum(float(o.get("total", 0) or 0) for o in (orders if orders else []))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Get user details error: {e}")
+        raise HTTPException(500, f"Failed to get user details: {str(e)}")
     finally:
         conn.close()

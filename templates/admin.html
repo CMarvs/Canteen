@@ -27,11 +27,17 @@
         <button id="tabOrders" class="active" onclick="switchTab('orders')">
           📦 Orders <span class="tab-badge" id="ordersBadge">0</span>
         </button>
+        <button id="tabChats" onclick="switchTab('chats')">
+          💬 Chats <span class="tab-badge" id="chatsBadge">0</span>
+        </button>
         <button id="tabMenu" onclick="switchTab('menu')">
           🍽️ Menu Management
         </button>
         <button id="tabUsers" onclick="switchTab('users')">
           👥 User Management <span class="tab-badge" id="usersBadge">0</span>
+        </button>
+        <button id="tabRatings" onclick="switchTab('ratings')">
+          ⭐ Service Ratings
         </button>
       </div>
 
@@ -91,6 +97,16 @@
         <div id="adminMenuList"></div>
       </section>
 
+      <!-- CHAT MANAGEMENT TAB -->
+      <section id="chatsSection" class="tab-content">
+        <h2>💬 Customer Chats</h2>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          View and respond to customer messages about their orders.
+        </p>
+        
+        <div id="chatsList"></div>
+      </section>
+
       <!-- USER MANAGEMENT TAB -->
       <section id="usersSection" class="tab-content">
         <h2>👥 User Management</h2>
@@ -99,6 +115,20 @@
         </p>
         
         <div id="usersList"></div>
+      </section>
+
+      <!-- SERVICE RATINGS TAB -->
+      <section id="ratingsSection" class="tab-content">
+        <h2>⭐ Service Ratings</h2>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          View customer ratings and feedback about the service.
+        </p>
+        
+        <!-- Rating Statistics -->
+        <div id="ratingStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;"></div>
+        
+        <!-- All Ratings List -->
+        <div id="ratingsList"></div>
       </section>
     </div>
   </main>
@@ -159,16 +189,24 @@
     /* -------- Tab Switching -------- */
     function switchTab(tab) {
       document.getElementById('tabOrders').classList.remove('active');
+      document.getElementById('tabChats').classList.remove('active');
       document.getElementById('tabMenu').classList.remove('active');
       document.getElementById('tabUsers').classList.remove('active');
+      document.getElementById('tabRatings').classList.remove('active');
       document.getElementById('ordersSection').classList.remove('active');
+      document.getElementById('chatsSection').classList.remove('active');
       document.getElementById('menuSection').classList.remove('active');
       document.getElementById('usersSection').classList.remove('active');
+      document.getElementById('ratingsSection').classList.remove('active');
 
       if (tab === 'orders') {
         document.getElementById('tabOrders').classList.add('active');
         document.getElementById('ordersSection').classList.add('active');
         renderAdminOrders();
+      } else if (tab === 'chats') {
+        document.getElementById('tabChats').classList.add('active');
+        document.getElementById('chatsSection').classList.add('active');
+        renderAdminChats();
       } else if (tab === 'menu') {
         document.getElementById('tabMenu').classList.add('active');
         document.getElementById('menuSection').classList.add('active');
@@ -177,6 +215,10 @@
         document.getElementById('tabUsers').classList.add('active');
         document.getElementById('usersSection').classList.add('active');
         renderAdminUsers();
+      } else if (tab === 'ratings') {
+        document.getElementById('tabRatings').classList.add('active');
+        document.getElementById('ratingsSection').classList.add('active');
+        renderAdminRatings();
       }
     }
 
@@ -312,6 +354,13 @@
               <p><strong>👤 Customer:</strong> ${buyerName}</p>
               <p><strong>📞 Contact:</strong> ${buyerContact}</p>
               <p><strong>📍 Address:</strong> ${buyerAddress}</p>
+              ${o.user_id ? `
+              <div style="margin-top: 8px;">
+                <button class="btn small" onclick="viewUserInfo(${o.user_id})" style="background: #2196F3; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;">
+                  👤 View User Info & Photos
+                </button>
+              </div>
+              ` : ''}
             </div>
 
             <div class="order-items">
@@ -1631,6 +1680,494 @@
       }
     }
 
+    /* -------- Chat Management Functions -------- */
+    async function renderAdminChats() {
+      try {
+        // Get all orders
+        const ordersResponse = await fetch('/orders');
+        const orders = await ordersResponse.json();
+        
+        // Get messages for all orders
+        const chatsWithMessages = [];
+        for (const order of orders) {
+          try {
+            const messagesResponse = await fetch(`/orders/${order.id}/messages`);
+            if (messagesResponse.ok) {
+              const messages = await messagesResponse.json();
+              if (messages && messages.length > 0) {
+                // Count unread messages (messages from users that admin hasn't read)
+                const unreadCount = messages.filter(m => 
+                  m.sender_role === 'user' && !m.is_read
+                ).length;
+                
+                // Get last message
+                const lastMessage = messages[messages.length - 1];
+                
+                chatsWithMessages.push({
+                  order: order,
+                  messageCount: messages.length,
+                  unreadCount: unreadCount,
+                  lastMessage: lastMessage,
+                  lastMessageTime: lastMessage.created_at
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`Error fetching messages for order ${order.id}:`, err);
+          }
+        }
+        
+        // Sort by last message time (newest first)
+        chatsWithMessages.sort((a, b) => {
+          const timeA = new Date(a.lastMessageTime || 0);
+          const timeB = new Date(b.lastMessageTime || 0);
+          return timeB - timeA;
+        });
+        
+        const chatsList = document.getElementById('chatsList');
+        if (!chatsList) return;
+        
+        if (chatsWithMessages.length === 0) {
+          chatsList.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">💬</div>
+              <div class="empty-state-text">No active chats yet</div>
+            </div>
+          `;
+          return;
+        }
+        
+        chatsList.innerHTML = chatsWithMessages.map(chat => {
+          const o = chat.order;
+          const buyerName = o.fullname || o.name || "N/A";
+          const orderDate = new Date(o.created_at || Date.now()).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const lastMsgTime = new Date(chat.lastMessageTime).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          
+          const unreadBadge = chat.unreadCount > 0 ? 
+            `<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; margin-left: 8px;">${chat.unreadCount}</span>` : '';
+          
+          const hasUnread = chat.unreadCount > 0;
+          const cardStyle = hasUnread ? 'border: 2px solid #e74c3c; background: #fff5f5;' : '';
+          
+          return `
+            <div class="order-card" data-order-id="${o.id}" style="${cardStyle}">
+              <div class="order-header">
+                <div>
+                  <div class="order-id">Order #${o.id} - ${buyerName}</div>
+                  <div class="order-date">Order placed: ${orderDate}</div>
+                  <div style="margin-top: 8px; color: #666; font-size: 0.9rem;">
+                    💬 ${chat.messageCount} message${chat.messageCount !== 1 ? 's' : ''}${unreadBadge}
+                  </div>
+                </div>
+                <button class="btn" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                  Open Chat
+                </button>
+              </div>
+              
+              ${chat.lastMessage ? `
+              <div style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513;">
+                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                  <strong>${chat.lastMessage.sender_name}</strong> • ${lastMsgTime}
+                </div>
+                <div style="color: #333; word-wrap: break-word;">
+                  ${chat.lastMessage.message.length > 100 ? 
+                    chat.lastMessage.message.substring(0, 100) + '...' : 
+                    chat.lastMessage.message}
+                </div>
+              </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch(error) {
+        console.error('Error loading chats:', error);
+        document.getElementById('chatsList').innerHTML = '<p class="muted">Failed to load chats</p>';
+      }
+    }
+    
+    // Check for unread chat messages
+    async function checkUnreadChats() {
+      try {
+        const ordersResponse = await fetch('/orders');
+        const orders = await ordersResponse.json();
+        
+        let totalUnread = 0;
+        for (const order of orders) {
+          try {
+            const messagesResponse = await fetch(`/orders/${order.id}/messages`);
+            if (messagesResponse.ok) {
+              const messages = await messagesResponse.json();
+              if (messages && messages.length > 0) {
+                const unreadCount = messages.filter(m => 
+                  m.sender_role === 'user' && !m.is_read
+                ).length;
+                totalUnread += unreadCount;
+              }
+            }
+          } catch (err) {
+            // Skip errors for individual orders
+          }
+        }
+        
+        // Update badge
+        const chatsBadge = document.getElementById('chatsBadge');
+        if (chatsBadge) {
+          chatsBadge.textContent = totalUnread;
+          if (totalUnread > 0) {
+            chatsBadge.style.background = '#e74c3c';
+            chatsBadge.style.animation = 'pulse 0.5s ease-in-out 3';
+          } else {
+            chatsBadge.style.background = '';
+            chatsBadge.style.animation = '';
+          }
+        }
+      } catch(error) {
+        console.error('Error checking unread chats:', error);
+      }
+    }
+    
+    // Poll for unread chats
+    let chatPollInterval = null;
+    function startChatPolling() {
+      checkUnreadChats();
+      chatPollInterval = setInterval(checkUnreadChats, 5000);
+    }
+    
+    function stopChatPolling() {
+      if (chatPollInterval) {
+        clearInterval(chatPollInterval);
+        chatPollInterval = null;
+      }
+    }
+
+    /* -------- Rating Management Functions -------- */
+    async function renderAdminRatings() {
+      try {
+        // Get rating statistics
+        const statsResponse = await fetch('/ratings/stats');
+        const stats = await statsResponse.json();
+        
+        // Display statistics
+        const statsContainer = document.getElementById('ratingStats');
+        if (statsContainer) {
+          const avgRating = parseFloat(stats.average_rating || 0).toFixed(1);
+          const totalRatings = stats.total_ratings || 0;
+          
+          statsContainer.innerHTML = `
+            <div class="card" style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; text-align: center;">
+              <div style="font-size: 3rem; font-weight: bold; margin-bottom: 8px;">${avgRating}</div>
+              <div style="font-size: 1.2rem; margin-bottom: 4px;">${getStarDisplay(avgRating)}</div>
+              <div style="font-size: 0.9rem; opacity: 0.9;">Average Rating</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: var(--primary); margin-bottom: 4px;">${totalRatings}</div>
+              <div style="color: var(--muted);">Total Ratings</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: #4CAF50; margin-bottom: 4px;">${stats.rating_5 || 0}</div>
+              <div style="color: var(--muted);">5 Stars</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: #2196F3; margin-bottom: 4px;">${stats.rating_4 || 0}</div>
+              <div style="color: var(--muted);">4 Stars</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: #FF9800; margin-bottom: 4px;">${stats.rating_3 || 0}</div>
+              <div style="color: var(--muted);">3 Stars</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: #FF5722; margin-bottom: 4px;">${stats.rating_2 || 0}</div>
+              <div style="color: var(--muted);">2 Stars</div>
+            </div>
+            <div class="card" style="text-align: center;">
+              <div style="font-size: 2rem; font-weight: bold; color: #e74c3c; margin-bottom: 4px;">${stats.rating_1 || 0}</div>
+              <div style="color: var(--muted);">1 Star</div>
+            </div>
+          `;
+        }
+        
+        // Get all ratings
+        const ratingsResponse = await fetch('/ratings');
+        const ratings = await ratingsResponse.json();
+        
+        const ratingsList = document.getElementById('ratingsList');
+        if (!ratingsList) return;
+        
+        if (ratings.length === 0) {
+          ratingsList.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">⭐</div>
+              <div class="empty-state-text">No ratings yet</div>
+            </div>
+          `;
+          return;
+        }
+        
+        ratingsList.innerHTML = ratings.map(rating => {
+          const userName = rating.user_name || 'Unknown User';
+          const userEmail = rating.user_email || 'N/A';
+          const ratingDate = new Date(rating.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          
+          return `
+            <div class="order-card" style="margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                  <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 4px;">${userName}</div>
+                  <div style="color: var(--muted); font-size: 0.9rem;">${userEmail}</div>
+                  <div style="color: var(--muted); font-size: 0.85rem; margin-top: 4px;">${ratingDate}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 2rem; color: #FFD700; margin-bottom: 4px;">${getStarDisplay(rating.rating)}</div>
+                  <div style="font-weight: 600; color: var(--primary);">${rating.rating}/5</div>
+                </div>
+              </div>
+              ${rating.comment ? `
+              <div style="padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513; margin-top: 12px;">
+                <div style="color: #333; word-wrap: break-word;">${escapeHtmlRating(rating.comment)}</div>
+              </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch(error) {
+        console.error('Error loading ratings:', error);
+        const ratingsList = document.getElementById('ratingsList');
+        if (ratingsList) {
+          ratingsList.innerHTML = '<p class="muted">Failed to load ratings</p>';
+        }
+      }
+    }
+    
+    function getStarDisplay(rating) {
+      const numRating = parseFloat(rating);
+      const fullStars = Math.floor(numRating);
+      let stars = '';
+      for (let i = 0; i < fullStars; i++) {
+        stars += '★';
+      }
+      for (let i = fullStars; i < 5; i++) {
+        stars += '☆';
+      }
+      return stars;
+    }
+    
+    function escapeHtmlRating(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    /* -------- View User Info Modal -------- */
+    async function viewUserInfo(userId) {
+      try {
+        const response = await fetch(`/users/${userId}/details`);
+        if (!response.ok) {
+          alert('Failed to load user information');
+          return;
+        }
+        
+        const data = await response.json();
+        const user = data.user;
+        const orders = data.orders || [];
+        const rating = data.rating;
+        
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'userInfoModal';
+        modal.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.7);
+          z-index: 20000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          overflow-y: auto;
+        `;
+        
+        const orderHistoryHtml = orders.length > 0 ? orders.map(order => {
+          const orderDate = new Date(order.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+          return `
+            <div style="border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 8px; background: #f9f9f9;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <strong>Order #${order.id}</strong>
+                <span style="padding: 4px 8px; background: ${order.status === 'Delivered' ? '#4CAF50' : order.status === 'Pending' ? '#ffc107' : '#2196F3'}; color: white; border-radius: 4px; font-size: 0.8rem;">${order.status}</span>
+              </div>
+              <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">${orderDate}</div>
+              <div style="font-size: 0.85rem;">${items.map(it => `${it.name} × ${it.qty}`).join(', ')}</div>
+              <div style="font-weight: 600; color: var(--primary); margin-top: 4px;">₱${Number(order.total).toFixed(2)}</div>
+            </div>
+          `;
+        }).join('') : '<p style="color: var(--muted); text-align: center; padding: 20px;">No orders yet</p>';
+        
+        modal.innerHTML = `
+          <div style="background: white; border-radius: 12px; padding: 24px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;">
+            <button onclick="document.getElementById('userInfoModal').remove()" 
+                    style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+            
+            <h2 style="margin: 0 0 20px 0; color: #8b4513;">👤 User Information</h2>
+            
+            <!-- User Profile Section -->
+            <div style="background: #fff8f1; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #8B4513;">
+              <h3 style="margin: 0 0 12px 0; color: #8b4513;">Profile Information</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <strong>Name:</strong> ${user.name || 'N/A'}
+                </div>
+                <div>
+                  <strong>Email:</strong> ${user.email || 'N/A'}
+                </div>
+                <div>
+                  <strong>Role:</strong> ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                </div>
+                <div>
+                  <strong>Status:</strong> ${user.is_approved ? '<span style="color: #4CAF50;">✅ Approved</span>' : '<span style="color: #ff9800;">⏳ Pending</span>'}
+                </div>
+                <div>
+                  <strong>Member Since:</strong> ${new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </div>
+                <div>
+                  <strong>Total Orders:</strong> ${data.total_orders}
+                </div>
+                <div>
+                  <strong>Total Spent:</strong> ₱${Number(data.total_spent || 0).toFixed(2)}
+                </div>
+                ${rating ? `
+                <div>
+                  <strong>Service Rating:</strong> ${'★'.repeat(rating.rating)}${'☆'.repeat(5 - rating.rating)} (${rating.rating}/5)
+                </div>
+                ` : ''}
+              </div>
+            </div>
+            
+            <!-- Registration Photos Section -->
+            <div style="margin-bottom: 20px;">
+              <h3 style="margin: 0 0 12px 0; color: #8b4513;">📷 Registration Photos</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                ${user.id_proof ? `
+                <div>
+                  <strong style="display: block; margin-bottom: 8px; color: #8b4513;">📷 ID Proof</strong>
+                  <img src="${user.id_proof}" 
+                       alt="ID Proof" 
+                       onclick="showImageModal('${user.id_proof}', 'ID Proof')"
+                       style="width: 100%; max-height: 300px; object-fit: contain; border: 2px solid #8b4513; border-radius: 8px; cursor: pointer; background: #f9f9f9; padding: 8px;"
+                       onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'"
+                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
+                  <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; text-align: center;">Click to view full size</p>
+                </div>
+                ` : '<div><strong>📷 ID Proof:</strong> <span style="color: #f44336;">Not provided</span></div>'}
+                
+                ${user.selfie_proof ? `
+                <div>
+                  <strong style="display: block; margin-bottom: 8px; color: #2196F3;">🤳 Selfie Proof</strong>
+                  <img src="${user.selfie_proof}" 
+                       alt="Selfie Proof" 
+                       onclick="showImageModal('${user.selfie_proof}', 'Selfie Proof')"
+                       style="width: 100%; max-height: 300px; object-fit: contain; border: 2px solid #2196F3; border-radius: 8px; cursor: pointer; background: #f9f9f9; padding: 8px;"
+                       onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'"
+                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
+                  <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; text-align: center;">Click to view full size</p>
+                </div>
+                ` : '<div><strong>🤳 Selfie Proof:</strong> <span style="color: #f44336;">Not provided</span></div>'}
+              </div>
+              ${user.id_proof && user.selfie_proof ? `
+              <div style="margin-top: 12px; padding: 8px; background: #e3f2fd; border-radius: 6px; font-size: 0.85rem; color: #1976d2;">
+                💡 <strong>Compare:</strong> Verify that the ID and selfie belong to the same person
+              </div>
+              ` : ''}
+            </div>
+            
+            <!-- Order History Section -->
+            <div>
+              <h3 style="margin: 0 0 12px 0; color: #8b4513;">📦 Order History (${data.total_orders} orders)</h3>
+              <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa;">
+                ${orderHistoryHtml}
+              </div>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.remove();
+          }
+        });
+      } catch(error) {
+        console.error('Error loading user info:', error);
+        alert('Failed to load user information. Please try again.');
+      }
+    }
+    
+    function showImageModal(imageSrc, title) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 30000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        cursor: pointer;
+      `;
+      
+      modal.innerHTML = `
+        <div style="position: relative; max-width: 90%; max-height: 90%;">
+          <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
+                  style="position: absolute; top: -40px; right: 0; background: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1.2rem;">
+            ✕ Close
+          </button>
+          <h3 style="color: white; margin-bottom: 16px; text-align: center;">${title}</h3>
+          <img src="${imageSrc}" 
+               alt="${title}" 
+               style="max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        </div>
+      `;
+      
+      modal.onclick = (e) => {
+        if(e.target === modal) {
+          modal.remove();
+        }
+      };
+      
+      document.body.appendChild(modal);
+    }
+
     /* -------- Initialize -------- */
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -1638,6 +2175,8 @@
       renderStats();
       renderAdminOrders();
       renderAdminMenuList(); // Load menu items on page load
+      checkUnreadChats(); // Check for unread chats
+      startChatPolling(); // Start polling for unread chats
       
       // Start real-time order notifications
       startOrderPolling();
@@ -1647,8 +2186,10 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         stopOrderPolling();
+        stopChatPolling();
       } else {
         startOrderPolling();
+        startChatPolling();
       }
     });
   </script>

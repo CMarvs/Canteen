@@ -19,7 +19,7 @@
   </header>
 
   <main class="container">
-    <h2 class="headline">My Orders</h2>
+    <h2 class="headline">My Orders <span id="chatNotificationBadge" style="display:none; background: #e74c3c; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; margin-left: 8px;">0</span></h2>
     <div id="ordersList" class="orders-list"></div>
     <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
   </main>
@@ -53,12 +53,72 @@
       }
     }
     
+    // Check for unread chat messages
+    async function checkUnreadChatMessages() {
+      try {
+        const cur = getCurrent();
+        if (!cur) return;
+        
+        const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`);
+        const allOrders = await response.json();
+        const myOrders = allOrders.filter(o => o.user_id === cur.id);
+        
+        let totalUnread = 0;
+        for (const order of myOrders) {
+          try {
+            const messagesResponse = await fetch(`${API_BASE}/orders/${order.id}/messages`);
+            if (messagesResponse.ok) {
+              const messages = await messagesResponse.json();
+              if (messages && messages.length > 0) {
+                const unreadCount = messages.filter(m => 
+                  m.sender_role === 'admin' && !m.is_read
+                ).length;
+                totalUnread += unreadCount;
+              }
+            }
+          } catch (err) {
+            // Skip errors
+          }
+        }
+        
+        const badge = document.getElementById('chatNotificationBadge');
+        if (badge) {
+          if (totalUnread > 0) {
+            badge.textContent = totalUnread;
+            badge.style.display = 'inline-block';
+            badge.style.animation = 'pulse 0.5s ease-in-out 3';
+          } else {
+            badge.style.display = 'none';
+            badge.style.animation = '';
+          }
+        }
+      } catch(error) {
+        console.error('Error checking unread messages:', error);
+      }
+    }
+    
+    let chatNotificationInterval = null;
+    function startChatNotificationPolling() {
+      checkUnreadChatMessages();
+      chatNotificationInterval = setInterval(checkUnreadChatMessages, 5000);
+    }
+    
+    function stopChatNotificationPolling() {
+      if (chatNotificationInterval) {
+        clearInterval(chatNotificationInterval);
+        chatNotificationInterval = null;
+      }
+    }
+    
     window.addEventListener('DOMContentLoaded', () => {
       ensureLoggedIn('user'); // This will check and show approval notification
       // Force reload orders when page loads
       renderUserOrders();
       // Start real-time polling
       startUserOrderPolling();
+      // Check for unread chat messages
+      checkUnreadChatMessages();
+      startChatNotificationPolling();
     });
     
     // Also reload when page becomes visible (handles tab switching, back button)
@@ -66,8 +126,11 @@
       if (!document.hidden) {
         renderUserOrders();
         startUserOrderPolling();
+        checkUnreadChatMessages();
+        startChatNotificationPolling();
       } else {
         stopUserOrderPolling();
+        stopChatNotificationPolling();
       }
     });
     
@@ -75,11 +138,14 @@
     window.addEventListener('focus', () => {
       renderUserOrders();
       startUserOrderPolling();
+      checkUnreadChatMessages();
+      startChatNotificationPolling();
     });
     
     // Stop polling when page is hidden (save resources)
     window.addEventListener('blur', () => {
       stopUserOrderPolling();
+      stopChatNotificationPolling();
     });
   </script>
 </body>

@@ -2144,6 +2144,20 @@ async function openChatBox(orderId, userType) {
 
   document.body.appendChild(chatBox);
   
+  // Mark messages as read when opening chat
+  const cur = getCurrent();
+  if (cur) {
+    try {
+      await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reader_role: cur.role || 'user' })
+      });
+    } catch (err) {
+      console.error('Error marking messages as read:', err);
+    }
+  }
+  
   // Load messages
   await loadChatMessages(orderId);
   
@@ -2181,16 +2195,18 @@ async function loadChatMessages(orderId) {
 
     const cur = getCurrent();
     messagesContainer.innerHTML = messages.map(msg => {
-      const isMe = msg.user_id === cur.id;
+      const isMe = msg.user_id === cur.id || (cur.role === 'admin' && msg.sender_role === 'admin');
       const isAdmin = msg.sender_role === 'admin';
       const align = isMe ? 'flex-end' : 'flex-start';
       const bgColor = isMe ? (isAdmin ? '#8B4513' : '#2196F3') : '#e0e0e0';
       const textColor = isMe ? 'white' : '#333';
+      const isUnread = !msg.is_read && !isMe;
+      const unreadIndicator = isUnread ? '<span style="background: #e74c3c; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 4px;"></span>' : '';
       
       return `
         <div style="display: flex; justify-content: ${align}; margin-bottom: 12px;">
-          <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word;">
-            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${msg.sender_name}${isAdmin ? ' (Admin)' : ''}</div>
+          <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; ${isUnread ? 'border-left: 3px solid #e74c3c;' : ''}">
+            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${msg.sender_name}${isAdmin ? ' (Admin)' : ''}${unreadIndicator}</div>
             <div style="font-size: 0.9rem;">${escapeHtml(msg.message)}</div>
             <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${new Date(msg.created_at).toLocaleTimeString()}</div>
           </div>
@@ -2200,6 +2216,19 @@ async function loadChatMessages(orderId) {
     
     // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Mark messages as read after loading (if user is viewing)
+    if (cur) {
+      try {
+        await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reader_role: cur.role || 'user' })
+        });
+      } catch (err) {
+        // Silently fail
+      }
+    }
   } catch(error) {
     console.error('Error loading messages:', error);
   }
