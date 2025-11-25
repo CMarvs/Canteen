@@ -96,11 +96,29 @@
     </section>
   </main>
 
-  <script src="/static/script.js" defer></script>
+  <script>
+    // Load script.js with better error handling
+    const script = document.createElement('script');
+    script.src = '/static/script.js';
+    script.onload = function() {
+      console.log('script.js loaded successfully');
+      window.scriptJsLoaded = true;
+      // Trigger a custom event when script loads
+      window.dispatchEvent(new Event('scriptJsLoaded'));
+    };
+    script.onerror = function() {
+      console.error('Failed to load script.js - check server and file path');
+      window.scriptJsLoaded = false;
+      alert('Error: Failed to load required scripts. Please refresh the page.');
+    };
+    document.head.appendChild(script);
+  </script>
   <script>
     // Wait for script.js to be fully loaded
-    function waitForScript(callback, maxAttempts = 50) {
+    function waitForScript(callback, maxAttempts = 100) {
       let attempts = 0;
+      let checkInterval = null;
+      
       const checkScript = () => {
         attempts++;
         // Check if all required functions are available
@@ -109,24 +127,35 @@
         const hasRenderCart = typeof renderCart === 'function';
         
         if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
+          console.log('✅ All script.js functions loaded successfully');
+          if (checkInterval) clearInterval(checkInterval);
           callback();
         } else if (attempts < maxAttempts) {
-          setTimeout(checkScript, 150);
+          // Continue checking
+          if (attempts % 10 === 0) {
+            console.log(`Waiting for script.js... (attempt ${attempts}/${maxAttempts})`);
+            console.log('Status:', {getCurrent: hasGetCurrent, loadMenu: hasLoadMenu, renderCart: hasRenderCart});
+          }
         } else {
-          console.warn('script.js functions not fully available after waiting');
-          console.warn('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
+          console.error('❌ script.js functions not fully available after waiting');
+          console.error('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
+          console.error('scriptJsLoaded flag:', window.scriptJsLoaded);
+          if (checkInterval) clearInterval(checkInterval);
           // Try to continue anyway with what we have
           callback();
         }
       };
-      // Start checking after a small delay to let defer work
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-          setTimeout(checkScript, 100);
-        });
-      } else {
+      
+      // Listen for script load event
+      window.addEventListener('scriptJsLoaded', () => {
+        console.log('Script load event received, checking functions...');
         setTimeout(checkScript, 100);
-      }
+      });
+      
+      // Start checking immediately and continue
+      checkInterval = setInterval(checkScript, 200);
+      // Also check immediately
+      setTimeout(checkScript, 500);
     }
     
     function initializeOrderPage() {
