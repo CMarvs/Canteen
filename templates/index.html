@@ -34,11 +34,30 @@
   <script src="/static/script.js"></script>
   <script>
     // if already logged in -> redirect to appropriate page
-    (function(){
-      const cur = getCurrent();
-      if(cur && cur.role === 'admin') location.href='admin.html';
-      if(cur && cur.role === 'user') location.href='order.html';
-    })();
+    // Wait for DOM and scripts to be ready
+    window.addEventListener('DOMContentLoaded', function() {
+      // Wait a bit for script.js to be fully loaded
+      setTimeout(function() {
+        // Check if already logged in -> redirect to appropriate page
+        if (typeof getCurrent === 'function') {
+          const currentUser = getCurrent();
+          if(currentUser && currentUser.role === 'admin') location.href='admin.html';
+          if(currentUser && currentUser.role === 'user') location.href='order.html';
+        } else {
+          // Fallback: check localStorage directly
+          try {
+            const stored = localStorage.getItem('canteen_current_v2');
+            if (stored) {
+              const currentUser = JSON.parse(stored);
+              if(currentUser && currentUser.role === 'admin') location.href='admin.html';
+              if(currentUser && currentUser.role === 'user') location.href='order.html';
+            }
+          } catch(e) {
+            // Ignore errors
+          }
+        }
+      }, 100);
+    });
     
     // Check approval status for pending users (polling)
     let approvalCheckInterval = null;
@@ -138,13 +157,50 @@
       }
       
       try {
-        // delegates to script.js login function
-        await loginUser();
+        // Check if loginUser function is available from script.js
+        if (typeof loginUser === 'function') {
+          await loginUser();
+        } else {
+          // Fallback: manual login
+          const email = document.getElementById('loginEmail')?.value.trim().toLowerCase();
+          const password = document.getElementById('loginPass')?.value.trim();
+          
+          if (!email || !password) {
+            throw new Error('Please enter email and password');
+          }
+          
+          const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Login failed');
+          }
+          
+          const data = await response.json();
+          
+          // Save user session
+          if (typeof saveCurrent === 'function') {
+            saveCurrent(data.user);
+          } else {
+            localStorage.setItem('canteen_current_v2', JSON.stringify(data.user));
+          }
+          
+          // Redirect based on role
+          if (data.user.role === 'admin') {
+            location.href = 'admin.html';
+          } else {
+            location.href = 'order.html';
+          }
+        }
       } catch(error) {
         console.error('Login handler error:', error);
         if(errorDiv) {
           errorDiv.style.display = 'block';
-          errorDiv.textContent = 'Login failed. Please try again.';
+          errorDiv.textContent = error.message || 'Login failed. Please try again.';
         }
       } finally {
         // Re-enable button
