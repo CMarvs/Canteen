@@ -9,6 +9,16 @@ import os
 
 app = FastAPI()
 
+# Helper function to create JSONResponse with proper headers
+def json_response(content, status_code=200):
+    """Create a JSONResponse with proper Content-Type charset and security headers"""
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "X-Content-Type-Options": "nosniff"
+    }
+    return JSONResponse(content=content, status_code=status_code, headers=headers)
+
 # Mount static files
 try:
     if os.path.exists("static"):
@@ -252,6 +262,7 @@ def safe_file_response(path: str):
                 content = f.read()
             # Add aggressive no-cache headers to prevent browser and CDN caching
             headers = {
+                "Content-Type": "text/html; charset=utf-8",
                 "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
                 "Expires": "0",
@@ -261,12 +272,12 @@ def safe_file_response(path: str):
             return HTMLResponse(content=content, headers=headers)
         else:
             print(f"❌ File not found: {full_path}")
-            return JSONResponse(status_code=404, content={"error": "File not found", "path": path})
+            return json_response({"error": "File not found", "path": path}, status_code=404)
     except Exception as e:
         print(f"❌ Error serving file {path}: {e}")
         import traceback
         traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return json_response({"error": str(e)}, status_code=500)
 
 # Routes
 @app.get("/")
@@ -276,7 +287,7 @@ def home():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return JSONResponse(status_code=500, content={"error": f"Failed to serve home page: {str(e)}"})
+        return json_response({"error": f"Failed to serve home page: {str(e)}"}, status_code=500)
 @app.get("/index.html")
 def index(): return safe_file_response("templates/index.html")
 @app.get("/register.html")

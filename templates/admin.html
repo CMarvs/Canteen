@@ -44,10 +44,12 @@
         
         <!-- Filter Bar -->
         <div class="filter-bar">
+          <label for="searchInput" class="sr-only">Search orders</label>
           <input 
             type="text" 
             class="search-input" 
             id="searchInput" 
+            name="searchInput"
             placeholder="🔍 Search by name, contact, or order ID..." 
             oninput="filterOrders()"
           >
@@ -68,24 +70,24 @@
           <h3 style="margin-top: 0;">➕ Add New Menu Item</h3>
           <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
             <div>
-              <label class="input-label">Item Name</label>
-              <input type="text" id="newItemName" placeholder="e.g., Chicken Adobo" style="width: 100%;">
+              <label class="input-label" for="newItemName">Item Name</label>
+              <input type="text" id="newItemName" name="newItemName" placeholder="e.g., Chicken Adobo" style="width: 100%;">
             </div>
             <div>
-              <label class="input-label">Price (₱)</label>
-              <input type="number" id="newItemPrice" placeholder="50" min="0" step="0.01" style="width: 100%;">
+              <label class="input-label" for="newItemPrice">Price (₱)</label>
+              <input type="number" id="newItemPrice" name="newItemPrice" placeholder="50" min="0" step="0.01" style="width: 100%;">
             </div>
             <div>
-              <label class="input-label">Category</label>
-              <select id="newItemCategory" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+              <label class="input-label" for="newItemCategory">Category</label>
+              <select id="newItemCategory" name="newItemCategory" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
                 <option value="budget">Budget Meals</option>
                 <option value="foods">Foods</option>
                 <option value="drinks">Drinks</option>
               </select>
             </div>
             <div>
-              <label class="input-label">Stock Quantity</label>
-              <input type="number" id="newItemQuantity" placeholder="0" min="0" value="0" style="width: 100%;">
+              <label class="input-label" for="newItemQuantity">Stock Quantity</label>
+              <input type="number" id="newItemQuantity" name="newItemQuantity" placeholder="0" min="0" value="0" style="width: 100%;">
             </div>
             <button class="btn" onclick="addMenuItem()" style="height: fit-content;">Add Item</button>
           </div>
@@ -392,7 +394,7 @@
             </div>
             ` : ''}
             <div class="status-buttons">
-              <select class="status-select" onchange="updateOrderStatus(${o.id}, this.value)" value="${o.status || 'Pending'}">
+              <select class="status-select" name="orderStatus_${o.id}" id="orderStatus_${o.id}" onchange="updateOrderStatus(${o.id}, this.value)" value="${o.status || 'Pending'}">
                 <option value="Pending" ${(!o.status || o.status === 'Pending') ? 'selected' : ''}>⏳ Pending</option>
                 <option value="Preparing" ${o.status === 'Preparing' ? 'selected' : ''}>👨‍🍳 Preparing</option>
                 <option value="Out for Delivery" ${o.status === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
@@ -609,23 +611,23 @@
           
           <form id="editOrderForm" onsubmit="saveOrderEdit(event, ${orderId})">
             <div style="margin-bottom: 16px;">
-              <label class="input-label">Customer Name (First Middle Last)</label>
-              <input type="text" id="editFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
+              <label class="input-label" for="editFullname">Customer Name (First Middle Last)</label>
+              <input type="text" id="editFullname" name="editFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
                      placeholder="First Name Middle Name Last Name"
                      required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
             <div style="margin-bottom: 16px;">
-              <label class="input-label">Contact Number (11 digits)</label>
-              <input type="tel" id="editContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+              <label class="input-label" for="editContact">Contact Number (11 digits)</label>
+              <input type="tel" id="editContact" name="editContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
                      placeholder="09XXXXXXXXX" maxlength="11" pattern="[0-9]{11}"
                      oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)"
                      required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
             <div style="margin-bottom: 16px;">
-              <label class="input-label">Address / Location</label>
-              <textarea id="editLocation" required 
+              <label class="input-label" for="editLocation">Address / Location</label>
+              <textarea id="editLocation" name="editLocation" required 
                         style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px;">${(order.location || order.address || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
             </div>
             
@@ -999,7 +1001,8 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
                   <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
-                    <input type="number" id="stock_${item.id}" value="${quantity}" min="0" 
+                    <label for="stock_${item.id}" class="sr-only">Stock quantity for ${item.name}</label>
+                    <input type="number" id="stock_${item.id}" name="stock_${item.id}" value="${quantity}" min="0" 
                            style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
                            onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
                     <button class="btn small" onclick="updateStockQuantity(${item.id})" style="flex: 1;">Update Stock</button>
