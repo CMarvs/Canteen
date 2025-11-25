@@ -96,16 +96,17 @@
     </section>
   </main>
 
-  <script src="/static/script.js" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js');"></script>
+  <script src="/static/script.js" onload="window.scriptJsLoaded = true; if(window.initializeOrderPageWhenReady) window.initializeOrderPageWhenReady();" onerror="console.error('Failed to load script.js');"></script>
   <script>
     function initializeOrderPage() {
       // Check authentication - use fallback to avoid ensureLoggedIn issues
       let isAuthenticated = false;
+      let currentUserData = null;
       
       if (typeof getCurrent === 'function') {
         try {
-          const currentUser = getCurrent();
-          if (currentUser && currentUser.role === 'user') {
+          currentUserData = getCurrent();
+          if (currentUserData && currentUserData.role === 'user') {
             isAuthenticated = true;
           }
         } catch(e) {
@@ -118,8 +119,8 @@
         try {
           const stored = localStorage.getItem('canteen_current_v2');
           if (stored) {
-            const currentUser = JSON.parse(stored);
-            if (currentUser && currentUser.role === 'user') {
+            currentUserData = JSON.parse(stored);
+            if (currentUserData && currentUserData.role === 'user') {
               isAuthenticated = true;
             }
           }
@@ -134,39 +135,67 @@
         return;
       }
       
-      // Try to call ensureLoggedIn if available (but don't fail if it's not)
-      // We wrap it in a separate scope to avoid variable conflicts
-      if (typeof ensureLoggedIn === 'function') {
-        try {
-          // Call in isolated scope to avoid 'cur' variable conflicts
-          (function() {
-            ensureLoggedIn('user');
-          })();
-        } catch(e) {
-          console.warn('ensureLoggedIn error (continuing anyway):', e);
+      // Check approval status manually (avoid calling functions that use 'cur' variable)
+      if (currentUserData && currentUserData.role === 'user') {
+        const notificationShown = localStorage.getItem('approval_notification_shown');
+        if (!notificationShown && currentUserData.is_approved !== false && currentUserData.is_approved !== 0) {
+          // Show approval notification manually if needed
+          if (typeof showApprovalNotification === 'function') {
+            try {
+              showApprovalNotification();
+              localStorage.setItem('approval_notification_shown', 'true');
+            } catch(e) {
+              console.warn('showApprovalNotification error:', e);
+            }
+          }
         }
       }
       
-      // Load menu and cart - check if functions exist
-      if (typeof loadMenuToPage === 'function') {
-        loadMenuToPage();
-      } else {
-        console.warn('loadMenuToPage not available yet, retrying...');
-        setTimeout(() => {
-          if (typeof loadMenuToPage === 'function') {
-            loadMenuToPage();
-          }
-        }, 200);
+      // Load menu and cart - check if functions exist with retry logic
+      function tryLoadMenu() {
+        if (typeof loadMenuToPage === 'function') {
+          loadMenuToPage();
+          return true;
+        }
+        return false;
       }
       
-      if (typeof renderCart === 'function') {
-        renderCart();
-      } else {
-        setTimeout(() => {
-          if (typeof renderCart === 'function') {
-            renderCart();
+      function tryRenderCart() {
+        if (typeof renderCart === 'function') {
+          renderCart();
+          return true;
+        }
+        return false;
+      }
+      
+      // Try immediately
+      if (!tryLoadMenu()) {
+        // Retry with increasing delays
+        let retries = 0;
+        const maxRetries = 5;
+        const retryInterval = setInterval(() => {
+          retries++;
+          if (tryLoadMenu() || retries >= maxRetries) {
+            clearInterval(retryInterval);
+            if (retries >= maxRetries && typeof loadMenuToPage !== 'function') {
+              console.error('loadMenuToPage function not available after multiple retries');
+            }
           }
-        }, 200);
+        }, 300);
+      }
+      
+      if (!tryRenderCart()) {
+        let retries = 0;
+        const maxRetries = 5;
+        const retryInterval = setInterval(() => {
+          retries++;
+          if (tryRenderCart() || retries >= maxRetries) {
+            clearInterval(retryInterval);
+            if (retries >= maxRetries && typeof renderCart !== 'function') {
+              console.error('renderCart function not available after multiple retries');
+            }
+          }
+        }, 300);
       }
       
       // Clear form if cart is empty (user just placed an order)
@@ -237,20 +266,39 @@
       }
     }
     
+    // Function to initialize when script.js is ready
+    window.initializeOrderPageWhenReady = function() {
+      if (typeof getCurrent === 'function' && typeof loadMenuToPage === 'function') {
+        initializeOrderPage();
+        setupPaymentMethodHandlers();
+      }
+    };
+    
     window.addEventListener('DOMContentLoaded', () => {
       // Wait for script.js to load
-      if (window.scriptJsLoaded || typeof getCurrent === 'function') {
+      if (window.scriptJsLoaded && typeof getCurrent === 'function' && typeof loadMenuToPage === 'function') {
         // Script already loaded
         initializeOrderPage();
+        setupPaymentMethodHandlers();
       } else {
-        // Wait a bit for script.js to load
-        setTimeout(() => {
-          initializeOrderPage();
-        }, 300);
+        // Wait for script.js to load with multiple retries
+        let retries = 0;
+        const maxRetries = 10;
+        const checkInterval = setInterval(() => {
+          retries++;
+          if ((window.scriptJsLoaded || typeof getCurrent === 'function') && typeof loadMenuToPage === 'function') {
+            clearInterval(checkInterval);
+            initializeOrderPage();
+            setupPaymentMethodHandlers();
+          } else if (retries >= maxRetries) {
+            clearInterval(checkInterval);
+            console.error('script.js failed to load after multiple retries');
+            // Still try to initialize with what we have
+            initializeOrderPage();
+            setupPaymentMethodHandlers();
+          }
+        }, 200);
       }
-      
-      // Setup payment method handlers
-      setupPaymentMethodHandlers();
     });
 
     function showConfirmBox(){
