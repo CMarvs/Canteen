@@ -1446,6 +1446,7 @@ function orderCardHtmlForUser(o){
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
   const itemsText = items.map(i => `${i.name} ×${i.qty}`).join('<br>');
   const canCancel = o.status === 'Pending';
+  const isDelivered = o.status === 'Delivered';
   
   return `
     <div class="order-card">
@@ -1468,6 +1469,9 @@ function orderCardHtmlForUser(o){
           <button class="btn small" onclick="editUserOrder(${o.id})" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">✏️ Edit</button>
           <button class="btn delete small" onclick="cancelUserOrder(${o.id})" style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">❌ Cancel</button>
         </div>
+        ` : ''}
+        ${isDelivered ? `
+        <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with Admin</button>
         ` : ''}
       </div>
     </div>
@@ -2076,6 +2080,177 @@ function ensureLoggedIn(requiredRole){
   if(cur.role === 'user') {
     checkApprovalStatus();
   }
+}
+
+/* ---------- Chat Functions ---------- */
+let chatPollIntervals = {};
+
+async function openChatBox(orderId, userType) {
+  const cur = getCurrent();
+  if (!cur) {
+    alert('Please login first');
+    location.href = 'index.html';
+    return;
+  }
+
+  // Check if chat box already exists
+  const existingChat = document.getElementById(`chatBox_${orderId}`);
+  if (existingChat) {
+    existingChat.style.display = 'flex';
+    return;
+  }
+
+  // Create chat box modal
+  const chatBox = document.createElement('div');
+  chatBox.id = `chatBox_${orderId}`;
+  chatBox.className = 'chat-box';
+  chatBox.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 400px;
+    max-width: 90vw;
+    height: 500px;
+    max-height: 80vh;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    z-index: 10000;
+    overflow: hidden;
+  `;
+
+  chatBox.innerHTML = `
+    <div style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <strong>💬 Chat - Order #${orderId}</strong>
+        <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Admin Support'}</div>
+      </div>
+      <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold;">×</button>
+    </div>
+    <div id="chatMessages_${orderId}" style="flex: 1; overflow-y: auto; padding: 16px; background: #f9f9f9;">
+      <div style="text-align: center; color: #999; padding: 20px;">Loading messages...</div>
+    </div>
+    <div style="border-top: 1px solid #ddd; padding: 12px; background: white;">
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="chatInput_${orderId}" placeholder="Type your message..." 
+               style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem;"
+               onkeypress="if(event.key === 'Enter') sendChatMessage(${orderId}, '${userType}')">
+        <button onclick="sendChatMessage(${orderId}, '${userType}')" 
+                style="background: #8B4513; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+          Send
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(chatBox);
+  
+  // Load messages
+  await loadChatMessages(orderId);
+  
+  // Start polling for new messages
+  if (!chatPollIntervals[orderId]) {
+    chatPollIntervals[orderId] = setInterval(() => loadChatMessages(orderId), 3000);
+  }
+}
+
+function closeChatBox(orderId) {
+  const chatBox = document.getElementById(`chatBox_${orderId}`);
+  if (chatBox) {
+    chatBox.style.display = 'none';
+  }
+  // Stop polling when chat is closed
+  if (chatPollIntervals[orderId]) {
+    clearInterval(chatPollIntervals[orderId]);
+    delete chatPollIntervals[orderId];
+  }
+}
+
+async function loadChatMessages(orderId) {
+  try {
+    const response = await fetch(`${API_BASE}/orders/${orderId}/messages`);
+    if (!response.ok) return;
+    
+    const messages = await response.json();
+    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+    if (!messagesContainer) return;
+
+    if (messages.length === 0) {
+      messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
+      return;
+    }
+
+    const cur = getCurrent();
+    messagesContainer.innerHTML = messages.map(msg => {
+      const isMe = msg.user_id === cur.id;
+      const isAdmin = msg.sender_role === 'admin';
+      const align = isMe ? 'flex-end' : 'flex-start';
+      const bgColor = isMe ? (isAdmin ? '#8B4513' : '#2196F3') : '#e0e0e0';
+      const textColor = isMe ? 'white' : '#333';
+      
+      return `
+        <div style="display: flex; justify-content: ${align}; margin-bottom: 12px;">
+          <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word;">
+            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${msg.sender_name}${isAdmin ? ' (Admin)' : ''}</div>
+            <div style="font-size: 0.9rem;">${escapeHtml(msg.message)}</div>
+            <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${new Date(msg.created_at).toLocaleTimeString()}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    // Scroll to bottom
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  } catch(error) {
+    console.error('Error loading messages:', error);
+  }
+}
+
+async function sendChatMessage(orderId, userType) {
+  const cur = getCurrent();
+  if (!cur) return;
+
+  const input = document.getElementById(`chatInput_${orderId}`);
+  if (!input) return;
+
+  const message = input.value.trim();
+  if (!message) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: message,
+        user_id: cur.id,
+        sender_role: cur.role || 'user',
+        sender_name: cur.name || 'User'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      alert(`Failed to send message: ${error.detail || 'Unknown error'}`);
+      return;
+    }
+
+    // Clear input
+    input.value = '';
+    
+    // Reload messages
+    await loadChatMessages(orderId);
+  } catch(error) {
+    console.error('Error sending message:', error);
+    alert('Failed to send message. Please try again.');
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 /* ---------- Page Init ---------- */

@@ -135,12 +135,53 @@ def ensure_menu_table_exists():
     finally:
         conn.close()
 
+# --- Initialize chat_messages table if it doesn't exist ---
+def ensure_chat_table_exists():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Check if table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'chat_messages'
+            ) as exists;
+        """)
+        result = cur.fetchone()
+        table_exists = result.get('exists') if isinstance(result, dict) else (result[0] if result else False)
+        
+        if not table_exists:
+            print("[INFO] Creating chat_messages table...")
+            cur.execute("""
+                CREATE TABLE chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    sender_role TEXT NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_order_id ON chat_messages(order_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_messages(created_at);")
+            conn.commit()
+            print("[SUCCESS] chat_messages table created successfully!")
+        else:
+            print("[INFO] chat_messages table already exists")
+    except Exception as e:
+        print(f"[ERROR] Error ensuring chat table exists: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
 # Initialize table on startup (non-blocking)
 try:
     ensure_menu_table_exists()
+    ensure_chat_table_exists()
 except Exception as e:
-    print(f"[WARNING] Could not initialize menu table on startup: {e}")
-    print("[INFO] The table will be created automatically when needed.")
+    print(f"[WARNING] Could not initialize tables on startup: {e}")
+    print("[INFO] The tables will be created automatically when needed.")
 
 # --- Safe FileResponse helper ---
 def safe_file_response(path: str):
@@ -1840,5 +1881,107 @@ async def reset_all_users():
     except Exception as e:
         print(f"Reset users error: {e}")
         raise HTTPException(500, f"Failed to reset users: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Chat: Get messages for an order ---
+@app.get("/orders/{order_id}/messages")
+async def get_order_messages(order_id: int, request: Request):
+    """Get all chat messages for a specific order"""
+    # Ensure chat table exists
+    try:
+        ensure_chat_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure chat table exists: {e}")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Verify order exists
+        cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(404, "Order not found")
+        
+        # Get messages for this order
+        cur.execute("""
+            SELECT id, order_id, user_id, sender_role, sender_name, message, created_at
+            FROM chat_messages
+            WHERE order_id = %s
+            ORDER BY created_at ASC
+        """, (order_id,))
+        messages = cur.fetchall()
+        return messages if messages else []
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Get messages error: {e}")
+        raise HTTPException(500, f"Failed to get messages: {str(e)}")
+    finally:
+        conn.close()
+
+# --- Chat: Send a message for an order ---
+@app.post("/orders/{order_id}/messages")
+async def send_order_message(order_id: int, request: Request):
+    """Send a chat message for a specific order"""
+    # Ensure chat table exists
+    try:
+        ensure_chat_table_exists()
+    except Exception as e:
+        print(f"[WARNING] Could not ensure chat table exists: {e}")
+    
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(400, "Invalid JSON in request body")
+    
+    message_text = data.get("message", "").strip()
+    if not message_text:
+        raise HTTPException(400, "Message cannot be empty")
+    
+    # Get user info from session (stored in request)
+    # For now, we'll get it from the request body
+    user_id = data.get("user_id")
+    sender_role = data.get("sender_role", "user")  # 'user' or 'admin'
+    sender_name = data.get("sender_name", "Unknown")
+    
+    if not user_id:
+        raise HTTPException(400, "user_id is required")
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Verify order exists
+        cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
+        order = cur.fetchone()
+        if not order:
+            raise HTTPException(404, "Order not found")
+        
+        # Verify user exists
+        cur.execute("SELECT id, name, role FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+        
+        # Use actual user name and role if available
+        if not sender_name or sender_name == "Unknown":
+            sender_name = user.get("name", "Unknown")
+        if not sender_role or sender_role == "user":
+            sender_role = user.get("role", "user")
+        
+        # Insert message
+        cur.execute("""
+            INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, order_id, user_id, sender_role, sender_name, message, created_at
+        """, (order_id, user_id, sender_role, sender_name, message_text))
+        conn.commit()
+        message = cur.fetchone()
+        return message
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Send message error: {e}")
+        raise HTTPException(500, f"Failed to send message: {str(e)}")
     finally:
         conn.close()

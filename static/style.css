@@ -68,6 +68,57 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
 
 .foot { padding:14px; text-align:center; font-size:13px; color:var(--muted); background:#fff8f0; border-top:1px solid #f2e5d5; }
 
+/* Chat Box Styles */
+.chat-box {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.chat-box [id^="chatMessages_"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) #f0f0f0;
+}
+
+.chat-box [id^="chatMessages_"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-box [id^="chatMessages_"]::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 10px;
+}
+
+.chat-box [id^="chatMessages_"]::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 10px;
+}
+
+.chat-box [id^="chatMessages_"]::-webkit-scrollbar-thumb:hover {
+  background: #a0522d;
+}
+
+@media (max-width: 480px) {
+  .chat-box {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+
 /* Auth */
 .auth-wrap { display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:100vh; background:var(--bg); }
 .auth-card { max-width:360px; width:100%; background:var(--card); box-shadow:var(--shadow); }
