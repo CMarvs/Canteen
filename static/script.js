@@ -2145,7 +2145,7 @@ async function openChatBox(orderId, userType) {
   document.body.appendChild(chatBox);
   
   // Mark messages as read when opening chat
-  const cur = getCurrent();
+  // Note: cur is already declared at the beginning of this function
   if (cur) {
     try {
       await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
