@@ -2225,6 +2225,9 @@
         for (let i = 0; i < orders.length; i += batchSize) {
           const batch = orders.slice(i, i + batchSize);
           const batchPromises = batch.map(async (order) => {
+            if (!order || !order.id) {
+              return null;
+            }
             try {
               const messagesResponse = await fetch(`/orders/${order.id}/messages?t=${Date.now()}`, {
                 cache: 'no-cache',
@@ -2388,19 +2391,28 @@
         
         let totalUnread = 0;
         for (const order of orders) {
+          if (!order || !order.id) {
+            continue;
+          }
           try {
             const messagesResponse = await fetch(`/orders/${order.id}/messages`);
             if (messagesResponse.ok) {
               const messages = await messagesResponse.json();
-              if (messages && messages.length > 0) {
+              if (messages && Array.isArray(messages) && messages.length > 0) {
                 const unreadCount = messages.filter(m => 
                   m.sender_role === 'user' && !m.is_read
                 ).length;
                 totalUnread += unreadCount;
               }
+            } else if (messagesResponse.status === 404) {
+              // Order doesn't exist or has no messages - skip silently
+              continue;
             }
           } catch (err) {
-            // Skip errors for individual orders
+            // Skip errors for individual orders (network errors, etc.)
+            if (err.name !== 'AbortError') {
+              console.warn(`Error checking messages for order ${order.id}:`, err);
+            }
           }
         }
         

@@ -947,8 +947,39 @@ async def process_payment(request: Request):
     amount = data.get("amount")
     payment_details = data.get("payment_details", {})
     
-    if not order_id or not payment_method or not amount:
+    if not payment_method or not amount:
         raise HTTPException(400, "Missing required payment information")
+    
+    # For GCash, order_id may be null if order hasn't been created yet
+    # Order will be created after payment proof is uploaded
+    if payment_method == "gcash" and not order_id:
+        # Generate payment info without order (for pre-order payment setup)
+        from payment_gateway import process_gcash_direct_transfer
+        import random
+        import string
+        
+        # Generate a temporary reference number
+        temp_ref = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+        reference = f"ORDER_PENDING_{temp_ref}"
+        
+        admin_gcash = os.getenv("ADMIN_GCASH_NUMBER", "09947784922")
+        gcash_number = payment_details.get("gcashNumber", "")
+        
+        if not gcash_number or len(gcash_number) != 11:
+            raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
+        
+        # Return payment info for modal (order will be created later)
+        return {
+            "success": True,
+            "payment_type": "direct_gcash",
+            "admin_gcash_number": admin_gcash,
+            "amount": amount,
+            "reference": reference,
+            "payment_intent_id": reference
+        }
+    
+    if not order_id:
+        raise HTTPException(400, "Order ID is required for this payment method")
     
     conn = get_db_connection()
     try:
@@ -2087,7 +2118,9 @@ async def get_order_messages(order_id: int, request: Request):
         cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
         order = cur.fetchone()
         if not order:
-            raise HTTPException(404, "Order not found")
+            # Return empty array instead of 404 for better UX (order might have been deleted)
+            # This prevents console errors when checking messages for deleted orders
+            return []
         
         # Get messages for this order
         cur.execute("""

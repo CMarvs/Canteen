@@ -603,40 +603,31 @@ async function placeOrder(name, contact, address, paymentMethod){
   }
 
   try {
-    // First, create the order
-    const orderData = {
-      user_id: cur.id,
-      fullname: name.trim(),
-      contact: contactDigits,
-      location: address.trim(),
-      items: cart,
-      total: total,
-      payment_method: paymentMethod,
-      payment_status: 'pending'
-    };
-    
-    // Include payment details if GCash (including payment proof if provided)
-    if (paymentMethod === 'gcash') {
-      orderData.payment_details = paymentDetails;
-    }
-    
-    const orderResponse = await fetch(`${API_BASE}/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderData)
-    });
-
-    if(!orderResponse.ok) {
-      const errorData = await orderResponse.json();
-      alert(errorData.detail || 'Order placement failed');
-      return;
-    }
-
-    const orderResponseData = await orderResponse.json();
-    const orderId = orderResponseData.order?.id || orderResponseData.id;
-
-    // For COD, skip payment processing (payment is done on delivery)
+    // For COD, create order immediately (payment on delivery)
     if (paymentMethod === 'cod') {
+      // Create the order for COD
+      const orderData = {
+        user_id: cur.id,
+        fullname: name.trim(),
+        contact: contactDigits,
+        location: address.trim(),
+        items: cart,
+        total: total,
+        payment_method: paymentMethod,
+        payment_status: 'paid' // COD is automatically paid
+      };
+      
+      const orderResponse = await fetch(`${API_BASE}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+
+      if(!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        alert(errorData.detail || 'Order placement failed');
+        return;
+      }
       // COD orders are automatically marked as paid
       // Clear cart and show success
       saveCart([]);
@@ -663,16 +654,31 @@ async function placeOrder(name, contact, address, paymentMethod){
       return;
     }
 
-    // Process payment for GCash
+    // For GCash, prepare order data but DON'T create order yet
+    // Order will be created only after payment proof is uploaded and "Payment Sent" is clicked
+    const pendingOrderData = {
+      user_id: cur.id,
+      fullname: name.trim(),
+      contact: contactDigits,
+      location: address.trim(),
+      items: cart,
+      total: total,
+      payment_method: paymentMethod,
+      payment_status: 'pending',
+      payment_details: paymentDetails
+    };
+    
+    // Process payment for GCash (get payment info, but don't create order yet)
     let paymentResponse;
     let paymentData;
     
     try {
+      // Get payment processing info (reference number, etc.) without creating order
       paymentResponse = await fetch(`${API_BASE}/payment/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: orderId,
+          order_id: null, // No order ID yet - order not created
           payment_method: paymentMethod,
           amount: total,
           payment_details: paymentDetails
@@ -687,20 +693,15 @@ async function placeOrder(name, contact, address, paymentMethod){
       paymentData = await paymentResponse.json();
     } catch (paymentError) {
       console.error('Payment processing error:', paymentError);
-      alert(`⚠️ Payment Error: ${paymentError.message || 'Failed to process payment. Please try again.'}\n\nYour order has been created. You can complete the payment later.`);
-      
-      // Still redirect to orders page
-      setTimeout(() => {
-        location.href = 'orders.html?t=' + Date.now();
-      }, 1000);
+      alert(`⚠️ Payment Error: ${paymentError.message || 'Failed to process payment. Please try again.'}`);
       return;
     }
 
     // Handle direct GCash transfer (show payment instructions)
     if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
-      // Include order ID in payment data for updating payment proof
-      paymentData.order_id = orderId;
-      // Show payment modal with instructions
+      // Store pending order data in paymentData so modal can create order later
+      paymentData.pendingOrderData = pendingOrderData;
+      // Show payment modal with instructions (order will be created when user confirms payment)
       showGCashPaymentModal(paymentData);
       return;
     }
@@ -800,7 +801,8 @@ function showGCashPaymentModal(paymentData) {
   const adminNumber = paymentData.admin_gcash_number || '09947784922';
   const amount = paymentData.amount || 0;
   const reference = paymentData.reference || paymentData.payment_intent_id || '';
-  const orderId = paymentData.order_id || null; // Store order ID for updating payment proof
+  const pendingOrderData = paymentData.pendingOrderData || null; // Order data to create when payment is confirmed
+  const orderId = paymentData.order_id || null; // May be null if order not created yet
   
   modalContent.innerHTML = `
     <style>
@@ -891,7 +893,10 @@ function showGCashPaymentModal(paymentData) {
       <!-- Payment Proof Upload Section -->
       <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #0066cc;">
         <div style="font-weight: bold; color: #0066cc; margin-bottom: 12px; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
-          <span>📸</span> Upload Payment Proof (Screenshot)
+          <span>📸</span> Upload Payment Proof (Screenshot) <span style="color: #e74c3c; font-size: 0.85rem; margin-left: 8px;">*Required</span>
+        </div>
+        <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 0.85rem; color: #856404; border-left: 4px solid #ffc107;">
+          ⚠️ <strong>Important:</strong> You must upload your payment proof screenshot before confirming payment. Your order will only be created after you upload the proof and click "Create Order & Confirm Payment".
         </div>
         <div style="background: white; padding: 15px; border-radius: 8px; border: 2px dashed #0066cc;">
           <div id="paymentProofPreview" style="display: none; margin-bottom: 12px;">
@@ -1255,69 +1260,143 @@ function showGCashPaymentModal(paymentData) {
   
   // Handle confirm payment
   document.getElementById('confirmPaymentBtn').onclick = async () => {
-    // If payment proof is uploaded, update the order
-    if (paymentProofBase64 && orderId) {
-      try {
+    // Require payment proof before creating order
+    if (!paymentProofBase64) {
+      alert('⚠️ Please upload your payment proof screenshot before confirming payment.\n\nThis helps us verify your payment quickly.');
+      return;
+    }
+    
+    // Disable button to prevent double-clicking
+    const confirmBtn = document.getElementById('confirmPaymentBtn');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '⏳ Creating Order...';
+    }
+    
+    try {
+      // Create order only now (after payment proof is uploaded)
+      let createdOrderId = null;
+      
+      if (pendingOrderData) {
+        // Order not created yet - create it now with payment proof
+        const orderData = {
+          ...pendingOrderData,
+          payment_details: {
+            ...pendingOrderData.payment_details,
+            payment_proof: paymentProofBase64
+          }
+        };
+        
+        const orderResponse = await fetch(`${API_BASE}/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
+        });
+        
+        if (!orderResponse.ok) {
+          const errorData = await orderResponse.json();
+          throw new Error(errorData.detail || 'Failed to create order');
+        }
+        
+        const orderResponseData = await orderResponse.json();
+        createdOrderId = orderResponseData.order?.id || orderResponseData.id;
+        
+        // Update payment proof if order was created but proof wasn't included
+        if (createdOrderId && orderData.payment_details?.payment_proof) {
+          try {
+            const updateResponse = await fetch(`${API_BASE}/orders/${createdOrderId}/payment-proof`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ payment_proof: paymentProofBase64 })
+            });
+            
+            if (updateResponse.ok) {
+              console.log('[PAYMENT] Payment proof uploaded successfully');
+            }
+          } catch(error) {
+            console.warn('[PAYMENT] Failed to upload payment proof separately:', error);
+            // Continue - order is created
+          }
+        }
+      } else if (orderId) {
+        // Order already exists - just update payment proof
         const updateResponse = await fetch(`${API_BASE}/orders/${orderId}/payment-proof`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_proof: paymentProofBase64 })
         });
         
-        if (updateResponse.ok) {
-          console.log('[PAYMENT] Payment proof uploaded successfully');
-        } else {
-          console.warn('[PAYMENT] Failed to upload payment proof, but order is placed');
+        if (!updateResponse.ok) {
+          console.warn('[PAYMENT] Failed to upload payment proof, but order exists');
         }
-      } catch(error) {
-        console.error('[PAYMENT] Error uploading payment proof:', error);
-        // Continue even if upload fails - order is already placed
+        createdOrderId = orderId;
+      } else {
+        throw new Error('No order data available');
+      }
+      
+      // Clear cart
+      saveCart([]);
+      
+      // Clear form fields
+      const delName = document.getElementById('delName');
+      const delContact = document.getElementById('delContact');
+      const delAddress = document.getElementById('delAddress');
+      if(delName) delName.value = '';
+      if(delContact) delContact.value = '';
+      if(delAddress) delAddress.value = '';
+      if(document.getElementById('gcashNumber')) {
+        document.getElementById('gcashNumber').value = '';
+      }
+      
+      // Re-render cart
+      if(typeof renderCart === 'function') {
+        renderCart();
+      }
+      
+      // Remove modal
+      document.body.removeChild(modal);
+      
+      alert(`✅ Order placed successfully!\n\nPayment proof uploaded. Admin will verify your payment of ₱${amount.toFixed(2)}.\n\nYour order will be processed once payment is verified.`);
+      
+      // Redirect to orders page
+      setTimeout(() => {
+        location.href = 'orders.html?t=' + Date.now();
+      }, 300);
+    } catch(error) {
+      console.error('[PAYMENT] Error creating order:', error);
+      alert(`❌ Failed to create order: ${error.message}\n\nPlease try again.`);
+      
+      // Re-enable button
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = '✅ Payment Sent';
       }
     }
-    
-    // Clear cart
-    saveCart([]);
-    
-    // Clear form fields
-    const delName = document.getElementById('delName');
-    const delContact = document.getElementById('delContact');
-    const delAddress = document.getElementById('delAddress');
-    if(delName) delName.value = '';
-    if(delContact) delContact.value = '';
-    if(delAddress) delAddress.value = '';
-    if(document.getElementById('gcashNumber')) {
-      document.getElementById('gcashNumber').value = '';
-    }
-    
-    // Re-render cart
-    if(typeof renderCart === 'function') {
-      renderCart();
-    }
-    
-    // Remove modal
-    document.body.removeChild(modal);
-    
-    const proofMessage = paymentProofBase64 ? 
-      '\n\n✅ Payment proof uploaded! Admin will verify your payment.' : 
-      '\n\n💡 Tip: You can upload payment proof later from your orders page.';
-    
-    alert(`✅ Payment instructions received!\n\nYour order has been placed. Please send ₱${amount.toFixed(2)} to ${adminNumber} with reference ${reference}.${proofMessage}`);
-    
-    // Redirect to orders page
-    setTimeout(() => {
-      location.href = 'orders.html?t=' + Date.now();
-    }, 300);
   };
   
   // Handle cancel
   document.getElementById('cancelPaymentBtn').onclick = () => {
-    document.body.removeChild(modal);
+    // If order hasn't been created yet, show warning
+    if (pendingOrderData && !orderId) {
+      if (confirm('⚠️ Cancel Payment?\n\nYour order has not been created yet. If you cancel now, you will need to start over.\n\nAre you sure you want to cancel?')) {
+        document.body.removeChild(modal);
+      }
+    } else {
+      document.body.removeChild(modal);
+    }
   };
   
   // Close on outside click
   modal.onclick = (e) => {
     if(e.target === modal) {
-      document.body.removeChild(modal);
+      // If order hasn't been created yet, show warning
+      if (pendingOrderData && !orderId) {
+        if (confirm('⚠️ Close Payment Modal?\n\nYour order has not been created yet. If you close now, you will need to start over.\n\nAre you sure you want to close?')) {
+          document.body.removeChild(modal);
+        }
+      } else {
+        document.body.removeChild(modal);
+      }
     }
   };
 }
@@ -2356,13 +2435,16 @@ async function openChatBox(orderId, userType) {
   
   // Mark messages as read when opening chat
   // Note: cur is already declared at the beginning of this function
-  if (cur) {
+  if (cur && orderId) {
     try {
-      await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
+      const readResponse = await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reader_role: cur.role || 'user' })
       });
+      if (!readResponse.ok && readResponse.status !== 404) {
+        console.warn('Failed to mark messages as read:', readResponse.status);
+      }
     } catch (err) {
       console.error('Error marking messages as read:', err);
     }
@@ -2391,8 +2473,17 @@ function closeChatBox(orderId) {
 
 async function loadChatMessages(orderId) {
   try {
+    if (!orderId) {
+      console.warn('loadChatMessages: orderId is missing');
+      return;
+    }
     const response = await fetch(`${API_BASE}/orders/${orderId}/messages`);
-    if (!response.ok) return;
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`Order ${orderId} not found or has no messages`);
+      }
+      return;
+    }
     
     const messages = await response.json();
     const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
@@ -2447,6 +2538,12 @@ async function loadChatMessages(orderId) {
 async function sendChatMessage(orderId, userType) {
   const cur = getCurrent();
   if (!cur) return;
+  
+  if (!orderId) {
+    console.error('sendChatMessage: orderId is missing');
+    alert('Order ID is missing. Cannot send message.');
+    return;
+  }
 
   const input = document.getElementById(`chatInput_${orderId}`);
   if (!input) return;
