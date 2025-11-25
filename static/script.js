@@ -843,28 +843,10 @@ function showGCashPaymentModal(paymentData) {
         <div style="font-size: 0.8rem; color: #666;">Use the GCash app to send payment</div>
       </div>
     
-      <!-- Reference Number -->
-      <div style="background: #fff8e1; padding: 18px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #ffc107;">
-        <div style="font-weight: bold; color: #856404; margin-bottom: 10px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <span>🔑</span> Reference Number
-        </div>
-        <div style="font-size: 1.1em; color: #0066cc; font-weight: bold; font-family: 'Courier New', monospace; letter-spacing: 1px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e0e0e0; word-break: break-all;">${reference}</div>
-        <button id="copyReferenceBtn" style="
-          margin-top: 12px;
-          background: #ffc107;
-          color: #333;
-          border: none;
-          padding: 10px 24px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: 0.9em;
-          font-weight: bold;
-          transition: all 0.3s;
-          box-shadow: 0 2px 8px rgba(255,193,7,0.3);
-        " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(255,193,7,0.4)';" 
-           onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(255,193,7,0.3)';">
-          📋 Copy Reference
-        </button>
+      <!-- QR Code -->
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img src="/static/gcash-qr.png" alt="GCash QR Code" 
+             style="max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto;">
       </div>
       
       <!-- Payment Instructions (Collapsible) -->
@@ -887,28 +869,20 @@ function showGCashPaymentModal(paymentData) {
             <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
               <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">2</div>
               <div style="flex: 1;">
-                Tap <strong>"Send Money"</strong>
+                Tap <strong>"Scan QR"</strong> or <strong>"Send Money"</strong>
               </div>
             </div>
             <div style="display: flex; align-items: start; gap: 12px; margin-bottom: 12px;">
               <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">3</div>
               <div style="flex: 1;">
-                Enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong>
+                Scan the QR code above or enter amount: <strong style="color: #0066cc;">₱${amount.toFixed(2)}</strong>
               </div>
             </div>
             <div style="display: flex; align-items: start; gap: 12px;">
               <div style="background: #0066cc; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">4</div>
               <div style="flex: 1;">
-                Add reference: <strong style="color: #0066cc; font-family: monospace;">${reference}</strong> in message
+                Send payment to: <strong style="color: #0066cc; font-family: monospace;">${adminNumber}</strong>
               </div>
-            </div>
-          </div>
-          <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
-            <div style="font-weight: bold; color: #856404; margin-bottom: 8px;">⚠️ Important:</div>
-            <div style="font-size: 0.9rem; color: #856404; line-height: 1.6;">
-              • Always include the reference number in your payment message<br>
-              • This helps us verify your payment quickly<br>
-              • Keep your payment receipt for reference
             </div>
           </div>
         </div>
@@ -1200,18 +1174,6 @@ function showGCashPaymentModal(paymentData) {
   };
   
   // Copy reference number
-  document.getElementById('copyReferenceBtn').onclick = () => {
-    navigator.clipboard.writeText(reference).then(() => {
-      const btn = document.getElementById('copyReferenceBtn');
-      const originalText = btn.textContent;
-      btn.textContent = '✅ Copied!';
-      setTimeout(() => {
-        btn.textContent = originalText;
-      }, 2000);
-    }).catch(() => {
-      alert(`Reference: ${reference}\n\nPlease copy this reference manually.`);
-    });
-  };
   
   // Payment proof handling
   let paymentProofBase64 = null;
