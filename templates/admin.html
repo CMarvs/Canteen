@@ -273,6 +273,12 @@
         const orders = await response.json();
         allOrders = orders.reverse();
         filteredOrders = [...allOrders];
+        
+        // Update global orders cache for sequential numbering (if function exists)
+        if (typeof updateGlobalOrdersCache === 'function') {
+          updateGlobalOrdersCache(orders);
+        }
+        
         renderStats();
         displayOrders();
         
@@ -298,11 +304,17 @@
       }
     }
 
-    // Calculate sequential order numbers (only for active orders, not delivered)
+    // Calculate sequential order numbers (only for active orders, not delivered or cancelled)
+    // Uses global function from script.js for consistency
     function getOrderNumberMap() {
-      // Get all active orders (not delivered), sorted by creation time (oldest first)
+      // Use global function if available, otherwise fallback to local calculation
+      if (typeof getGlobalOrderNumberMap === 'function') {
+        return getGlobalOrderNumberMap();
+      }
+      
+      // Fallback: Get all active orders (not delivered, not cancelled), sorted by creation time (oldest first)
       const activeOrders = allOrders
-        .filter(o => o.status !== 'Delivered')
+        .filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
         .sort((a, b) => {
           const dateA = new Date(a.created_at || 0);
           const dateB = new Date(b.created_at || 0);
@@ -316,6 +328,15 @@
       });
       
       return orderNumberMap;
+    }
+    
+    // Get sequential order number for a specific order ID
+    function getOrderNumber(orderId) {
+      if (typeof getOrderNumber === 'function' && typeof window.getOrderNumber === 'function') {
+        return window.getOrderNumber(orderId);
+      }
+      const orderNumberMap = getOrderNumberMap();
+      return orderNumberMap[orderId] || orderId;
     }
 
     function displayOrders() {
@@ -357,10 +378,11 @@
           default: badgeClass = "status-pending";
         }
 
-        // Get sequential order number (only for active orders)
+        // Get sequential order number (only for active orders, not delivered or cancelled)
+        const isActive = o.status !== 'Delivered' && o.status !== 'Cancelled';
         const sequentialNumber = orderNumberMap[o.id];
-        const displayOrderNumber = sequentialNumber ? sequentialNumber : `#${o.id}`;
-        const orderNumberLabel = sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+        const displayOrderNumber = isActive && sequentialNumber ? sequentialNumber : o.id;
+        const orderNumberLabel = isActive && sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
 
         const buyerName = o.fullname || o.name || "N/A";
         const buyerContact = o.contact || o.number || "N/A";
@@ -2115,6 +2137,11 @@
         // Reverse to get newest first, then update allOrders immediately
         const currentOrders = orders.reverse();
         
+        // Update global orders cache for sequential numbering (if function exists)
+        if (typeof updateGlobalOrdersCache === 'function') {
+          updateGlobalOrdersCache(orders);
+        }
+        
         // Check if any orders changed status (for real-time number updates)
         const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
                               JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
@@ -2205,6 +2232,20 @@
         chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
       }
       
+      // Add timeout to prevent infinite loading
+      let timeoutId = setTimeout(() => {
+        const currentChatsList = document.getElementById('chatsList');
+        if (currentChatsList && currentChatsList.innerHTML.includes('Loading chats')) {
+          currentChatsList.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+              <div>Loading is taking longer than expected</div>
+              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+      }, 30000); // 30 second timeout
+      
       try {
         // Get all orders
         const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
@@ -2218,10 +2259,17 @@
         
         const orders = await ordersResponse.json();
         
+        if (!Array.isArray(orders)) {
+          throw new Error('Invalid orders response format');
+        }
+        
+        console.log(`[CHATS] Found ${orders.length} orders to check for messages`);
+        
         // Get messages for all orders (limit concurrent requests)
         const chatsWithMessages = [];
         const batchSize = 5; // Process 5 orders at a time
         
+        // Process orders in batches
         for (let i = 0; i < orders.length; i += batchSize) {
           const batch = orders.slice(i, i + batchSize);
           const batchPromises = batch.map(async (order) => {
@@ -2233,26 +2281,51 @@
                 cache: 'no-cache',
                 signal: chatFetchController.signal
               });
+              
+              // Handle 404 gracefully (order might not exist or have no messages)
+              if (messagesResponse.status === 404) {
+                return null;
+              }
+              
               if (messagesResponse.ok) {
                 const messages = await messagesResponse.json();
                 // Ensure messages is an array
                 const messagesArray = Array.isArray(messages) ? messages : [];
                 
                 if (messagesArray.length > 0) {
+                  console.log(`[CHATS] Order ${order.id} has ${messagesArray.length} messages`);
+                  
                   // Convert messages to plain objects if needed (handle RealDictRow)
                   const plainMessages = messagesArray.map(m => {
                     if (typeof m === 'object' && m !== null) {
-                      return {
-                        id: m.id || m.get('id'),
-                        order_id: m.order_id || m.get('order_id'),
-                        user_id: m.user_id || m.get('user_id'),
-                        sender_role: m.sender_role || m.get('sender_role'),
-                        sender_name: m.sender_name || m.get('sender_name'),
-                        message: m.message || m.get('message'),
-                        is_read: m.is_read || m.get('is_read'),
-                        read_at: m.read_at || m.get('read_at'),
-                        created_at: m.created_at || m.get('created_at')
-                      };
+                      // Handle both dict and RealDictRow
+                      if (typeof m.get === 'function') {
+                        // RealDictRow
+                        return {
+                          id: m.get('id'),
+                          order_id: m.get('order_id'),
+                          user_id: m.get('user_id'),
+                          sender_role: m.get('sender_role'),
+                          sender_name: m.get('sender_name'),
+                          message: m.get('message'),
+                          is_read: m.get('is_read'),
+                          read_at: m.get('read_at'),
+                          created_at: m.get('created_at')
+                        };
+                      } else {
+                        // Plain dict - ensure all fields exist
+                        return {
+                          id: m.id,
+                          order_id: m.order_id,
+                          user_id: m.user_id,
+                          sender_role: m.sender_role || 'user',
+                          sender_name: m.sender_name || 'Unknown',
+                          message: m.message || '',
+                          is_read: m.is_read || false,
+                          read_at: m.read_at || null,
+                          created_at: m.created_at || new Date().toISOString()
+                        };
+                      }
                     }
                     return m;
                   });
@@ -2262,8 +2335,15 @@
                     m.sender_role === 'user' && !m.is_read
                   ).length;
                   
+                  console.log(`[CHATS] Order ${order.id}: ${unreadCount} unread user messages`);
+                  
                   // Get last message
                   const lastMessage = plainMessages[plainMessages.length - 1];
+                  
+                  if (!lastMessage || !lastMessage.created_at) {
+                    console.warn(`[CHATS] Order ${order.id}: Last message missing created_at`);
+                    return null;
+                  }
                   
                   return {
                     order: order,
@@ -2277,37 +2357,56 @@
               return null;
             } catch (err) {
               if (err.name !== 'AbortError') {
-                console.error(`Error fetching messages for order ${order.id}:`, err);
+                console.warn(`Error fetching messages for order ${order.id}:`, err);
               }
               return null;
             }
           });
           
-          const batchResults = await Promise.all(batchPromises);
-          batchResults.forEach(result => {
-            if (result) chatsWithMessages.push(result);
-          });
+          try {
+            const batchResults = await Promise.all(batchPromises);
+            batchResults.forEach(result => {
+              if (result) chatsWithMessages.push(result);
+            });
+          } catch (batchError) {
+            console.error('Error processing batch:', batchError);
+            // Continue with next batch even if this one fails
+          }
         }
+        
+        console.log(`[CHATS] Found ${chatsWithMessages.length} orders with messages`);
         
         // Sort by last message time (newest first)
         chatsWithMessages.sort((a, b) => {
-          const timeA = new Date(a.lastMessageTime || 0);
-          const timeB = new Date(b.lastMessageTime || 0);
-          return timeB - timeA;
+          try {
+            const timeA = new Date(a.lastMessageTime || 0).getTime();
+            const timeB = new Date(b.lastMessageTime || 0).getTime();
+            return timeB - timeA;
+          } catch (e) {
+            console.warn('[CHATS] Error sorting messages:', e);
+            return 0;
+          }
         });
         
         const chatsList = document.getElementById('chatsList');
-        if (!chatsList) return;
+        if (!chatsList) {
+          console.error('[CHATS] chatsList element not found');
+          return;
+        }
         
         if (chatsWithMessages.length === 0) {
+          console.log('[CHATS] No chats with messages found');
           chatsList.innerHTML = `
             <div class="empty-state">
               <div class="empty-state-icon">💬</div>
               <div class="empty-state-text">No active chats yet</div>
+              <div style="margin-top: 10px; font-size: 0.85rem; color: #999;">When customers send messages about their orders, they will appear here.</div>
             </div>
           `;
           return;
         }
+        
+        console.log(`[CHATS] Rendering ${chatsWithMessages.length} chat cards`);
         
         chatsList.innerHTML = chatsWithMessages.map(chat => {
           const o = chat.order;
@@ -2347,15 +2446,15 @@
                 </button>
               </div>
               
-              ${chat.lastMessage ? `
+              ${chat.lastMessage && chat.lastMessage.message ? `
               <div style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513;">
                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
-                  <strong>${chat.lastMessage.sender_name}</strong> • ${lastMsgTime}
+                  <strong>${escapeHtml(chat.lastMessage.sender_name || 'Unknown')}</strong> • ${lastMsgTime}
                 </div>
                 <div style="color: #333; word-wrap: break-word;">
-                  ${chat.lastMessage.message.length > 100 ? 
-                    chat.lastMessage.message.substring(0, 100) + '...' : 
-                    chat.lastMessage.message}
+                  ${escapeHtml(chat.lastMessage.message).length > 100 ? 
+                    escapeHtml(chat.lastMessage.message).substring(0, 100) + '...' : 
+                    escapeHtml(chat.lastMessage.message)}
                 </div>
               </div>
               ` : ''}
@@ -2363,21 +2462,34 @@
           `;
         }).join('');
       } catch(error) {
+        // Clear timeout on error
+        if (typeof timeoutId !== 'undefined') {
+          clearTimeout(timeoutId);
+        }
+        
         if (error.name === 'AbortError') {
           return; // Request was cancelled, don't show error
         }
         console.error('Error loading chats:', error);
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
         const chatsList = document.getElementById('chatsList');
         if (chatsList) {
           chatsList.innerHTML = `
             <div style="text-align: center; padding: 40px; color: #e74c3c;">
               <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
               <div>Failed to load chats</div>
+              <div style="font-size: 0.85rem; color: #999; margin-top: 8px;">${error.message || 'Unknown error'}</div>
               <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
             </div>
           `;
         }
-        showNotification('Failed to load chats. Please try again.', 'error');
+        if (typeof showNotification === 'function') {
+          showNotification('Failed to load chats. Please try again.', 'error');
+        }
       } finally {
         chatFetchController = null;
       }

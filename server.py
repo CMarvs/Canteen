@@ -2207,11 +2207,19 @@ async def send_order_message(order_id: int, request: Request):
         if not user:
             raise HTTPException(404, "User not found")
         
-        # Use actual user name and role if available
+        # Use actual user name if available
         if not sender_name or sender_name == "Unknown":
-            sender_name = user.get("name", "Unknown")
-        if not sender_role or sender_role == "user":
-            sender_role = user.get("role", "user")
+            sender_name = user.get("name", "Unknown") if isinstance(user, dict) else (user[1] if len(user) > 1 else "Unknown")
+        
+        # Preserve sender_role from request, but ensure it's valid
+        # If user is admin, they can send as admin; otherwise send as user
+        user_role = user.get("role", "user") if isinstance(user, dict) else (user[2] if len(user) > 2 else "user")
+        if sender_role == "admin" and user_role != "admin":
+            # Non-admin trying to send as admin - force to user
+            sender_role = "user"
+        elif not sender_role or sender_role not in ["user", "admin"]:
+            # Invalid or missing sender_role - use user's actual role
+            sender_role = user_role
         
         # Insert message
         cur.execute("""
@@ -2221,6 +2229,25 @@ async def send_order_message(order_id: int, request: Request):
         """, (order_id, user_id, sender_role, sender_name, message_text, False))
         conn.commit()
         message = cur.fetchone()
+        
+        # Convert message to dict for JSON response
+        if message:
+            if not isinstance(message, dict):
+                col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                if col_names:
+                    message = dict(zip(col_names, message))
+                else:
+                    message = {
+                        'id': message[0] if len(message) > 0 else None,
+                        'order_id': message[1] if len(message) > 1 else None,
+                        'user_id': message[2] if len(message) > 2 else None,
+                        'sender_role': message[3] if len(message) > 3 else None,
+                        'sender_name': message[4] if len(message) > 4 else None,
+                        'message': message[5] if len(message) > 5 else None,
+                        'is_read': message[6] if len(message) > 6 else None,
+                        'read_at': message[7] if len(message) > 7 else None,
+                        'created_at': message[8] if len(message) > 8 else None
+                    }
         
         # If admin sent a message, mark all previous user messages as read
         if sender_role == 'admin':

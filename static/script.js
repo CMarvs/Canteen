@@ -7,6 +7,48 @@
 // API Base URL
 const API_BASE = '';  // Same origin
 
+// Global orders cache for sequential numbering (all orders from database)
+let globalAllOrders = [];
+
+// Unified function to calculate sequential order numbers (works for both admin and user)
+// This ensures consistent numbering across all views
+function getGlobalOrderNumberMap() {
+  // Get all active orders (not delivered, not cancelled), sorted by creation time (oldest first)
+  const activeOrders = globalAllOrders
+    .filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || 0);
+      const dateB = new Date(b.created_at || 0);
+      return dateA - dateB; // Oldest first
+    });
+  
+  // Create a map: orderId -> sequential number
+  const orderNumberMap = {};
+  activeOrders.forEach((order, index) => {
+    orderNumberMap[order.id] = index + 1; // Start from 1
+  });
+  
+  return orderNumberMap;
+}
+
+// Get sequential order number for a specific order ID
+function getOrderNumber(orderId) {
+  const orderNumberMap = getGlobalOrderNumberMap();
+  return orderNumberMap[orderId] || orderId; // Fallback to order ID if not found
+}
+
+// Update global orders cache (called when orders are fetched)
+function updateGlobalOrdersCache(orders) {
+  if (Array.isArray(orders)) {
+    globalAllOrders = orders;
+  }
+}
+
+// Expose functions globally for use in admin.html
+window.getGlobalOrderNumberMap = getGlobalOrderNumberMap;
+window.getOrderNumber = getOrderNumber;
+window.updateGlobalOrdersCache = updateGlobalOrdersCache;
+
 // Storage keys (still using localStorage for cart and current user session)
 const KEY_CURRENT = 'canteen_current_v2';
 const KEY_CART = 'canteen_cart_v2';
@@ -1423,6 +1465,9 @@ async function renderUserOrders(){
     });
     const allOrders = await response.json();
     
+    // Update global orders cache for sequential numbering
+    updateGlobalOrdersCache(allOrders);
+    
     // Filter orders for current user and update global
     const mine = allOrders
       .filter(o => o.user_id === cur.id)
@@ -1450,32 +1495,12 @@ async function renderUserOrders(){
   }
 }
 
-// Calculate sequential order numbers for user (only active orders)
-function getUserOrderNumberMap() {
-  // Get all active orders (not delivered), sorted by creation time (oldest first)
-  const activeOrders = userAllOrders
-    .filter(o => o.status !== 'Delivered')
-    .sort((a, b) => {
-      const dateA = new Date(a.created_at || 0);
-      const dateB = new Date(b.created_at || 0);
-      return dateA - dateB; // Oldest first
-    });
-  
-  // Create a map: orderId -> sequential number
-  const orderNumberMap = {};
-  activeOrders.forEach((order, index) => {
-    orderNumberMap[order.id] = index + 1; // Start from 1
-  });
-  
-  return orderNumberMap;
-}
-
 function orderCardHtmlForUser(o){
-  // Get sequential order number (only for active orders)
-  const orderNumberMap = getUserOrderNumberMap();
-  const sequentialNumber = orderNumberMap[o.id];
-  const displayOrderNumber = sequentialNumber ? sequentialNumber : o.id;
-  const orderNumberLabel = sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+  // Get sequential order number using global function (consistent with admin view)
+  const sequentialNumber = getOrderNumber(o.id);
+  const isActive = o.status !== 'Delivered' && o.status !== 'Cancelled';
+  const displayOrderNumber = isActive ? sequentialNumber : o.id;
+  const orderNumberLabel = isActive ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
   
   // Get payment information
   const paymentMethod = o.payment_method || 'cash';
@@ -2407,10 +2432,16 @@ async function openChatBox(orderId, userType) {
     overflow: hidden;
   `;
 
+  // Get sequential order number for display
+  const orderNumber = getOrderNumber(orderId);
+  const isActive = globalAllOrders.find(o => o.id === orderId)?.status !== 'Delivered' && 
+                   globalAllOrders.find(o => o.id === orderId)?.status !== 'Cancelled';
+  const displayOrderNumber = isActive ? orderNumber : orderId;
+  
   chatBox.innerHTML = `
     <div style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <strong>💬 Chat - Order #${orderId}</strong>
+        <strong>💬 Chat - Order #${displayOrderNumber}</strong>
         <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Admin Support'}</div>
       </div>
       <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
@@ -2451,11 +2482,25 @@ async function openChatBox(orderId, userType) {
   }
   
   // Load messages
-  await loadChatMessages(orderId);
+  await loadChatMessages(orderId, userType);
   
   // Start polling for new messages
   if (!chatPollIntervals[orderId]) {
-    chatPollIntervals[orderId] = setInterval(() => loadChatMessages(orderId), 3000);
+    chatPollIntervals[orderId] = setInterval(() => {
+      loadChatMessages(orderId, userType);
+      // Update chat box title with current order number (in case order status changed)
+      const chatBox = document.getElementById(`chatBox_${orderId}`);
+      if (chatBox) {
+        const orderNumber = getOrderNumber(orderId);
+        const order = globalAllOrders.find(o => o.id === orderId);
+        const isActive = order && order.status !== 'Delivered' && order.status !== 'Cancelled';
+        const displayOrderNumber = isActive ? orderNumber : orderId;
+        const header = chatBox.querySelector('div > div > strong');
+        if (header) {
+          header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
+        }
+      }
+    }, 3000);
   }
 }
 
@@ -2471,13 +2516,35 @@ function closeChatBox(orderId) {
   }
 }
 
-async function loadChatMessages(orderId) {
+async function loadChatMessages(orderId, userType) {
+  const cur = getCurrent();
+  if (!cur) return;
+  
+  const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+  if (!messagesContainer) return;
+  
+  // Update chat box title with current order number
+  const chatBox = document.getElementById(`chatBox_${orderId}`);
+  if (chatBox) {
+    const orderNumber = getOrderNumber(orderId);
+    const order = globalAllOrders.find(o => o.id === orderId);
+    const isActive = order && order.status !== 'Delivered' && order.status !== 'Cancelled';
+    const displayOrderNumber = isActive ? orderNumber : orderId;
+    const header = chatBox.querySelector('div > div > strong');
+    if (header) {
+      header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
+    }
+  }
+  
   try {
     if (!orderId) {
       console.warn('loadChatMessages: orderId is missing');
       return;
     }
-    const response = await fetch(`${API_BASE}/orders/${orderId}/messages`);
+    const response = await fetch(`${API_BASE}/orders/${orderId}/messages?t=${Date.now()}`, {
+      cache: 'no-cache',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
     if (!response.ok) {
       if (response.status === 404) {
         console.warn(`Order ${orderId} not found or has no messages`);
@@ -2486,8 +2553,6 @@ async function loadChatMessages(orderId) {
     }
     
     const messages = await response.json();
-    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
-    if (!messagesContainer) return;
 
     if (messages.length === 0) {
       messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
