@@ -769,13 +769,7 @@ async def login(request: Request):
             # Ensure we return a proper dict (not RealDictRow)
             response_data = dict(user)
             return response_data
-    except HTTPException:
-        raise  # Re-raise HTTPException as-is
-    except Exception as e:
-        print(f"❌ Login error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(500, f"Login failed: {str(e)}")
+        
         # Regular users need approval
         if is_approved is False or is_approved == 0 or is_approved is None:
             print(f"[WARNING] Login blocked: User '{email}' is not approved")
