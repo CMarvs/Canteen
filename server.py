@@ -27,10 +27,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Content-Type"] = "application/json; charset=utf-8"
         return response
 
-# Helper function to serialize datetime objects for JSON
+# Helper function to serialize datetime and Decimal objects for JSON
 def serialize_datetime(obj):
-    """Recursively convert datetime objects to ISO format strings"""
-    if hasattr(obj, 'isoformat'):
+    """Recursively convert datetime and Decimal objects to JSON-serializable types"""
+    # Handle Decimal types (from PostgreSQL numeric fields)
+    if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Decimal':
+        return float(obj)
+    # Handle datetime objects
+    elif hasattr(obj, 'isoformat'):
         return obj.isoformat()
     elif isinstance(obj, dict):
         return {k: serialize_datetime(v) for k, v in obj.items()}
