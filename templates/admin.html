@@ -550,6 +550,9 @@
               ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
               ${o.refund_status === 'refunded' ? `
                 <span style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block;">✅ Refunded</span>
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
+              ` : o.status === 'Cancelled' ? `
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
               ` : (o.status !== 'Delivered' && o.status !== 'Cancelled') ? `
                 <button class="btn small" onclick="processRefund(${o.id})" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💰 Refund</button>
               ` : ''}
@@ -757,6 +760,67 @@
       
       try {
         console.log(`[INFO] Deleting order ${orderId} from database...`);
+        
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        // Read response once
+        let responseData = null;
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            responseData = JSON.parse(responseText);
+          }
+        } catch(parseError) {
+          // If parsing fails, that's okay - we'll check status code
+          console.log('Response parse note:', parseError);
+        }
+
+        if (!response.ok) {
+          // Handle error response
+          const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
+          alert(`❌ Failed to delete order: ${errorMessage}`);
+          console.error('Order deletion failed:', errorMessage);
+          return;
+        }
+
+        // Success - show message and refresh
+        console.log(`[SUCCESS] Order ${orderId} deleted from database`);
+        alert('✅ Order deleted successfully from database!');
+        
+        // Refresh orders list immediately
+        try {
+          await renderAdminOrders();
+          filterOrders();
+        } catch(refreshError) {
+          console.error('Error refreshing orders after delete:', refreshError);
+          // Still show success - order was deleted from database
+          alert('✅ Order deleted from database. Please refresh the page to see updated list.');
+        }
+      } catch(error) {
+        console.error('Error deleting order:', error);
+        alert('❌ Failed to delete order. Please check your connection and try again.');
+      }
+    }
+
+    /* -------- Delete Order (for Cancelled or Refunded orders) -------- */
+    async function deleteOrder(orderId) {
+      // Get order details for confirmation
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+
+      const orderStatus = order.status === 'Cancelled' ? 'cancelled' : 'refunded';
+      const orderNumber = order.id;
+      
+      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${orderNumber}?\n\nThis order is ${orderStatus} and will be permanently deleted from the database.\n\nThis action cannot be undone.`)) return;
+      
+      try {
+        console.log(`[INFO] Deleting ${orderStatus} order ${orderId} from database...`);
         
         const response = await fetch(`/orders/${orderId}`, {
           method: 'DELETE',
