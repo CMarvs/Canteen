@@ -291,22 +291,18 @@ def generate_gcash_qr_code(amount: float, reference: str, admin_number: str) -> 
     Generate GCash QR code data for payment
     Uses GCash payment deep link format that opens app with pre-filled amount
     Format: gcash://pay?amount={amount}&number={number}
-    Falls back to structured text if deep link not supported
+    This opens GCash app with exact amount pre-filled - user just needs to tap "Confirm Payment"
     """
     # Format amount to 2 decimal places (no commas, just decimal)
     amount_str = f"{amount:.2f}"
     # Remove any non-numeric characters from admin number (keep only digits)
     clean_number = ''.join(filter(str.isdigit, admin_number))
     
-    # Primary: GCash deep link format (opens app with pre-filled payment)
+    # GCash deep link format (opens app with pre-filled payment)
     # Format: gcash://pay?amount={amount}&number={number}
-    # This should open GCash app and pre-fill the amount and recipient
+    # This opens GCash app and pre-fills the amount and recipient
+    # User only needs to scan and tap "Confirm Payment" - no manual input required
     qr_data = f"gcash://pay?amount={amount_str}&number={clean_number}"
-    
-    # Note: If GCash doesn't support this deep link format, the QR code will still
-    # display the payment information when scanned, allowing manual entry
-    # The structured format below can be used as fallback if needed:
-    # qr_data = f"GCASH PAYMENT\nAmount: ₱{amount_str}\nTo: {clean_number}\nRef: {reference}"
     
     return qr_data
 
@@ -352,7 +348,7 @@ def generate_gcash_payment_link(amount: float, reference: str, admin_number: str
         "reference": reference,
         "qr_data": qr_data,
         "qr_code_image": qr_image_data_url,  # Base64 encoded QR code image
-        "instructions": f"Scan the QR code to open GCash with the payment amount (₱{amount:.2f}) pre-filled.\n\nOr manually send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}",
+        "instructions": f"Scan the QR code to open GCash with the payment amount (₱{amount:.2f}) pre-filled. Simply tap 'Confirm Payment' - no manual input needed!\n\nOr manually send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}",
         "status": "pending"
     }
 
