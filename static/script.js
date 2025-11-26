@@ -2456,6 +2456,8 @@ async function openChatBox(orderId, userType) {
   const existingChat = document.getElementById(`chatBox_${orderId}`);
   if (existingChat) {
     existingChat.style.display = 'flex';
+    // Reload messages to ensure all messages are displayed
+    await loadChatMessages(orderId, userType);
     return;
   }
 
@@ -2640,14 +2642,30 @@ async function loadChatMessages(orderId, userType) {
     const oldScrollHeight = messagesContainer.scrollHeight;
     
     // Create messages with smooth fade-in animation
+    // Display ALL messages - no filtering
     const messagesHTML = messages.map((msg, index) => {
-      const isMe = msg.user_id === cur.id || (cur.role === 'admin' && msg.sender_role === 'admin');
+      // Determine if message is from current user
+      // For admin: messages from admin are "me", messages from users are "them"
+      // For user: messages from this user are "me", messages from admin are "them"
+      const isMe = (cur.role === 'admin' && msg.sender_role === 'admin') || 
+                   (cur.role === 'user' && msg.user_id === cur.id);
       const isAdmin = msg.sender_role === 'admin';
+      const isUser = msg.sender_role === 'user';
       const align = isMe ? 'flex-end' : 'flex-start';
       const bgColor = isMe ? (isAdmin ? '#8B4513' : '#2196F3') : '#e0e0e0';
       const textColor = isMe ? 'white' : '#333';
       const isUnread = !msg.is_read && !isMe;
       const unreadIndicator = isUnread ? '<span style="background: #e74c3c; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 4px;"></span>' : '';
+      
+      // Log each message for debugging
+      console.log(`[CHAT] Message ${index + 1}/${messages.length}:`, {
+        sender: msg.sender_name,
+        role: msg.sender_role,
+        isMe: isMe,
+        hasMessage: !!msg.message,
+        hasImage: !!msg.image,
+        created_at: msg.created_at
+      });
       
       // Add animation delay for smooth staggered appearance
       const animationDelay = Math.min(index * 0.03, 0.5); // Cap at 0.5s
@@ -2665,13 +2683,24 @@ async function loadChatMessages(orderId, userType) {
         `;
       }
       
+      // Ensure message content is displayed - show message text or image or both
+      const messageContent = msg.message ? escapeHtml(msg.message) : '';
+      const hasContent = messageContent || imageHTML;
+      
+      // If no content at all, show a placeholder
+      if (!hasContent) {
+        console.warn(`[CHAT] Message ${index + 1} has no content (no message text or image)`, msg);
+      }
+      
       return `
         <div class="chat-message" style="display: flex; justify-content: ${align}; margin-bottom: 12px; animation: fadeInMessage 0.3s ease-out ${animationDelay}s both;">
           <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; ${isUnread ? 'border-left: 3px solid #e74c3c;' : ''}">
-            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${escapeHtml(msg.sender_name)}${isAdmin ? ' (Admin)' : ''}${unreadIndicator}</div>
+            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">
+              ${escapeHtml(msg.sender_name || 'Unknown')}${isAdmin ? ' (Admin)' : isUser ? ' (User)' : ''}${unreadIndicator}
+            </div>
             ${imageHTML}
-            ${msg.message ? `<div style="font-size: 0.9rem; ${imageHTML ? 'margin-top: 8px;' : ''}">${escapeHtml(msg.message)}</div>` : ''}
-            <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${new Date(msg.created_at).toLocaleTimeString()}</div>
+            ${messageContent ? `<div style="font-size: 0.9rem; ${imageHTML ? 'margin-top: 8px;' : ''}">${messageContent}</div>` : (!imageHTML ? '<div style="font-size: 0.85rem; opacity: 0.7; font-style: italic;">(No message content)</div>' : '')}
+            <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : 'Unknown time'}</div>
           </div>
         </div>
       `;

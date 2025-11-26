@@ -2519,10 +2519,16 @@
       chatFetchController = new AbortController();
       chatFetchController.renderId = currentRenderId;
       
-      // Show loading state
+      // Show loading state only if we don't already have content
       const chatsList = document.getElementById('chatsList');
       if (chatsList) {
-        chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
+        const hasContent = chatsList.innerHTML && 
+                          !chatsList.innerHTML.includes('Loading chats') && 
+                          !chatsList.innerHTML.includes('loading-spinner') &&
+                          !chatsList.innerHTML.includes('No active chats');
+        if (!hasContent) {
+          chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
+        }
       }
       
       // Add timeout to prevent infinite loading (increased to 15 seconds to allow messages to load)
@@ -2676,15 +2682,19 @@
           const allResults = await Promise.all(allMessagePromises);
           
           // Check if this render is still valid (not superseded by a newer one)
-          // Only ignore if we're actually on the chats tab and a newer render has started
-          // This prevents messages from disappearing when switching tabs
+          // Only ignore if we're actually on the chats tab, a newer render has started, AND we already have content displayed
+          // This prevents messages from disappearing when switching tabs, but allows initial renders to complete
           const chatsSection = document.getElementById('chatsSection');
+          const chatsList = document.getElementById('chatsList');
+          const hasExistingContent = chatsList && !chatsList.innerHTML.includes('Loading chats') && !chatsList.innerHTML.includes('loading-spinner') && !chatsList.innerHTML.includes('No active chats');
+          
           if (chatFetchController && chatFetchController.renderId !== currentRenderId) {
-            if (chatsSection && chatsSection.classList.contains('active')) {
-              console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results`);
+            if (chatsSection && chatsSection.classList.contains('active') && hasExistingContent) {
+              console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results (content already displayed)`);
               return;
             }
-            // If not on chats tab, continue anyway to avoid losing data
+            // If not on chats tab or no content yet, continue anyway to avoid losing data
+            console.log(`[CHATS] Render ${currentRenderId} continuing despite newer render (no content yet or tab switched)`);
           }
           
           console.log(`[CHATS] All results:`, allResults);
@@ -2947,12 +2957,14 @@
       // Use a single interval to avoid duplicates
       chatListRefreshInterval = setInterval(() => {
         if (document.getElementById('chatsSection')?.classList.contains('active')) {
-          // Only refresh if not currently rendering to prevent clearing messages
-          if (!isRenderingChats) {
+          // Only refresh if not currently rendering AND we haven't rendered in the last 5 seconds
+          // This prevents rapid re-renders that clear messages
+          const timeSinceLastRender = Date.now() - lastChatRenderTime;
+          if (!isRenderingChats && timeSinceLastRender > 5000) {
             renderAdminChats();
           }
         }
-      }, 12000); // Refresh every 12 seconds (increased to prevent interference with message display)
+      }, 15000); // Refresh every 15 seconds (increased to prevent interference with message display)
       
       // Initial render if on chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {
