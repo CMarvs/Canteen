@@ -177,25 +177,27 @@ def ensure_chat_table_exists():
                 );
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_order_id ON chat_messages(order_id);")
-            conn.commit()
-        else:
-            # Check if image column exists, add it if not
-            cur.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name='chat_messages' AND column_name='image'
-            """)
-            image_col_exists = cur.fetchone()
-            if not image_col_exists:
-                print("[INFO] Adding image column to chat_messages table...")
-                cur.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT;")
-                conn.commit()
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_messages(created_at);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_is_read ON chat_messages(is_read);")
             conn.commit()
             print("[SUCCESS] chat_messages table created successfully!")
         else:
             print("[INFO] chat_messages table already exists")
+            # Check and add image column if missing
+            try:
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='chat_messages' AND column_name='image'
+                """)
+                image_col_exists = cur.fetchone()
+                if not image_col_exists:
+                    print("[INFO] Adding image column to chat_messages table...")
+                    cur.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT;")
+                    conn.commit()
+            except Exception as img_error:
+                print(f"[WARNING] Could not check/add image column: {img_error}")
+            
             # Check and add is_read column if missing
             try:
                 cur.execute("""
