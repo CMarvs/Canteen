@@ -332,7 +332,8 @@
     
     // Get sequential order number for a specific order ID
     function getOrderNumber(orderId) {
-      if (typeof getOrderNumber === 'function' && typeof window.getOrderNumber === 'function') {
+      // Use global function from script.js if available, otherwise use local calculation
+      if (typeof window.getOrderNumber === 'function' && window.getOrderNumber !== getOrderNumber) {
         return window.getOrderNumber(orderId);
       }
       const orderNumberMap = getOrderNumberMap();
@@ -2222,7 +2223,11 @@
     async function renderAdminChats() {
       // Cancel previous request if still pending
       if (chatFetchController) {
-        chatFetchController.abort();
+        try {
+          chatFetchController.abort();
+        } catch (e) {
+          // Ignore errors when aborting
+        }
       }
       chatFetchController = new AbortController();
       
@@ -2248,9 +2253,14 @@
       
       try {
         // Get all orders
+        const controller = chatFetchController;
+        if (!controller) {
+          return; // Request was cancelled
+        }
+        
         const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
-          signal: chatFetchController.signal
+          signal: controller.signal
         });
         
         if (!ordersResponse.ok) {
@@ -2277,9 +2287,15 @@
               return null;
             }
             try {
+              // Check if controller still exists (might have been cleared)
+              const controller = chatFetchController;
+              if (!controller) {
+                return null; // Request was cancelled
+              }
+              
               const messagesResponse = await fetch(`/orders/${order.id}/messages?t=${Date.now()}`, {
                 cache: 'no-cache',
-                signal: chatFetchController.signal
+                signal: controller.signal
               });
               
               // Handle 404 gracefully (order might not exist or have no messages)
