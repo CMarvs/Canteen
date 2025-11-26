@@ -1072,11 +1072,15 @@ async def process_payment(request: Request):
         if not gcash_number or len(gcash_number) != 11:
             raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
         
-        # Generate dynamic QR code with exact amount
+        # Get static QR code URL
+        qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.jpg")
+        
+        # Generate payment info with static QR code
         payment_info = generate_gcash_payment_link(
             amount=float(amount),
             reference=reference,
-            admin_number=admin_gcash
+            admin_number=admin_gcash,
+            qr_code_url=qr_code_url
         )
         
         # Return payment info for modal (order will be created later)
@@ -1087,8 +1091,7 @@ async def process_payment(request: Request):
             "amount": amount,
             "reference": reference,
             "payment_intent_id": reference,
-            "qr_code_image": payment_info.get("qr_code_image", ""),  # Dynamic QR code image (base64)
-            "qr_data": payment_info.get("qr_data", ""),  # QR code data for deep link
+            "qr_code_url": payment_info.get("qr_code_url", qr_code_url),  # Static QR code image URL
             "instructions": payment_info.get("instructions", "")
         }
     
@@ -1137,7 +1140,7 @@ async def process_payment(request: Request):
             
             try:
                 # QR code URL - use environment variable or default path
-                qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.png")
+                qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.jpg")
                 
                 # Process GCash payment (direct GCash-to-GCash transfer)
                 payment_result = process_gcash_payment(
@@ -1198,8 +1201,7 @@ async def process_payment(request: Request):
                         "reference": payment_result.get("reference", payment_intent_id),
                         "instructions": payment_result.get("instructions", ""),
                         "qr_data": payment_result.get("qr_data", ""),
-                        "qr_code_image": payment_result.get("qr_code_image", ""),  # Base64 encoded dynamic QR code
-                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.jpg")  # Fallback static QR code
+                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.jpg")  # Static QR code image
                     }
                 
                 # Return success response for GCash
@@ -2139,14 +2141,41 @@ async def delete_order(oid: int, request: Request):
 
 # --- Admin: Get all users ---
 @app.get("/users")
-def get_users():
+async def get_users():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute("SELECT id, name, email, role, is_approved, id_proof, selfie_proof FROM users ORDER BY id DESC")
-        return cur.fetchall()
+        users = cur.fetchall()
+        
+        # Convert RealDictRow to plain dict for JSON serialization
+        if users:
+            users_list = []
+            for user in users:
+                if isinstance(user, dict):
+                    users_list.append(dict(user))
+                else:
+                    # Handle tuple response
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    if col_names:
+                        users_list.append(dict(zip(col_names, user)))
+                    else:
+                        # Fallback: create dict from tuple indices
+                        users_list.append({
+                            'id': user[0] if len(user) > 0 else None,
+                            'name': user[1] if len(user) > 1 else None,
+                            'email': user[2] if len(user) > 2 else None,
+                            'role': user[3] if len(user) > 3 else None,
+                            'is_approved': user[4] if len(user) > 4 else None,
+                            'id_proof': user[5] if len(user) > 5 else None,
+                            'selfie_proof': user[6] if len(user) > 6 else None,
+                        })
+            return json_response(users_list)
+        return json_response([])
     except Exception as e:
         print(f"❌ Get users error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get users: {str(e)}")
     finally:
         try:
@@ -2253,8 +2282,20 @@ async def approve_user(user_id: int, request: Request):
             conn.commit()
             result = cur.fetchone()
         
+        # Convert result to dict if needed
+        result_dict = None
+        if result:
+            if isinstance(result, dict):
+                result_dict = dict(result)
+            else:
+                col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                if col_names:
+                    result_dict = dict(zip(col_names, result))
+                else:
+                    result_dict = result if isinstance(result, dict) else {}
+        
         role_msg = f" as {new_role}" if new_role else ""
-        return {"ok": True, "message": f"User {'approved' if is_approved else 'rejected'}{role_msg} successfully", "user": result}
+        return json_response({"ok": True, "message": f"User {'approved' if is_approved else 'rejected'}{role_msg} successfully", "user": result_dict})
     except HTTPException:
         raise
     except Exception as e:
@@ -2602,7 +2643,24 @@ async def submit_rating(request: Request):
         
         conn.commit()
         result = cur.fetchone()
-        return result
+        # Convert result to dict for JSON serialization
+        if result:
+            if isinstance(result, dict):
+                result_dict = dict(result)
+            else:
+                col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                if col_names:
+                    result_dict = dict(zip(col_names, result))
+                else:
+                    result_dict = {
+                        'id': result[0] if len(result) > 0 else None,
+                        'user_id': result[1] if len(result) > 1 else None,
+                        'rating': result[2] if len(result) > 2 else None,
+                        'comment': result[3] if len(result) > 3 else None,
+                        'created_at': result[4] if len(result) > 4 else None,
+                    }
+            return json_response(result_dict)
+        return json_response(None)
     except HTTPException:
         raise
     except Exception as e:

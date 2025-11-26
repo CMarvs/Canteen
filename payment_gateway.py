@@ -328,17 +328,14 @@ def generate_gcash_qr_image(qr_data: str) -> bytes:
     
     return img_bytes.getvalue()
 
-def generate_gcash_payment_link(amount: float, reference: str, admin_number: str) -> Dict:
+def generate_gcash_payment_link(amount: float, reference: str, admin_number: str, qr_code_url: str = None) -> Dict:
     """
     Generate GCash payment request/link
-    Returns payment instructions and QR code data with dynamic QR code image
+    Returns payment instructions with static QR code image
     """
-    qr_data = generate_gcash_qr_code(amount, reference, admin_number)
-    
-    # Generate QR code image as base64
-    qr_image_bytes = generate_gcash_qr_image(qr_data)
-    qr_image_base64 = base64.b64encode(qr_image_bytes).decode('utf-8')
-    qr_image_data_url = f"data:image/png;base64,{qr_image_base64}"
+    # Use static QR code image instead of generating dynamic one
+    # Default to /static/gcash-qr.jpg if no URL provided
+    static_qr_url = qr_code_url or "/static/gcash-qr.jpg"
     
     return {
         "success": True,
@@ -346,34 +343,31 @@ def generate_gcash_payment_link(amount: float, reference: str, admin_number: str
         "admin_gcash_number": admin_number,
         "amount": amount,
         "reference": reference,
-        "qr_data": qr_data,
-        "qr_code_image": qr_image_data_url,  # Base64 encoded QR code image
-        "instructions": f"Scan the QR code to open GCash with the payment amount (₱{amount:.2f}) pre-filled. Simply tap 'Confirm Payment' - no manual input needed!\n\nOr manually send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}",
+        "qr_code_url": static_qr_url,  # Static QR code image URL
+        "instructions": f"Scan the QR code and send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}",
         "status": "pending"
     }
 
 def process_gcash_direct_transfer(order_id: int, amount: float, customer_gcash: str, admin_gcash: str, order_details: Dict, qr_code_url: str = None) -> Dict:
     """
     Process direct GCash-to-GCash transfer
-    Generates payment request with QR code
+    Generates payment request with static QR code
     """
     reference = f"ORDER_{order_id}_{int(os.urandom(4).hex(), 16)}"
+    
+    # Use static QR code URL (default to /static/gcash-qr.jpg)
+    static_qr_url = qr_code_url or "/static/gcash-qr.jpg"
     
     payment_info = generate_gcash_payment_link(
         amount=amount,
         reference=reference,
-        admin_number=admin_gcash
+        admin_number=admin_gcash,
+        qr_code_url=static_qr_url
     )
     
     payment_info["order_id"] = order_id
     payment_info["customer_gcash"] = customer_gcash
     payment_info["payment_intent_id"] = reference  # Use reference as payment ID
-    
-    # Add QR code URL if provided, otherwise use default
-    if qr_code_url:
-        payment_info["qr_code_url"] = qr_code_url
-    else:
-        payment_info["qr_code_url"] = "/static/gcash-qr.png"  # Default path
     
     return payment_info
 

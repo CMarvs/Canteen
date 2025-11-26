@@ -880,9 +880,9 @@ function showGCashPaymentModal(paymentData) {
         <div style="font-size: 2.5rem; font-weight: bold; color: #0066cc; letter-spacing: -1px;">₱${amount.toFixed(2)}</div>
       </div>
       
-      <!-- Dynamic QR Code - Scan to Pay -->
+      <!-- Static QR Code - Scan to Pay -->
       <div style="text-align: center; margin-bottom: 20px;">
-        ${paymentData.qr_code_image ? `
+        ${paymentData.qr_code_url ? `
           <div style="background: linear-gradient(135deg, #0066cc 0%, #004499 100%); padding: 30px 20px; border-radius: 20px; display: inline-block; box-shadow: 0 8px 24px rgba(0,102,204,0.3); max-width: 340px; width: 100%;">
             <!-- GCash Logo Area -->
             <div style="margin-bottom: 20px;">
@@ -892,8 +892,8 @@ function showGCashPaymentModal(paymentData) {
             
             <!-- QR Code Container -->
             <div style="background: white; padding: 20px; border-radius: 16px; margin: 0 auto; display: inline-block;">
-              <img src="${paymentData.qr_code_image}" alt="GCash QR Code - Scan to pay ₱${amount.toFixed(2)}" 
-                   style="width: 280px; height: 280px; display: block; border-radius: 8px;">
+              <img src="${paymentData.qr_code_url}" alt="GCash QR Code - Scan to pay ₱${amount.toFixed(2)}" 
+                   style="width: 280px; height: 280px; display: block; border-radius: 8px; object-fit: contain;">
             </div>
             
             <!-- Payment Info -->
@@ -901,8 +901,7 @@ function showGCashPaymentModal(paymentData) {
               <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 6px;">Payment Amount</div>
               <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">₱${amount.toFixed(2)}</div>
               <div style="font-size: 0.75rem; opacity: 0.85; line-height: 1.4; padding: 0 10px;">
-                Amount will be pre-filled automatically.<br>
-                Just scan and tap "Confirm Payment"
+                Scan the QR code and send the exact amount above
               </div>
             </div>
             
@@ -914,8 +913,8 @@ function showGCashPaymentModal(paymentData) {
         ` : `
           <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border: 2px dashed #0066cc;">
             <div style="font-size: 3rem; margin-bottom: 10px;">📱</div>
-            <div style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">QR Code Loading...</div>
-            <div style="font-size: 0.8rem; color: #999;">Please wait while we generate your payment QR code</div>
+            <div style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">QR Code Not Available</div>
+            <div style="font-size: 0.8rem; color: #999;">Please contact support</div>
           </div>
         `}
       </div>
