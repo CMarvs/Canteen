@@ -101,7 +101,8 @@
     if (!window.scriptJsLoading && !window.scriptJsLoaded) {
       window.scriptJsLoading = true;
       const script = document.createElement('script');
-      script.src = '/static/script.js';
+      // Add cache-busting parameter to ensure fresh script loads
+      script.src = '/static/script.js?v=' + Date.now();
       script.onload = function() {
         console.log('script.js loaded successfully');
         window.scriptJsLoaded = true;
@@ -121,9 +122,29 @@
           });
           if (!hasAPIBase) {
             console.error('❌ script.js did not execute - API_BASE not defined. Check for syntax errors.');
+            if (window.scriptJsError) {
+              console.error('Error details:', window.scriptJsError);
+            }
           } else if (!hasGetCurrent || !hasLoadMenu || !hasRenderCart) {
             console.error('⚠️ script.js executed but functions not available - possible error during execution');
+            console.error('Available functions check:', {
+              getCurrent: typeof getCurrent,
+              loadMenuToPage: typeof loadMenuToPage,
+              renderCart: typeof renderCart,
+              API_BASE: typeof API_BASE
+            });
+            if (window.scriptJsError) {
+              console.error('Error details:', window.scriptJsError);
+            }
             console.error('Check browser console for JavaScript errors in script.js');
+            // Try to reload the script
+            console.log('Attempting to reload script.js...');
+            const newScript = document.createElement('script');
+            newScript.src = '/static/script.js?v=' + Date.now();
+            newScript.onerror = function() {
+              console.error('Failed to reload script.js');
+            };
+            document.head.appendChild(newScript);
           }
         }, 200);
         // Trigger a custom event when script loads
@@ -135,13 +156,28 @@
         window.scriptJsLoading = false;
         alert('Error: Failed to load required scripts. Please refresh the page.');
       };
-      // Add error handler to catch syntax errors
+      // Add error handler to catch syntax errors and runtime errors
       window.addEventListener('error', function(e) {
         if (e.filename && e.filename.includes('script.js')) {
-          console.error('❌ Syntax error in script.js:', e.message, 'at line', e.lineno);
+          console.error('❌ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
+          console.error('Error details:', e.error);
           window.scriptJsSyntaxError = true;
+          window.scriptJsError = {
+            message: e.message,
+            line: e.lineno,
+            column: e.colno,
+            error: e.error
+          };
         }
       }, true);
+      
+      // Also catch unhandled promise rejections
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e.reason && e.reason.stack && e.reason.stack.includes('script.js')) {
+          console.error('❌ Unhandled promise rejection in script.js:', e.reason);
+          window.scriptJsSyntaxError = true;
+        }
+      });
       document.head.appendChild(script);
     } else {
       console.log('script.js already loading or loaded');
