@@ -2599,7 +2599,7 @@ async function openChatBox(orderId, userType) {
           header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
         }
       }
-    }, 8000); // Poll every 8 seconds (optimized for performance - reduced frequency)
+    }, 15000); // Poll every 15 seconds (reduced frequency to prevent timeout spam)
   }
 }
 
@@ -2617,7 +2617,8 @@ function closeChatBox(orderId) {
 
 // Cache for chat messages to reduce API calls
 const chatMessagesCache = new Map();
-const CACHE_TTL = 5000; // 5 seconds cache
+const CACHE_TTL = 10000; // 10 seconds cache (increased to reduce API calls)
+const chatRequestInProgress = new Set(); // Track in-progress requests to prevent duplicates
 
 async function loadChatMessages(orderId, userType, retryCount = 0) {
   const cur = getCurrent();
@@ -2626,20 +2627,31 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
   const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
   if (!messagesContainer) return;
   
+  // Request deduplication - skip if already loading
+  const requestKey = `${orderId}_${userType}`;
+  if (chatRequestInProgress.has(requestKey) && retryCount === 0) {
+    console.log(`[CHAT] Request already in progress for order ${orderId}, skipping duplicate call`);
+    return;
+  }
+  
   // Check cache first (only if not a retry)
   if (retryCount === 0) {
     const cacheKey = `${orderId}_${userType}`;
     const cached = chatMessagesCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-      // Use cached messages if available and fresh
+      // Use cached messages if available and fresh - skip API call
       const messages = cached.messages;
-      if (Array.isArray(messages) && messages.length > 0) {
-        // Only use cache if we have messages - don't cache empty states
-        console.log(`[CHAT] Using cached messages for order ${orderId}`);
-        // Still render but skip API call
+      if (Array.isArray(messages)) {
+        console.log(`[CHAT] Using cached messages for order ${orderId} (${messages.length} messages)`);
+        // Render cached messages
+        renderChatMessages(messages, messagesContainer, cur, orderId);
+        return; // Skip API call
       }
     }
   }
+  
+  // Mark request as in progress
+  chatRequestInProgress.add(requestKey);
   
   // Maximum retries for 502 errors
   const MAX_RETRIES = 3;
@@ -2708,7 +2720,7 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
       // Parse response if successful (inside try block)
       const messages = await response.json();
       
-      // Cache messages for faster subsequent loads (5 second TTL)
+      // Cache messages for faster subsequent loads (10 second TTL)
       const cacheKey = `${orderId}_${userType}`;
       chatMessagesCache.set(cacheKey, {
         messages: messages,
@@ -2717,27 +2729,107 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
       
       if (!Array.isArray(messages)) {
         console.error('Invalid messages response format:', messages);
+        chatRequestInProgress.delete(requestKey);
         return;
       }
 
-      if (messages.length === 0) {
-        // Smooth fade-in for empty state
-        messagesContainer.style.opacity = '0';
-        messagesContainer.innerHTML = '<div class="fade-in" style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
-        setTimeout(() => {
-          messagesContainer.style.opacity = '1';
-          messagesContainer.style.transition = 'opacity 0.3s ease-in-out';
-        }, 50);
-        return;
+      // Render messages
+      renderChatMessages(messages, messagesContainer, cur, orderId);
+      
+      // Mark messages as read after loading (if user is viewing)
+      if (cur) {
+        try {
+          await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reader_role: cur.role || 'user' })
+          });
+        } catch (err) {
+          // Silently fail
+        }
       }
       
-      // Store current scroll position for smooth updates
-      const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
-      const oldScrollHeight = messagesContainer.scrollHeight;
-      
-      // Create messages with smooth fade-in animation
-      // Display ALL messages - no filtering
-      const messagesHTML = messages.map((msg, index) => {
+    } catch (fetchError) {
+      // Handle fetch errors (network, timeout, etc.)
+      if (fetchError.name === 'AbortError') {
+        // Only log timeout once per request, not repeatedly
+        if (retryCount === 0) {
+          console.warn(`[CHAT] Request timeout for order ${orderId} after 30 seconds`);
+        }
+        // Don't show timeout message if we're retrying
+        if (retryCount === 0) {
+          const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+          if (messagesContainer && !messagesContainer.querySelector('.timeout-message')) {
+            const timeoutHTML = `
+              <div class="timeout-message" style="text-align: center; padding: 20px; color: #e74c3c; background: #ffe6e6; border-radius: 8px; margin: 10px 0;">
+                <div style="font-size: 1.2rem; margin-bottom: 8px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <div style="font-size: 0.85rem; margin-top: 8px; color: #666;">The server may be slow. Please try again.</div>
+                <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                        style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                  Retry
+                </button>
+              </div>
+            `;
+            messagesContainer.insertAdjacentHTML('beforeend', timeoutHTML);
+          }
+        }
+        chatRequestInProgress.delete(requestKey);
+        return; // Silently handle timeout
+      }
+      console.error('[CHAT] Fetch error:', fetchError);
+      chatRequestInProgress.delete(requestKey);
+    } finally {
+      // Always clear the request flag
+      chatRequestInProgress.delete(requestKey);
+    }
+  } catch(outerError) {
+    // This catch handles any errors in the message processing code
+    console.error('[CHAT] Error processing messages:', outerError);
+    chatRequestInProgress.delete(requestKey);
+    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+    if (messagesContainer) {
+      // Show error message in chat box
+      const errorHTML = `
+        <div style="text-align: center; padding: 20px; color: #e74c3c;">
+          <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
+          <div>Failed to load messages</div>
+          <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
+            ${outerError.message || 'Please try again'}
+          </div>
+          <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                  style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Retry
+          </button>
+        </div>
+      `;
+      messagesContainer.innerHTML = errorHTML;
+    }
+  }
+}
+
+// Helper function to render chat messages (extracted for reuse with cache)
+function renderChatMessages(messages, messagesContainer, cur, orderId) {
+  if (!messagesContainer || !cur) return;
+  
+  if (messages.length === 0) {
+    // Smooth fade-in for empty state
+    messagesContainer.style.opacity = '0';
+    messagesContainer.innerHTML = '<div class="fade-in" style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
+    setTimeout(() => {
+      messagesContainer.style.opacity = '1';
+      messagesContainer.style.transition = 'opacity 0.3s ease-in-out';
+    }, 50);
+    return;
+  }
+  
+  // Store current scroll position for smooth updates
+  const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+  const oldScrollHeight = messagesContainer.scrollHeight;
+  
+  // Create messages with smooth fade-in animation
+  // Display ALL messages - no filtering
+  const messagesHTML = messages.map((msg, index) => {
         // Determine if message is from current user
         // For admin: messages from admin are "me", messages from users are "them"
         // For user: messages from this user are "me", messages from admin are "them"
@@ -2828,44 +2920,7 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }, 100);
       }
-      
-      // Mark messages as read after loading (if user is viewing)
-      if (cur) {
-        try {
-          await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reader_role: cur.role || 'user' })
-          });
-        } catch (err) {
-          // Silently fail
-        }
-      }
-    } catch (fetchError) {
-      // Handle fetch errors (network, timeout, etc.)
-      if (fetchError.name === 'AbortError') {
-        console.warn(`[CHAT] Request timeout for order ${orderId} after 30 seconds`);
-        // Show user-friendly message in chat box
-        const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
-        if (messagesContainer && !messagesContainer.querySelector('.timeout-message')) {
-          const timeoutHTML = `
-            <div class="timeout-message" style="text-align: center; padding: 20px; color: #e74c3c; background: #ffe6e6; border-radius: 8px; margin: 10px 0;">
-              <div style="font-size: 1.2rem; margin-bottom: 8px;">⏱️</div>
-              <div>Request took longer than expected</div>
-              <div style="font-size: 0.85rem; margin-top: 8px; color: #666;">The server may be slow. Please try again.</div>
-              <button onclick="loadChatMessages(${orderId}, '${userType}')" 
-                      style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                Retry
-              </button>
-            </div>
-          `;
-          messagesContainer.insertAdjacentHTML('beforeend', timeoutHTML);
-        }
-        return; // Silently handle timeout
-      }
-      console.error('[CHAT] Fetch error:', fetchError);
-    }
-  } catch(outerError) {
+}
     // This catch handles any errors in the message processing code
     console.error('[CHAT] Error processing messages:', outerError);
     const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
