@@ -336,6 +336,11 @@
         console.log(`[ORDERS] Loaded in ${loadTime.toFixed(2)}ms`);
         
         // Update orders badge
+        const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
+        const badge = document.getElementById('ordersBadge');
+        if (badge) {
+          badge.textContent = pendingCount;
+        }
       } catch (error) {
         // Handle AbortError gracefully
         if (error.name === 'AbortError') {
@@ -352,14 +357,7 @@
           }
           return;
         }
-        // Re-throw other errors
-        throw error;
-        const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
-        const badge = document.getElementById('ordersBadge');
-        if (badge) {
-          badge.textContent = pendingCount;
-        }
-      } catch(error) {
+        // Handle other errors
         console.error('Error loading orders:', error);
         const ordersList = document.getElementById('ordersList');
         if (ordersList) {
@@ -2333,23 +2331,6 @@
         
         const loadTime = performance.now() - startTime;
         console.log(`[RATINGS] Loaded in ${loadTime.toFixed(2)}ms`);
-      } catch (error) {
-        // Handle AbortError gracefully
-        if (error.name === 'AbortError') {
-          console.warn('[RATINGS] Request timeout - this may happen on slow connections or cold starts');
-          const ratingsArea = document.getElementById('ratingsList');
-          if (ratingsArea) {
-            ratingsArea.innerHTML = `
-              <div style="text-align: center; padding: 40px; color: #666;">
-                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
-                <div>Request took longer than expected</div>
-                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
-              </div>
-            `;
-          }
-          return;
-        }
-        throw error;
 
         // Display statistics
         const statsArea = document.getElementById('ratingsStats');
@@ -2440,7 +2421,22 @@
             }).join('');
           }
         }
-      } catch(error) {
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[RATINGS] Request timeout - this may happen on slow connections or cold starts');
+          const ratingsArea = document.getElementById('ratingsList');
+          if (ratingsArea) {
+            ratingsArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
         console.error('Error loading ratings:', error);
         const ratingsArea = document.getElementById('ratingsList');
         if (ratingsArea) {
