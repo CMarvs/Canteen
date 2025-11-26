@@ -265,9 +265,9 @@
       }
       
       try {
-        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
         const response = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1518,9 +1518,9 @@
     async function renderAdminMenuList() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
         const response = await fetch(`/menu?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1823,9 +1823,9 @@
     async function renderAdminUsers() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
         const response = await fetch(`/users?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -2187,9 +2187,9 @@
     async function renderAdminUsers() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
         const response = await fetch(`/users?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -2845,7 +2845,16 @@
     // Check for new orders
     async function checkForNewOrders() {
       try {
-        const response = await fetch('/orders');
+        // Use AbortController for timeout (10 seconds for Render cold starts)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`/orders?t=${Date.now()}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
         if (!response.ok) return;
         
         const orders = await response.json();
@@ -3361,7 +3370,21 @@
     // Check for unread chat messages
     async function checkUnreadChats() {
       try {
-        const ordersResponse = await fetch('/orders');
+        // Use AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!ordersResponse.ok) {
+          console.warn('[CHATS] Failed to fetch orders for chat check:', ordersResponse.status);
+          return;
+        }
+        
         const orders = await ordersResponse.json();
         
         let totalUnread = 0;
@@ -3573,17 +3596,30 @@
         }
       }
       
-      renderStats();
-      renderAdminOrders();
-      renderAdminMenuList(); // Load menu items on page load
-      // Check unread chats immediately on login (this will populate the message count)
-      checkUnreadChats().then(() => {
-        // After initial check, start polling
-        startChatPolling();
-      });
-      
-      // Start real-time order notifications
-      startOrderPolling();
+      // Initialize dashboard components with error handling
+      try {
+        renderStats();
+        renderAdminOrders();
+        renderAdminMenuList(); // Load menu items on page load
+        
+        // Check unread chats immediately on login (this will populate the message count)
+        checkUnreadChats().then(() => {
+          // After initial check, start polling
+          startChatPolling();
+        }).catch(err => {
+          console.warn('[INIT] Error checking unread chats:', err);
+          // Start polling anyway
+          startChatPolling();
+        });
+        
+        // Start real-time order notifications
+        startOrderPolling();
+      } catch (error) {
+        console.error('[INIT] Error initializing dashboard:', error);
+        if (typeof showNotification === 'function') {
+          showNotification('Error initializing dashboard. Please refresh the page.', 'error');
+        }
+      }
     }
     
     window.addEventListener('DOMContentLoaded', () => {
