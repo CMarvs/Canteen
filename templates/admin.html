@@ -2218,18 +2218,37 @@
     let chatFetchController = null;
     let isRenderingChats = false;
     let lastChatRenderTime = 0;
-    const CHAT_RENDER_DEBOUNCE = 2000; // Minimum 2 seconds between renders
+    let renderChatsTimeout = null;
+    const CHAT_RENDER_DEBOUNCE = 3000; // Minimum 3 seconds between renders
     
     async function renderAdminChats() {
-      // Debounce: Skip if called too soon after last render
-      const now = Date.now();
-      if (now - lastChatRenderTime < CHAT_RENDER_DEBOUNCE) {
-        return; // Silently skip, no console log needed
+      // Clear any pending debounced call
+      if (renderChatsTimeout) {
+        clearTimeout(renderChatsTimeout);
+        renderChatsTimeout = null;
       }
       
-      // If already rendering, skip this call
+      // Debounce: Skip if called too soon after last render
+      const now = Date.now();
+      const timeSinceLastRender = now - lastChatRenderTime;
+      if (timeSinceLastRender < CHAT_RENDER_DEBOUNCE) {
+        // Schedule a delayed render instead of skipping
+        renderChatsTimeout = setTimeout(() => {
+          renderChatsTimeout = null;
+          renderAdminChats();
+        }, CHAT_RENDER_DEBOUNCE - timeSinceLastRender);
+        return;
+      }
+      
+      // If already rendering, schedule a delayed retry
       if (isRenderingChats) {
-        return; // Silently skip, no console log needed
+        if (!renderChatsTimeout) {
+          renderChatsTimeout = setTimeout(() => {
+            renderChatsTimeout = null;
+            renderAdminChats();
+          }, 1000);
+        }
+        return;
       }
       
       isRenderingChats = true;
@@ -2287,7 +2306,7 @@
           throw new Error('Invalid orders response format');
         }
         
-        console.log(`[CHATS] Found ${orders.length} orders to check for messages`);
+        // Checking orders for messages
         
         // Get messages for all orders (limit concurrent requests)
         const chatsWithMessages = [];
@@ -2323,7 +2342,7 @@
                 const messagesArray = Array.isArray(messages) ? messages : [];
                 
                 if (messagesArray.length > 0) {
-                  console.log(`[CHATS] Order ${order.id} has ${messagesArray.length} messages`);
+                  // Order has messages
                   
                   // Convert messages to plain objects if needed (handle RealDictRow)
                   const plainMessages = messagesArray.map(m => {
@@ -2365,7 +2384,7 @@
                     m.sender_role === 'user' && !m.is_read
                   ).length;
                   
-                  console.log(`[CHATS] Order ${order.id}: ${unreadCount} unread user messages`);
+                  // Checking unread messages
                   
                   // Get last message
                   const lastMessage = plainMessages[plainMessages.length - 1];
@@ -2406,7 +2425,7 @@
           }
         }
         
-        console.log(`[CHATS] Found ${chatsWithMessages.length} orders with messages`);
+        // Processing chats with messages
         
         // Sort by last message time (newest first)
         chatsWithMessages.sort((a, b) => {
@@ -2427,7 +2446,7 @@
         }
         
         if (chatsWithMessages.length === 0) {
-          console.log('[CHATS] No chats with messages found');
+          // No chats with messages found
           chatsList.innerHTML = `
             <div class="empty-state">
               <div class="empty-state-icon">💬</div>
@@ -2438,7 +2457,7 @@
           return;
         }
         
-        console.log(`[CHATS] Rendering ${chatsWithMessages.length} chat cards`);
+        // Rendering chat cards
         
         chatsList.innerHTML = chatsWithMessages.map(chat => {
           const o = chat.order;
@@ -2524,6 +2543,11 @@
         }
       } finally {
         isRenderingChats = false;
+        // Clear any pending timeout
+        if (renderChatsTimeout) {
+          clearTimeout(renderChatsTimeout);
+          renderChatsTimeout = null;
+        }
         // Don't set chatFetchController to null here - let it be cleared on next call
       }
     }
