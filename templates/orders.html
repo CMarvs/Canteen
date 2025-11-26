@@ -312,17 +312,29 @@
         }
       }
       // Force reload orders when page loads (wait for script to be ready)
+      console.log('[ORDERS] Initializing orders page...');
       if (typeof renderUserOrders === 'function') {
-        renderUserOrders();
+        console.log('[ORDERS] renderUserOrders is available, calling it...');
+        renderUserOrders().catch(err => {
+          console.error('[ORDERS] Error calling renderUserOrders:', err);
+        });
       } else {
-        console.warn('renderUserOrders not available yet, will retry...');
+        console.warn('[ORDERS] renderUserOrders not available yet, will retry...');
         setTimeout(() => {
           if (typeof renderUserOrders === 'function') {
-            renderUserOrders();
+            console.log('[ORDERS] renderUserOrders now available, calling it...');
+            renderUserOrders().catch(err => {
+              console.error('[ORDERS] Error calling renderUserOrders:', err);
+            });
           } else {
-            console.error('renderUserOrders still not available after wait');
+            console.error('[ORDERS] renderUserOrders still not available after wait');
+            // Try to manually load orders as fallback
+            const list = document.getElementById('ordersList');
+            if (list) {
+              list.innerHTML = '<p class="muted">Please refresh the page to load orders.</p>';
+            }
           }
-        }, 500);
+        }, 1000); // Increased timeout to 1 second
       }
       // Start real-time polling
       if (typeof startUserOrderPolling === 'function') {
@@ -335,77 +347,74 @@
       if (typeof startChatNotificationPolling === 'function') {
         startChatNotificationPolling();
       }
-      // Check for refund notifications
-      if (typeof checkRefundNotifications === 'function') {
-        checkRefundNotifications();
-      }
-      }
-      
-      // Check for refund notifications
+      // Define checkRefundNotifications function (before calling it)
       async function checkRefundNotifications() {
-      try {
-        if (typeof getCurrent !== 'function') {
-          console.warn('getCurrent not available yet');
-          return;
-        }
-        const currentUser = getCurrent();
-        if (!currentUser) return;
-        
-        const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`);
-        const allOrders = await response.json();
-        const myOrders = allOrders.filter(o => o.user_id === currentUser.id);
-        
-        // Check for refunded orders
-        const refundedOrders = myOrders.filter(o => o.refund_status === 'refunded');
-        
-        if (refundedOrders.length > 0) {
-          // Check if notification was already shown (using localStorage)
-          const lastRefundCheck = localStorage.getItem('lastRefundCheck') || '0';
-          const newRefunded = refundedOrders.filter(o => {
-            // Use created_at as fallback if updated_at doesn't exist
-            const orderDate = new Date(o.updated_at || o.created_at || Date.now()).getTime();
-            return orderDate > parseInt(lastRefundCheck);
-          });
+        try {
+          if (typeof getCurrent !== 'function') {
+            console.warn('getCurrent not available yet');
+            return;
+          }
+          const currentUser = getCurrent();
+          if (!currentUser) return;
           
-          if (newRefunded.length > 0) {
-            // Show notification for the most recent refund
-            const latestRefund = newRefunded.sort((a, b) => {
-              const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
-              const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
-              return dateB - dateA;
-            })[0];
+          const response = await fetch(`${API_BASE}/orders?t=${Date.now()}`);
+          const allOrders = await response.json();
+          const myOrders = allOrders.filter(o => o.user_id === currentUser.id);
+        
+          // Check for refunded orders
+          const refundedOrders = myOrders.filter(o => o.refund_status === 'refunded');
+          
+          if (refundedOrders.length > 0) {
+            // Check if notification was already shown (using localStorage)
+            const lastRefundCheck = localStorage.getItem('lastRefundCheck') || '0';
+            const newRefunded = refundedOrders.filter(o => {
+              // Use created_at as fallback if updated_at doesn't exist
+              const orderDate = new Date(o.updated_at || o.created_at || Date.now()).getTime();
+              return orderDate > parseInt(lastRefundCheck);
+            });
             
-            const refundAmount = Number(latestRefund.total || 0).toFixed(2);
-            const orderNumberMap = getUserOrderNumberMap ? getUserOrderNumberMap() : {};
-            const sequentialNumber = orderNumberMap[latestRefund.id] || latestRefund.id;
-            const banner = document.getElementById('refundNotificationBanner');
-            const message = document.getElementById('refundNotificationMessage');
-            
-            if (banner && message) {
-              message.textContent = `Your refund of ₱${refundAmount} for Order #${sequentialNumber} has been processed. The amount will be credited to your account within 3-5 business days.`;
-              banner.style.display = 'block';
-              banner.style.animation = 'slideInRight 0.3s ease-out';
+            if (newRefunded.length > 0) {
+              // Show notification for the most recent refund
+              const latestRefund = newRefunded.sort((a, b) => {
+                const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
+                const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
+                return dateB - dateA;
+              })[0];
               
-              // Update last check time
-              const now = Date.now();
-              localStorage.setItem('lastRefundCheck', now.toString());
+              const refundAmount = Number(latestRefund.total || 0).toFixed(2);
+              const orderNumberMap = getUserOrderNumberMap ? getUserOrderNumberMap() : {};
+              const sequentialNumber = orderNumberMap[latestRefund.id] || latestRefund.id;
+              const banner = document.getElementById('refundNotificationBanner');
+              const message = document.getElementById('refundNotificationMessage');
               
-              // Auto-hide after 15 seconds
-              setTimeout(() => {
-                if (banner && banner.style.display !== 'none') {
-                  banner.style.animation = 'fadeOut 0.5s ease-out';
-                  setTimeout(() => {
-                    if (banner) banner.style.display = 'none';
-                  }, 500);
-                }
-              }, 15000);
+              if (banner && message) {
+                message.textContent = `Your refund of ₱${refundAmount} for Order #${sequentialNumber} has been processed. The amount will be credited to your account within 3-5 business days.`;
+                banner.style.display = 'block';
+                banner.style.animation = 'slideInRight 0.3s ease-out';
+                
+                // Update last check time
+                const now = Date.now();
+                localStorage.setItem('lastRefundCheck', now.toString());
+                
+                // Auto-hide after 15 seconds
+                setTimeout(() => {
+                  if (banner && banner.style.display !== 'none') {
+                    banner.style.animation = 'fadeOut 0.5s ease-out';
+                    setTimeout(() => {
+                      if (banner) banner.style.display = 'none';
+                    }, 500);
+                  }
+                }, 15000);
+              }
             }
           }
+        } catch (error) {
+          console.error('Error checking refund notifications:', error);
         }
-      } catch (error) {
-        console.error('Error checking refund notifications:', error);
       }
-      }
+      
+      // Call checkRefundNotifications after defining it
+      checkRefundNotifications();
       
       // Also reload when page becomes visible (handles tab switching, back button)
       document.addEventListener('visibilitychange', () => {
