@@ -2613,12 +2613,15 @@ function closeChatBox(orderId) {
   }
 }
 
-async function loadChatMessages(orderId, userType) {
+async function loadChatMessages(orderId, userType, retryCount = 0) {
   const cur = getCurrent();
   if (!cur) return;
   
   const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
   if (!messagesContainer) return;
+  
+  // Maximum retries for 502 errors
+  const MAX_RETRIES = 3;
   
   // Update chat box title with current order number
   const chatBox = document.getElementById(`chatBox_${orderId}`);
@@ -2638,21 +2641,180 @@ async function loadChatMessages(orderId, userType) {
       console.warn('loadChatMessages: orderId is missing');
       return;
     }
-    const response = await fetch(`${API_BASE}/orders/${orderId}/messages?t=${Date.now()}`, {
-      cache: 'no-cache',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.warn(`Order ${orderId} not found or has no messages`);
-      } else {
-        const errorText = await response.text();
-        console.error('Failed to fetch messages:', response.status, errorText);
-      }
-      return;
-    }
+    // Use AbortController for timeout (10 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     
-    const messages = await response.json();
+    try {
+      const response = await fetch(`${API_BASE}/orders/${orderId}/messages?t=${Date.now()}`, {
+        cache: 'no-cache',
+        headers: { 'Cache-Control': 'no-cache' },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        // Handle 502 Bad Gateway errors with retry
+        if (response.status === 502 && retryCount < MAX_RETRIES) {
+          const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff: 1s, 2s, 4s
+          console.warn(`[CHAT] 502 error for order ${orderId}, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          return loadChatMessages(orderId, userType, retryCount + 1);
+        }
+        
+        if (response.status === 404) {
+          console.warn(`Order ${orderId} not found or has no messages`);
+        } else if (response.status === 502) {
+          console.error(`[CHAT] Server error (502) for order ${orderId} after ${retryCount} retries. Server may be restarting.`);
+          // Show user-friendly message
+          if (messagesContainer && retryCount >= MAX_RETRIES) {
+            messagesContainer.innerHTML = `
+              <div style="text-align: center; padding: 20px; color: #e74c3c; background: #ffe6e6; border-radius: 8px; margin: 10px 0;">
+                <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="font-size: 0.85rem; margin-top: 8px; color: #666;">Please try again in a moment</div>
+              </div>
+            `;
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to fetch messages:', response.status, errorText.substring(0, 200));
+        }
+        return;
+      }
+      
+      // Parse response if successful (inside try block)
+      const messages = await response.json();
+      
+      if (!Array.isArray(messages)) {
+        console.error('Invalid messages response format:', messages);
+        return;
+      }
+
+      if (messages.length === 0) {
+        // Smooth fade-in for empty state
+        messagesContainer.style.opacity = '0';
+        messagesContainer.innerHTML = '<div class="fade-in" style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
+        setTimeout(() => {
+          messagesContainer.style.opacity = '1';
+          messagesContainer.style.transition = 'opacity 0.3s ease-in-out';
+        }, 50);
+        return;
+      }
+
+      const cur = getCurrent();
+      
+      // Store current scroll position for smooth updates
+      const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+      const oldScrollHeight = messagesContainer.scrollHeight;
+      
+      // Create messages with smooth fade-in animation
+      // Display ALL messages - no filtering
+      const messagesHTML = messages.map((msg, index) => {
+        // Determine if message is from current user
+        // For admin: messages from admin are "me", messages from users are "them"
+        // For user: messages from this user are "me", messages from admin are "them"
+        const isMe = (cur.role === 'admin' && msg.sender_role === 'admin') || 
+                     (cur.role === 'user' && msg.user_id === cur.id);
+        const isAdmin = msg.sender_role === 'admin';
+        const isUser = msg.sender_role === 'user';
+        const align = isMe ? 'flex-end' : 'flex-start';
+        const bgColor = isMe ? (isAdmin ? '#8B4513' : '#2196F3') : '#e0e0e0';
+        const textColor = isMe ? 'white' : '#333';
+        const isUnread = !msg.is_read && !isMe;
+        const unreadIndicator = isUnread ? '<span style="background: #e74c3c; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 4px;"></span>' : '';
+        
+        // Log each message for debugging
+        console.log(`[CHAT] Message ${index + 1}/${messages.length}:`, {
+          sender: msg.sender_name,
+          role: msg.sender_role,
+          isMe: isMe,
+          hasMessage: !!msg.message,
+          hasImage: !!msg.image,
+          created_at: msg.created_at
+        });
+        
+        // Add animation delay for smooth staggered appearance
+        const animationDelay = Math.min(index * 0.03, 0.5); // Cap at 0.5s
+        
+        let imageHTML = '';
+        if (msg.image) {
+          // Escape the image source for use in onclick
+          const escapedImageSrc = msg.image.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          imageHTML = `
+            <div style="margin: 8px 0;">
+              <img src="${msg.image.replace(/"/g, '&quot;')}" alt="Chat image" 
+                   style="max-width: 100%; max-height: 300px; border-radius: 8px; cursor: pointer; border: 2px solid ${isMe ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)'};"
+                   onclick="openImageModal('${escapedImageSrc}')">
+            </div>
+          `;
+        }
+        
+        // Ensure message content is displayed - show message text or image or both
+        const messageContent = msg.message ? escapeHtml(msg.message) : '';
+        const hasContent = messageContent || imageHTML;
+        
+        // If no content at all, show a placeholder
+        if (!hasContent) {
+          console.warn(`[CHAT] Message ${index + 1} has no content (no message text or image)`, msg);
+        }
+        
+        return `
+          <div class="chat-message" style="display: flex; justify-content: ${align}; margin-bottom: 12px; animation: fadeInMessage 0.3s ease-out ${animationDelay}s both;">
+            <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; ${isUnread ? 'border-left: 3px solid #e74c3c;' : ''}">
+              <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">
+                ${escapeHtml(msg.sender_name || 'Unknown')}${isAdmin ? ' (Admin)' : isUser ? ' (User)' : ''}${unreadIndicator}
+              </div>
+              ${imageHTML}
+              ${messageContent ? `<div style="font-size: 0.9rem; ${imageHTML ? 'margin-top: 8px;' : ''}">${messageContent}</div>` : (!imageHTML ? '<div style="font-size: 0.85rem; opacity: 0.7; font-style: italic;">(No message content)</div>' : '')}
+              <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : 'Unknown time'}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      // Smooth update - check if we need to preserve scroll position
+      const hasExistingMessages = messagesContainer.querySelector('.chat-message');
+      
+      if (hasExistingMessages) {
+        // Fade transition for updates
+        messagesContainer.style.opacity = '0.7';
+        setTimeout(() => {
+          messagesContainer.innerHTML = messagesHTML;
+          messagesContainer.style.opacity = '1';
+          messagesContainer.style.transition = 'opacity 0.2s ease-in-out';
+          
+          // Smart scroll: maintain position or scroll to bottom
+          if (wasAtBottom) {
+            setTimeout(() => {
+              messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 50);
+          } else {
+            const newScrollHeight = messagesContainer.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollTop + (newScrollHeight - oldScrollHeight);
+          }
+        }, 100);
+      } else {
+        // First load - direct update with smooth scroll
+        messagesContainer.innerHTML = messagesHTML;
+        setTimeout(() => {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }, 100);
+      }
+      
+      // Mark messages as read after loading (if user is viewing)
+      if (cur) {
+        try {
+          await fetch(`${API_BASE}/orders/${orderId}/messages/read`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reader_role: cur.role || 'user' })
+          });
+        } catch (err) {
+          // Silently fail
+        }
+      }
     
     if (!Array.isArray(messages)) {
       console.error('Invalid messages response format:', messages);
@@ -2782,28 +2944,29 @@ async function loadChatMessages(orderId, userType) {
         // Silently fail
       }
     }
-  } catch(error) {
-    console.error('Error loading messages:', error);
-    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
-    if (messagesContainer) {
-      // Show error message in chat box
-      const errorHTML = `
-        <div style="text-align: center; padding: 20px; color: #e74c3c;">
-          <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
-          <div>Failed to load messages</div>
-          <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
-            ${error.message || 'Please try again'}
+    } catch(outerError) {
+      // This catch handles any errors in the message processing code
+      console.error('[CHAT] Error processing messages:', outerError);
+      const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+      if (messagesContainer) {
+        // Show error message in chat box
+        const errorHTML = `
+          <div style="text-align: center; padding: 20px; color: #e74c3c;">
+            <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
+            <div>Failed to load messages</div>
+            <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
+              ${outerError.message || 'Please try again'}
+            </div>
+            <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                    style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+              Retry
+            </button>
           </div>
-          <button onclick="loadChatMessages(${orderId}, '${userType}')" 
-                  style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
-            Retry
-          </button>
-        </div>
-      `;
-      messagesContainer.innerHTML = errorHTML;
+        `;
+        messagesContainer.innerHTML = errorHTML;
+      }
     }
   }
-}
 
 // Store image data for each chat
 const chatImageData = {};

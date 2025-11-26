@@ -2643,8 +2643,17 @@ async def get_order_messages(order_id: int, request: Request):
         return json_response(messages_list)
     except HTTPException:
         raise
+    except psycopg2.OperationalError as db_error:
+        error_str = str(db_error)
+        print(f"❌ Database error getting messages: {db_error}")
+        # Check for quota exceeded
+        if "exceeded the data transfer quota" in error_str or "quota" in error_str.lower():
+            raise HTTPException(503, "Database temporarily unavailable. Please try again later.")
+        raise HTTPException(502, "Database connection error. Please try again.")
     except Exception as e:
         print(f"❌ Get messages error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get messages: {str(e)}")
     finally:
         try:
