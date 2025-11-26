@@ -19,8 +19,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Add security and performance headers to all responses
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Ensure Cache-Control is set (use existing or set default)
-        if "Cache-Control" not in response.headers or not response.headers.get("Cache-Control"):
-            response.headers["Cache-Control"] = "no-cache"
+        # For static files, allow caching; for dynamic content, no-cache
+        request_path = str(request.url.path)
+        if "/static/" in request_path:
+            if "Cache-Control" not in response.headers or not response.headers.get("Cache-Control"):
+                response.headers["Cache-Control"] = "public, max-age=3600"  # Cache static files for 1 hour
+        else:
+            if "Cache-Control" not in response.headers or not response.headers.get("Cache-Control"):
+                response.headers["Cache-Control"] = "no-cache"
         # Ensure Content-Type has charset=utf-8 for text/html and application/json
         content_type = response.headers.get("Content-Type", "")
         if "text/html" in content_type and "charset" not in content_type.lower():
@@ -1431,13 +1437,14 @@ async def get_orders():
         select_columns = [col for col in base_columns if col in existing_columns_set]
         select_columns.extend([col for col in optional_columns if col in existing_columns_set])
         
-        # Optimized query - only select columns that exist
-        query = f"""
-            SELECT {', '.join(select_columns)}
-            FROM orders 
-            ORDER BY id DESC
-            LIMIT 1000
-        """
+                # Optimized query - only select columns that exist
+                # Use index-friendly ordering and limit for performance
+                query = f"""
+                    SELECT {', '.join(select_columns)}
+                    FROM orders
+                    ORDER BY id DESC
+                    LIMIT 500
+                """
         cur.execute(query)
         orders = cur.fetchall()
         

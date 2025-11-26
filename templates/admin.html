@@ -269,7 +269,17 @@
     }
 
     /* -------- Render Orders (API) -------- */
+    // Request deduplication for orders
+    let ordersRequestInProgress = false;
+    let ordersRequestController = null;
+    
     async function renderAdminOrders() {
+      // Prevent duplicate requests
+      if (ordersRequestInProgress) {
+        console.log('[ORDERS] Request already in progress, skipping duplicate call');
+        return;
+      }
+      
       const startTime = performance.now();
       // Show loading state
       const ordersList = document.getElementById('ordersList');
@@ -277,15 +287,17 @@
         ordersList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading orders...</div></div>';
       }
       
+      ordersRequestInProgress = true;
+      ordersRequestController = new AbortController();
+      
       try {
         // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+        const timeoutId = setTimeout(() => ordersRequestController.abort(), 20000); // 20 second timeout
         
         const response = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
           headers: { 'Cache-Control': 'no-cache' },
-          signal: controller.signal
+          signal: ordersRequestController.signal
         });
         
         clearTimeout(timeoutId);
@@ -383,6 +395,10 @@
           `;
         }
         showNotification('Failed to load orders. Please try again.', 'error');
+      } finally {
+        // Reset request flag
+        ordersRequestInProgress = false;
+        ordersRequestController = null;
       }
     }
 
@@ -458,9 +474,23 @@
       
       console.log(`[ORDERS] Rendering ${filteredOrders.length} orders`);
 
+      // Safety check: prevent rendering too many orders at once
+      if (filteredOrders.length > 1000) {
+        console.error(`[ORDERS] Too many orders to render (${filteredOrders.length}). Limiting to first 1000.`);
+        filteredOrders = filteredOrders.slice(0, 1000);
+      }
+
       // Generate HTML for all orders
       let ordersHTML = '';
       try {
+        // Debug: Log order data sizes to detect issues
+        filteredOrders.forEach((o, idx) => {
+          const itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+          if (itemsStr.length > 10000) {
+            console.warn(`[ORDERS] Order ${o.id} has suspiciously large items data (${itemsStr.length} chars)`);
+          }
+        });
+        
         ordersHTML = filteredOrders.map((o, displayIdx) => {
           try {
             const actualIdx = allOrders.indexOf(o);
@@ -497,6 +527,11 @@
           if (!Array.isArray(items)) {
             console.warn(`[ORDERS] Order ${o.id} items is not an array:`, items);
             items = [];
+          }
+          // Safety check: limit items array size to prevent massive HTML
+          if (items.length > 1000) {
+            console.error(`[ORDERS] Order ${o.id} has suspiciously large items array (${items.length} items). Limiting to first 1000.`);
+            items = items.slice(0, 1000);
           }
         } catch (e) {
           console.error(`[ORDERS] Error parsing items for order ${o.id}:`, e, o.items);
@@ -633,6 +668,11 @@
             </div>
           `;
         } else {
+          // Safety check: prevent setting extremely large HTML (likely a bug)
+          if (ordersHTML.length > 10000000) { // 10MB limit
+            console.error(`[ORDERS] Generated HTML is suspiciously large (${ordersHTML.length} chars). Truncating to prevent browser crash.`);
+            ordersHTML = ordersHTML.substring(0, 1000000) + '<div style="color: red; padding: 20px; text-align: center;"><strong>⚠️ HTML too large - rendering truncated. Please refresh the page.</strong></div>';
+          }
           container.innerHTML = ordersHTML;
           console.log(`[ORDERS] Successfully rendered ${filteredOrders.length} orders to DOM. HTML length: ${ordersHTML.length}`);
         }
@@ -656,7 +696,7 @@
         clearTimeout(filterTimeout);
       }
       
-      // Debounce search - wait 300ms after user stops typing
+      // Debounce search - wait 500ms after user stops typing (optimized for performance)
       filterTimeout = setTimeout(() => {
         const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
 
@@ -2892,10 +2932,11 @@
           lastOrderId = latestOrderId;
         }
         
-        // Always refresh display to update sequential numbers (especially when orders are completed)
+        // Only refresh display if orders actually changed (optimize performance)
         // This ensures numbering resets when orders are delivered
         // Also refresh if payment status changed (for GCash payments)
-        if (ordersChanged || paymentStatusChanged || document.getElementById('ordersSection').classList.contains('active')) {
+        const ordersSection = document.getElementById('ordersSection');
+        if ((ordersChanged || paymentStatusChanged) && ordersSection && ordersSection.classList.contains('active')) {
           displayOrders(); // This will recalculate sequential numbers based on active orders
         }
         renderStats();
@@ -2935,7 +2976,7 @@
         } catch (error) {
           console.error('Error polling ratings:', error);
         }
-      }, 3000); // Poll every 3 seconds
+      }, 10000); // Poll every 10 seconds (optimized for performance)
     }
     
     function stopRatingsPolling() {
@@ -2954,8 +2995,8 @@
         }
       });
 
-      // Poll every 8 seconds (reduced frequency for better performance)
-      orderPollInterval = setInterval(checkForNewOrders, 8000);
+      // Poll every 15 seconds (optimized for performance)
+      orderPollInterval = setInterval(checkForNewOrders, 15000);
     }
 
     // Stop polling
@@ -3465,8 +3506,8 @@
       stopChatPolling();
       
       checkUnreadChats();
-      // Poll every 5 seconds for faster updates
-      chatPollInterval = setInterval(checkUnreadChats, 5000);
+      // Poll every 10 seconds (optimized for performance)
+      chatPollInterval = setInterval(checkUnreadChats, 10000);
       
       // Also refresh the chats list if we're on the chats tab
       // Use a single interval to avoid duplicates
