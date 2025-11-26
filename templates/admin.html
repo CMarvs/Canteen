@@ -284,8 +284,32 @@
         }
         
         console.log(`[ORDERS] Loaded ${orders.length} orders successfully`);
+        console.log('[ORDERS] Sample order:', orders.length > 0 ? orders[0] : 'No orders');
+        
+        if (orders.length === 0) {
+          console.log('[ORDERS] No orders found in database');
+          const ordersList = document.getElementById('ordersList');
+          if (ordersList) {
+            ordersList.innerHTML = `
+              <div class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-text">No orders yet</div>
+              </div>
+            `;
+          }
+          return;
+        }
+        
+        // Ensure orders is an array
+        if (!Array.isArray(orders)) {
+          console.error('[ORDERS] Orders is not an array:', typeof orders, orders);
+          throw new Error('Orders response is not an array');
+        }
+        
         allOrders = orders.reverse();
         filteredOrders = [...allOrders];
+        
+        console.log(`[ORDERS] Processed ${allOrders.length} orders, filteredOrders: ${filteredOrders.length}`);
         
         // Update global orders cache for sequential numbering (if function exists)
         if (typeof updateGlobalOrdersCache === 'function') {
@@ -355,12 +379,18 @@
 
     function displayOrders() {
       const container = document.getElementById('ordersList');
-      if (!container) return;
+      if (!container) {
+        console.error('[ORDERS] Container not found!');
+        return;
+      }
+
+      console.log(`[ORDERS] displayOrders called with ${filteredOrders.length} filtered orders, allOrders: ${allOrders.length}`);
 
       // Get sequential order numbers
       const orderNumberMap = getOrderNumberMap();
 
       if (filteredOrders.length === 0) {
+        console.log('[ORDERS] No filtered orders to display');
         const hasFilters = document.getElementById('searchInput')?.value || 
                           document.getElementById('statusFilter')?.value !== 'all';
         if (hasFilters) {
@@ -380,6 +410,8 @@
         }
         return;
       }
+      
+      console.log(`[ORDERS] Rendering ${filteredOrders.length} orders`);
 
       // Use document fragment for smoother DOM updates
       const fragment = document.createDocumentFragment();
@@ -2417,8 +2449,11 @@
         const orders = await ordersResponse.json();
         
         if (!Array.isArray(orders)) {
+          console.error('[CHATS] Invalid orders response format:', orders);
           throw new Error('Invalid orders response format');
         }
+        
+        console.log(`[CHATS] Found ${orders.length} orders to check for messages`);
         
         // Checking orders for messages
         

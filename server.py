@@ -1306,32 +1306,38 @@ async def get_orders():
             for order in orders:
                 # RealDictCursor returns dict-like objects, convert to plain dict
                 if hasattr(order, 'keys'):
-                    # RealDictRow or similar dict-like object
-                    order_dict = {key: order[key] for key in order.keys()}
+                    # RealDictRow or similar dict-like object - convert recursively
+                    order_dict = {}
+                    for key in order.keys():
+                        value = order[key]
+                        # Recursively serialize the value to handle nested objects
+                        order_dict[key] = serialize_datetime(value)
                 elif isinstance(order, dict):
-                    order_dict = dict(order)
+                    # Already a dict, but still need to serialize nested values
+                    order_dict = {k: serialize_datetime(v) for k, v in order.items()}
                 else:
                     # Handle tuple response (shouldn't happen with RealDictCursor, but just in case)
                     col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
                     if col_names:
-                        order_dict = dict(zip(col_names, order))
+                        order_dict = {col: serialize_datetime(order[i]) for i, col in enumerate(col_names)}
                     else:
                         # Fallback: create dict from tuple indices
                         order_dict = {
-                            'id': order[0] if len(order) > 0 else None,
-                            'user_id': order[1] if len(order) > 1 else None,
-                            'fullname': order[2] if len(order) > 2 else None,
-                            'contact': order[3] if len(order) > 3 else None,
-                            'location': order[4] if len(order) > 4 else None,
-                            'items': order[5] if len(order) > 5 else None,
-                            'total': order[6] if len(order) > 6 else None,
-                            'status': order[7] if len(order) > 7 else None,
-                            'created_at': order[8] if len(order) > 8 else None,
-                            'payment_method': order[9] if len(order) > 9 else None,
-                            'payment_status': order[10] if len(order) > 10 else None,
+                            'id': serialize_datetime(order[0]) if len(order) > 0 else None,
+                            'user_id': serialize_datetime(order[1]) if len(order) > 1 else None,
+                            'fullname': serialize_datetime(order[2]) if len(order) > 2 else None,
+                            'contact': serialize_datetime(order[3]) if len(order) > 3 else None,
+                            'location': serialize_datetime(order[4]) if len(order) > 4 else None,
+                            'items': serialize_datetime(order[5]) if len(order) > 5 else None,
+                            'total': serialize_datetime(order[6]) if len(order) > 6 else None,
+                            'status': serialize_datetime(order[7]) if len(order) > 7 else None,
+                            'created_at': serialize_datetime(order[8]) if len(order) > 8 else None,
+                            'payment_method': serialize_datetime(order[9]) if len(order) > 9 else None,
+                            'payment_status': serialize_datetime(order[10]) if len(order) > 10 else None,
                         }
                 orders_list.append(order_dict)
         
+        print(f"[DEBUG] Returning {len(orders_list)} orders")
         return json_response(orders_list)
     except Exception as e:
         print(f"❌ Get orders error: {e}")
@@ -2381,27 +2387,32 @@ async def get_order_messages(order_id: int, request: Request):
             for msg in messages:
                 # RealDictCursor returns dict-like objects, convert to plain dict
                 if hasattr(msg, 'keys'):
-                    # RealDictRow or similar dict-like object
-                    msg_dict = {key: msg[key] for key in msg.keys()}
+                    # RealDictRow or similar dict-like object - convert recursively
+                    msg_dict = {}
+                    for key in msg.keys():
+                        value = msg[key]
+                        # Recursively serialize the value to handle nested objects
+                        msg_dict[key] = serialize_datetime(value)
                 elif isinstance(msg, dict):
-                    msg_dict = dict(msg)
+                    # Already a dict, but still need to serialize nested values
+                    msg_dict = {k: serialize_datetime(v) for k, v in msg.items()}
                 else:
                     # Handle tuple response (shouldn't happen with RealDictCursor, but just in case)
                     col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
                     if col_names:
-                        msg_dict = dict(zip(col_names, msg))
+                        msg_dict = {col: serialize_datetime(msg[i]) for i, col in enumerate(col_names)}
                     else:
                         msg_dict = {
-                            'id': msg[0] if len(msg) > 0 else None,
-                            'order_id': msg[1] if len(msg) > 1 else None,
-                            'user_id': msg[2] if len(msg) > 2 else None,
-                            'sender_role': msg[3] if len(msg) > 3 else None,
-                            'sender_name': msg[4] if len(msg) > 4 else None,
-                            'message': msg[5] if len(msg) > 5 else None,
-                            'image': msg[6] if len(msg) > 6 else None,
-                            'is_read': msg[7] if len(msg) > 7 else None,
-                            'read_at': msg[8] if len(msg) > 8 else None,
-                            'created_at': msg[9] if len(msg) > 9 else None
+                            'id': serialize_datetime(msg[0]) if len(msg) > 0 else None,
+                            'order_id': serialize_datetime(msg[1]) if len(msg) > 1 else None,
+                            'user_id': serialize_datetime(msg[2]) if len(msg) > 2 else None,
+                            'sender_role': serialize_datetime(msg[3]) if len(msg) > 3 else None,
+                            'sender_name': serialize_datetime(msg[4]) if len(msg) > 4 else None,
+                            'message': serialize_datetime(msg[5]) if len(msg) > 5 else None,
+                            'image': serialize_datetime(msg[6]) if len(msg) > 6 else None,
+                            'is_read': serialize_datetime(msg[7]) if len(msg) > 7 else None,
+                            'read_at': serialize_datetime(msg[8]) if len(msg) > 8 else None,
+                            'created_at': serialize_datetime(msg[9]) if len(msg) > 9 else None
                         }
                 messages_list.append(msg_dict)
         
