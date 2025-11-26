@@ -1437,14 +1437,14 @@ async def get_orders():
         select_columns = [col for col in base_columns if col in existing_columns_set]
         select_columns.extend([col for col in optional_columns if col in existing_columns_set])
         
-                # Optimized query - only select columns that exist
-                # Use index-friendly ordering and limit for performance
-                query = f"""
-                    SELECT {', '.join(select_columns)}
-                    FROM orders
-                    ORDER BY id DESC
-                    LIMIT 500
-                """
+        # Optimized query - only select columns that exist
+        # Use index-friendly ordering and limit for performance
+        query = f"""
+            SELECT {', '.join(select_columns)}
+            FROM orders
+            ORDER BY id DESC
+            LIMIT 500
+        """
         cur.execute(query)
         orders = cur.fetchall()
         
