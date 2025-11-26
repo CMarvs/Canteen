@@ -265,9 +265,9 @@
       }
       
       try {
-        // Use AbortController for timeout
+        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
         
         const response = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -336,6 +336,24 @@
         console.log(`[ORDERS] Loaded in ${loadTime.toFixed(2)}ms`);
         
         // Update orders badge
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[ORDERS] Request timeout - this may happen on slow connections or cold starts');
+          const ordersList = document.getElementById('ordersList');
+          if (ordersList) {
+            ordersList.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminOrders()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Re-throw other errors
+        throw error;
         const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
         const badge = document.getElementById('ordersBadge');
         if (badge) {
@@ -1502,9 +1520,9 @@
     async function renderAdminMenuList() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout
+        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
         
         const response = await fetch(`/menu?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1547,6 +1565,313 @@
         console.log(`[MENU] Loaded in ${loadTime.toFixed(2)}ms`);
         
         menuArea.innerHTML = Object.keys(grouped).map(category => {
+          const items = grouped[category];
+          if (items.length === 0) return '';
+          
+          const categoryName = {
+            budget: '🍛 Budget Meals',
+            foods: '🍔 Foods',
+            drinks: '🥤 Drinks'
+          }[category] || category;
+          
+          const itemsHtml = items.map(item => {
+            const isAvailable = item.is_available !== false;
+            const quantity = item.quantity || 0;
+            const stockStatus = quantity > 0 ? `📦 ${quantity} in stock` : '⚠️ Out of Stock';
+            const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
+            const stockBadgeStyle = `display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
+            return `
+              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                <div style="flex: 1;">
+                  <strong style="font-size: 1.1rem;">${item.name}</strong>
+                  <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
+                  <div style="${stockBadgeStyle}">${stockStatus}</div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
+                  <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                    <label for="stock_${item.id}" class="sr-only">Stock quantity for ${item.name}</label>
+                    <input type="number" id="stock_${item.id}" name="stock_${item.id}" value="${quantity}" min="0" 
+                           style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
+                           onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
+                    <button class="btn small" onclick="updateStockQuantity(${item.id})" style="flex: 1;">Update Stock</button>
+                  </div>
+                  <div style="display: flex; gap: 6px; width: 100%;">
+                    <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1;">
+                      ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
+                    </button>
+                    <button class="btn small" onclick="editMenuItem(${item.id}, '${item.name}', ${item.price}, '${item.category}', ${quantity})" style="flex: 1;">Edit</button>
+                    <button class="btn delete small" onclick="deleteMenuItem(${item.id})" style="flex: 1;">Delete</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+          
+          return `
+            <div class="card" style="margin-bottom: 24px;">
+              <h3 style="margin: 0 0 16px 0;">${categoryName}</h3>
+              ${itemsHtml}
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[MENU] Request timeout - this may happen on slow connections or cold starts');
+          const menuArea = document.getElementById('adminMenuList');
+          if (menuArea) {
+            menuArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminMenuList()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        console.error('Error loading menu:', error);
+        const menuArea = document.getElementById('adminMenuList');
+        if (menuArea) {
+          menuArea.innerHTML = '<p class="muted">Failed to load menu items</p>';
+        }
+      }
+    }
+
+    async function addMenuItem() {
+      const name = document.getElementById('newItemName')?.value?.trim();
+      const price = parseFloat(document.getElementById('newItemPrice')?.value);
+      const category = document.getElementById('newItemCategory')?.value || 'foods';
+      const quantity = parseInt(document.getElementById('newItemQuantity')?.value || '0') || 0;
+
+      if (!name || !price || price <= 0) {
+        return alert('Please enter a valid name and price.');
+      }
+
+      try {
+        const response = await fetch('/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, price, category, is_available: true, quantity })
+        });
+
+        // Read response
+        let responseData = null;
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            responseData = JSON.parse(responseText);
+          }
+        } catch(parseError) {
+          console.log('Response parse note:', parseError);
+        }
+
+        if (response.ok) {
+          alert('✅ Menu item added successfully!');
+          document.getElementById('newItemName').value = '';
+          document.getElementById('newItemPrice').value = '';
+          document.getElementById('newItemQuantity').value = '0';
+          await renderAdminMenuList();
+        } else {
+          // Try to get error message
+          let errorMessage = `Server returned ${response.status}: ${response.statusText}`;
+          if (responseData) {
+            if (responseData.detail) {
+              errorMessage = responseData.detail;
+            } else if (responseData.message) {
+              errorMessage = responseData.message;
+            } else if (typeof responseData === 'string') {
+              errorMessage = responseData;
+            }
+          }
+          console.error('Add menu item error:', {
+            status: response.status,
+            statusText: response.statusText,
+            responseData: responseData,
+            fullResponse: response
+          });
+          
+          // Show detailed error
+          let userMessage = `❌ Failed to add menu item:\n\n${errorMessage}`;
+          if (responseData && responseData.detail) {
+            userMessage += `\n\nDetails: ${responseData.detail}`;
+          }
+          userMessage += `\n\nPlease check:\n- Name and price are filled\n- Price is a valid number\n- Check Render logs for database errors`;
+          alert(userMessage);
+        }
+      } catch(error) {
+        console.error('Error adding menu item:', error);
+        alert(`Failed to add menu item: ${error.message || 'Please check your connection and try again.'}`);
+      }
+    }
+
+    async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity) {
+      const name = prompt('Enter new name:', currentName);
+      if (name === null) return;
+      
+      const priceStr = prompt('Enter new price:', currentPrice);
+      if (priceStr === null) return;
+      const price = parseFloat(priceStr);
+      
+      if (!name.trim() || !price || price <= 0) {
+        return alert('Invalid name or price.');
+      }
+
+      const category = prompt('Enter category (budget/foods/drinks):', currentCategory);
+      if (category === null) return;
+      
+      if (!['budget', 'foods', 'drinks'].includes(category)) {
+        return alert('Invalid category. Must be: budget, foods, or drinks');
+      }
+
+      const quantityStr = prompt('Enter stock quantity:', currentQuantity || 0);
+      if (quantityStr === null) return;
+      const quantity = parseInt(quantityStr) || 0;
+      
+      if (quantity < 0) {
+        return alert('Stock quantity cannot be negative.');
+      }
+
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), price, category, quantity })
+        });
+
+        if (response.ok) {
+          alert('✅ Menu item updated successfully!');
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update item: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating menu item:', error);
+        alert('Failed to update menu item. Please try again.');
+      }
+    }
+
+    async function toggleMenuItemAvailability(id, newAvailability) {
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_available: newAvailability })
+        });
+
+        if (response.ok) {
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update availability: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating availability:', error);
+        alert('Failed to update availability. Please try again.');
+      }
+    }
+
+    async function updateStockQuantity(id) {
+      const input = document.getElementById(`stock_${id}`);
+      if (!input) return;
+      
+      const newQuantity = parseInt(input.value) || 0;
+      if (newQuantity < 0) {
+        return alert('Stock quantity cannot be negative.');
+      }
+
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity: newQuantity })
+        });
+
+        if (response.ok) {
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update stock: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating stock:', error);
+        alert('Failed to update stock. Please try again.');
+      }
+    }
+
+    async function deleteMenuItem(id) {
+      if (!confirm(`Delete menu item "${id}"?`)) return;
+      
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          alert('✅ Menu item deleted successfully!');
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to delete item: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error deleting menu item:', error);
+        alert('Failed to delete menu item. Please try again.');
+      }
+    }
+
+    /* -------- User Management Functions -------- */
+    async function renderAdminUsers() {
+      const startTime = performance.now();
+      try {
+        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const response = await fetch(`/users?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        const users = await response.json();
+        
+        const usersArea = document.getElementById('usersList');
+        if (!usersArea) return;
+
+        // Separate users by approval status
+        const pendingUsers = users.filter(u => (u.is_approved === false || u.is_approved === 0) && u.role !== 'admin');
+        const approvedUsers = users.filter(u => (u.is_approved === true || u.is_approved === 1) && u.role !== 'admin');
+        const adminUsers = users.filter(u => u.role === 'admin');
+
+        // Update badge
+        const badge = document.getElementById('usersBadge');
+        if (badge) badge.textContent = pendingUsers.length;
+
+        const loadTime = performance.now() - startTime;
+        console.log(`[USERS] Loaded in ${loadTime.toFixed(2)}ms`);
+
+        let html = '';
+
+        // Pending Users Section
+        if (pendingUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #ff9800;">
+              <h3 style="margin: 0 0 16px 0; color: #ff9800;">⏳ Pending Approval (${pendingUsers.length})</h3>
+              ${pendingUsers.map(user => {
+                const isApproved = user.is_approved === true || user.is_approved === 1;
+                return `
+                  <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: #fff8f1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                      <div style="flex: 1;">
+                        <strong style="font-size: 1.1rem;">${user.name || 'N/A'}</strong>
+                        <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">${user.email || 'N/A'}</div>
+                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" class="proof-comparison-grid">
+                          ${user.id_proof ? `
+                          <div>
           const items = grouped[category];
           if (items.length === 0) return '';
           
@@ -1802,9 +2127,9 @@
     async function renderAdminUsers() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout
+        // Use AbortController for timeout (increased to 5 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
         
         const response = await fetch(`/users?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1957,9 +2282,9 @@
     async function renderAdminRatings() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout and parallel fetching
+        // Use AbortController for timeout and parallel fetching (increased to 5 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
         
         // Load statistics and ratings in parallel for faster loading
         const [statsResponse, ratingsResponse] = await Promise.all([
@@ -2008,6 +2333,23 @@
         
         const loadTime = performance.now() - startTime;
         console.log(`[RATINGS] Loaded in ${loadTime.toFixed(2)}ms`);
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[RATINGS] Request timeout - this may happen on slow connections or cold starts');
+          const ratingsArea = document.getElementById('ratingsList');
+          if (ratingsArea) {
+            ratingsArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        throw error;
 
         // Display statistics
         const statsArea = document.getElementById('ratingsStats');

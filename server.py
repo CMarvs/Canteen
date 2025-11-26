@@ -20,7 +20,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Ensure Cache-Control is set (use existing or set default)
         if "Cache-Control" not in response.headers or not response.headers.get("Cache-Control"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response.headers["Cache-Control"] = "no-cache, max-age=0"
         # Ensure Content-Type has charset=utf-8 for text/html and application/json
         content_type = response.headers.get("Content-Type", "")
         if "text/html" in content_type and "charset" not in content_type.lower():
@@ -52,7 +52,7 @@ def json_response(content, status_code=200):
     content = serialize_datetime(content)
     headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Cache-Control": "no-cache, max-age=0",
         "X-Content-Type-Options": "nosniff"
     }
     return JSONResponse(content=content, status_code=status_code, headers=headers)
