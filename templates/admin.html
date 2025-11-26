@@ -145,13 +145,8 @@
       const statsGrid = document.getElementById('statsGrid');
       if (!statsGrid) return;
       
-      // Show loading state if stats are being calculated
-      if (!allOrders.length) {
-        statsGrid.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div>';
-        return;
-      }
-      
-      const orders = allOrders;
+      // Always render stats, even if there are no orders (show 0 values)
+      const orders = allOrders || [];
       const stats = {
         total: orders.length,
         pending: orders.filter(o => o.status === 'Pending').length,
@@ -161,7 +156,6 @@
         revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0),
         unreadMessages: window.unreadMessageCount || 0
       };
-      if (!statsGrid) return;
 
       statsGrid.innerHTML = `
         <div class="stat-card total">
@@ -265,9 +259,9 @@
       }
       
       try {
-        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
         
         const response = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1518,9 +1512,9 @@
     async function renderAdminMenuList() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
         
         const response = await fetch(`/menu?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -1823,9 +1817,9 @@
     async function renderAdminUsers() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
         
         const response = await fetch(`/users?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -2187,9 +2181,9 @@
     async function renderAdminUsers() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout (increased to 10 seconds for Render cold starts)
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
         
         const response = await fetch(`/users?t=${Date.now()}`, {
           cache: 'no-cache',
@@ -2369,7 +2363,7 @@
       try {
         // Use AbortController for timeout and parallel fetching (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
         
         // Load statistics and ratings in parallel for faster loading
         const [statsResponse, ratingsResponse] = await Promise.all([
@@ -2870,9 +2864,9 @@
     // Check for new orders
     async function checkForNewOrders() {
       try {
-        // Use AbortController for timeout (10 seconds for Render cold starts)
+        // Use AbortController for timeout (20 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const response = await fetch(`/orders?t=${Date.now()}`, {
           signal: controller.signal
@@ -3403,7 +3397,7 @@
       try {
         // Use AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
           signal: controller.signal

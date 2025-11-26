@@ -288,6 +288,102 @@ def ensure_chat_table_exists():
         except Exception as close_error:
             print(f"[WARNING] Error closing database connection: {close_error}")
 
+# --- Initialize users table if it doesn't exist ---
+def ensure_users_table_exists():
+    """
+    Ensure users table exists with all required columns
+    Returns True if successful, False if database connection failed
+    """
+    try:
+        conn = get_db_connection()
+    except Exception as conn_error:
+        print(f"[WARNING] Could not connect to database for users table check: {conn_error}")
+        return False
+    try:
+        cur = conn.cursor()
+        # Check if table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'users'
+            ) as exists;
+        """)
+        result = cur.fetchone()
+        table_exists = result.get('exists') if isinstance(result, dict) else (result[0] if result else False)
+        
+        if not table_exists:
+            print("[INFO] Creating users table...")
+            cur.execute("""
+                CREATE TABLE users (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    role TEXT DEFAULT 'user',
+                    id_proof TEXT,
+                    selfie_proof TEXT,
+                    is_approved BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+            conn.commit()
+            print("[SUCCESS] users table created successfully!")
+        else:
+            print("[INFO] users table already exists")
+            # Check and add missing columns
+            try:
+                # Get all existing columns
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users'
+                """)
+                existing_columns = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+                
+                # Check and add id_proof column if missing
+                if 'id_proof' not in existing_columns:
+                    print("[INFO] Adding id_proof column to users table...")
+                    cur.execute("ALTER TABLE users ADD COLUMN id_proof TEXT;")
+                    conn.commit()
+                    print("[SUCCESS] id_proof column added successfully!")
+                
+                # Check and add selfie_proof column if missing
+                if 'selfie_proof' not in existing_columns:
+                    print("[INFO] Adding selfie_proof column to users table...")
+                    cur.execute("ALTER TABLE users ADD COLUMN selfie_proof TEXT;")
+                    conn.commit()
+                    print("[SUCCESS] selfie_proof column added successfully!")
+                
+                # Check and add is_approved column if missing
+                if 'is_approved' not in existing_columns:
+                    print("[INFO] Adding is_approved column to users table...")
+                    cur.execute("ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT FALSE;")
+                    # Set existing users (except admin) as approved
+                    cur.execute("UPDATE users SET is_approved = TRUE WHERE role != 'admin' OR role IS NULL;")
+                    conn.commit()
+                    print("[SUCCESS] is_approved column added successfully!")
+                
+                # Check and add created_at column if missing
+                if 'created_at' not in existing_columns:
+                    print("[INFO] Adding created_at column to users table...")
+                    cur.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT NOW();")
+                    conn.commit()
+                    print("[SUCCESS] created_at column added successfully!")
+                    
+            except Exception as col_error:
+                print(f"[WARNING] Could not check/add columns: {col_error}")
+                import traceback
+                traceback.print_exc()
+    except Exception as e:
+        print(f"[ERROR] Error ensuring users table exists: {e}")
+        conn.rollback()
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
+
 # --- Initialize service_ratings table if it doesn't exist ---
 def ensure_ratings_table_exists():
     """
@@ -346,6 +442,8 @@ try:
     # Only initialize if we can connect to database
     # Don't fail server startup if database is temporarily unavailable
     try:
+        ensure_users_table_exists()
+        ensure_users_table_exists()
         ensure_menu_table_exists()
         ensure_chat_table_exists()
         ensure_ratings_table_exists()
@@ -671,7 +769,13 @@ async def login(request: Request):
             # Ensure we return a proper dict (not RealDictRow)
             response_data = dict(user)
             return response_data
-        
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
+    except Exception as e:
+        print(f"❌ Login error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Login failed: {str(e)}")
         # Regular users need approval
         if is_approved is False or is_approved == 0 or is_approved is None:
             print(f"[WARNING] Login blocked: User '{email}' is not approved")
@@ -705,8 +809,8 @@ async def login(request: Request):
         try:
             if conn:
                 conn.close()
-        except:
-            pass
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection in login: {close_error}")
 
 # --- Update user profile ---
 @app.put("/users/{user_id}")
