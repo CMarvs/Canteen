@@ -21,7 +21,7 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Get database URL from environment variable or use the one from server.py
-DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y2KOWuHn9DMU@ep-lingering-tooth-a1kqy37g-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 
 def create_tables(conn):
     """Create all necessary database tables"""
@@ -62,11 +62,76 @@ def create_tables(conn):
                 items JSONB NOT NULL,
                 total NUMERIC(10, 2) NOT NULL,
                 status TEXT DEFAULT 'Pending',
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMP DEFAULT NOW(),
+                payment_method TEXT DEFAULT 'cash',
+                payment_status TEXT DEFAULT 'pending',
+                payment_proof TEXT,
+                payment_intent_id TEXT,
+                refund_status TEXT
             );
         """)
         conn.commit()
         print("[OK] orders table created/verified")
+        
+        # Add missing columns if table already existed without them
+        try:
+            # Check and add payment_method if missing
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_method'
+            """)
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'cash';")
+                conn.commit()
+                print("[OK] Added payment_method column")
+            
+            # Check and add payment_status if missing
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_status'
+            """)
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pending';")
+                conn.commit()
+                print("[OK] Added payment_status column")
+            
+            # Check and add payment_proof if missing
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_proof'
+            """)
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_proof TEXT;")
+                conn.commit()
+                print("[OK] Added payment_proof column")
+            
+            # Check and add payment_intent_id if missing
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'payment_intent_id'
+            """)
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE orders ADD COLUMN payment_intent_id TEXT;")
+                conn.commit()
+                print("[OK] Added payment_intent_id column")
+            
+            # Check and add refund_status if missing
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'refund_status'
+            """)
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE orders ADD COLUMN refund_status TEXT;")
+                conn.commit()
+                print("[OK] Added refund_status column")
+        except Exception as col_error:
+            print(f"[WARNING] Error adding columns (may already exist): {col_error}")
+            conn.rollback()
     except Exception as e:
         conn.rollback()
         print(f"[WARNING] Error creating orders table: {e}")

@@ -597,8 +597,13 @@ async def login(request: Request):
         user = cur.fetchone()
         
         if not user:
-            print(f"[WARNING] Login attempt failed: Email '{email}' not found")
-            raise HTTPException(400, "Invalid email or password")
+            print(f"[WARNING] Login attempt failed: Email '{email}' not found in database")
+            # Check if similar emails exist (for debugging)
+            cur.execute("SELECT email FROM users WHERE email ILIKE %s LIMIT 5", (f"%{email.split('@')[0]}%",))
+            similar = cur.fetchall()
+            if similar:
+                print(f"[DEBUG] Similar emails found: {[s.get('email') if isinstance(s, dict) else s[0] for s in similar]}")
+            raise HTTPException(400, "Invalid email or password. If you haven't registered yet, please register first.")
         
         # Convert to dict if needed
         if not isinstance(user, dict):
@@ -614,8 +619,13 @@ async def login(request: Request):
         
         if not stored_password or stored_password != password:
             print(f"[WARNING] Login attempt failed: Incorrect password for '{email}'")
-            print(f"[DEBUG] Password mismatch - stored: '{stored_password}', provided: '{password}'")
-            raise HTTPException(400, "Invalid email or password")
+            print(f"[DEBUG] Password mismatch - stored length: {len(stored_password)}, provided length: {len(password)}")
+            # Don't log actual passwords, but show first/last chars for debugging
+            if stored_password:
+                print(f"[DEBUG] Stored password starts with: '{stored_password[:2]}...' (length: {len(stored_password)})")
+            if password:
+                print(f"[DEBUG] Provided password starts with: '{password[:2]}...' (length: {len(password)})")
+            raise HTTPException(400, "Invalid email or password. Please check your password and try again.")
         
         print(f"[INFO] Password verified for user: {email}")
         
@@ -1306,15 +1316,31 @@ async def get_orders():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Optimized query - only select needed columns and use index-friendly ordering
+        
+        # Check which columns exist in the orders table
         cur.execute("""
-            SELECT id, user_id, fullname, contact, location, items, total, status, 
-                   created_at, payment_method, payment_status, payment_proof, 
-                   payment_intent_id, refund_status
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'orders'
+        """)
+        existing_columns = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+        existing_columns_set = set(existing_columns)
+        
+        # Build SELECT query with only existing columns
+        base_columns = ['id', 'user_id', 'fullname', 'contact', 'location', 'items', 'total', 'status', 'created_at']
+        optional_columns = ['payment_method', 'payment_status', 'payment_proof', 'payment_intent_id', 'refund_status']
+        
+        select_columns = [col for col in base_columns if col in existing_columns_set]
+        select_columns.extend([col for col in optional_columns if col in existing_columns_set])
+        
+        # Optimized query - only select columns that exist
+        query = f"""
+            SELECT {', '.join(select_columns)}
             FROM orders 
             ORDER BY id DESC
             LIMIT 1000
-        """)
+        """
+        cur.execute(query)
         orders = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
@@ -1352,6 +1378,19 @@ async def get_orders():
                             'payment_method': serialize_datetime(order[9]) if len(order) > 9 else None,
                             'payment_status': serialize_datetime(order[10]) if len(order) > 10 else None,
                         }
+                
+                # Add default values for missing payment columns to prevent frontend errors
+                if 'payment_method' not in order_dict:
+                    order_dict['payment_method'] = 'cash'
+                if 'payment_status' not in order_dict:
+                    order_dict['payment_status'] = 'pending'
+                if 'payment_proof' not in order_dict:
+                    order_dict['payment_proof'] = None
+                if 'payment_intent_id' not in order_dict:
+                    order_dict['payment_intent_id'] = None
+                if 'refund_status' not in order_dict:
+                    order_dict['refund_status'] = None
+                
                 orders_list.append(order_dict)
         
         print(f"[DEBUG] Returning {len(orders_list)} orders")
