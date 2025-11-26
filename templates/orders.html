@@ -39,14 +39,27 @@
     <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
   </main>
 
-  <script src="/static/script.js"></script>
+  <script>
+    // Load script.js with cache-busting to ensure fresh version
+    (function() {
+      const script = document.createElement('script');
+      script.src = '/static/script.js?v=' + Date.now();
+      script.onerror = function() {
+        console.error('Failed to load script.js');
+        alert('Error: Failed to load required scripts. Please refresh the page.');
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
   <script>
     let userOrderPollInterval = null;
     
     // Check for order updates in real-time
     async function checkUserOrderUpdates() {
       try {
-        await renderUserOrders(); // This will update sequential numbers
+        if (typeof renderUserOrders === 'function') {
+          await renderUserOrders(); // This will update sequential numbers
+        }
       } catch(error) {
         console.error('Error checking order updates:', error);
       }
@@ -268,10 +281,23 @@
           console.warn('ensureLoggedIn error (continuing anyway):', e);
         }
       }
-      // Force reload orders when page loads
-      renderUserOrders();
+      // Force reload orders when page loads (wait for script to be ready)
+      if (typeof renderUserOrders === 'function') {
+        renderUserOrders();
+      } else {
+        console.warn('renderUserOrders not available yet, will retry...');
+        setTimeout(() => {
+          if (typeof renderUserOrders === 'function') {
+            renderUserOrders();
+          } else {
+            console.error('renderUserOrders still not available after wait');
+          }
+        }, 500);
+      }
       // Start real-time polling
-      startUserOrderPolling();
+      if (typeof startUserOrderPolling === 'function') {
+        startUserOrderPolling();
+      }
       // Check for unread chat messages
       checkUnreadChatMessages();
       startChatNotificationPolling();
@@ -344,9 +370,15 @@
     // Also reload when page becomes visible (handles tab switching, back button)
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
-        renderUserOrders();
-        startUserOrderPolling();
-        checkUnreadChatMessages();
+        if (typeof renderUserOrders === 'function') {
+          renderUserOrders();
+        }
+        if (typeof startUserOrderPolling === 'function') {
+          startUserOrderPolling();
+        }
+        if (typeof checkUnreadChatMessages === 'function') {
+          checkUnreadChatMessages();
+        }
         startChatNotificationPolling();
       } else {
         stopUserOrderPolling();
@@ -356,7 +388,9 @@
     
     // Reload when page is focused (user switches back to tab)
     window.addEventListener('focus', () => {
-      renderUserOrders();
+      if (typeof renderUserOrders === 'function') {
+        renderUserOrders();
+      }
       startUserOrderPolling();
       checkUnreadChatMessages();
       startChatNotificationPolling();
