@@ -883,21 +883,21 @@ function showGCashPaymentModal(paymentData) {
       <!-- Static QR Code - Scan to Pay -->
       <div style="text-align: center; margin-bottom: 20px;">
         ${paymentData.qr_code_url ? `
-          <div style="background: linear-gradient(135deg, #0066cc 0%, #004499 100%); padding: 30px 20px; border-radius: 20px; display: inline-block; box-shadow: 0 8px 24px rgba(0,102,204,0.3); max-width: 340px; width: 100%;">
+          <div style="background: linear-gradient(135deg, #0066cc 0%, #004499 100%); padding: 24px 20px; border-radius: 20px; display: inline-block; box-shadow: 0 8px 24px rgba(0,102,204,0.3); max-width: 320px; width: 100%;">
             <!-- GCash Logo Area -->
-            <div style="margin-bottom: 20px;">
-              <div style="color: white; font-size: 1.5rem; font-weight: bold; margin-bottom: 8px; letter-spacing: 1px;">GCash</div>
+            <div style="margin-bottom: 18px;">
+              <div style="color: white; font-size: 1.5rem; font-weight: bold; margin-bottom: 6px; letter-spacing: 1px;">GCash</div>
               <div style="color: rgba(255,255,255,0.9); font-size: 0.9rem;">Scan to Pay</div>
             </div>
             
             <!-- QR Code Container -->
-            <div style="background: white; padding: 20px; border-radius: 16px; margin: 0 auto; display: inline-block;">
+            <div style="background: white; padding: 12px; border-radius: 10px; margin: 0 auto; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
               <img src="${paymentData.qr_code_url}" alt="GCash QR Code - Scan to pay ₱${amount.toFixed(2)}" 
-                   style="width: 280px; height: 280px; display: block; border-radius: 8px; object-fit: contain;">
+                   style="width: 240px; height: 240px; display: block; border-radius: 6px; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; background: white; border: 2px solid #f0f0f0;">
             </div>
             
             <!-- Payment Info -->
-            <div style="margin-top: 20px; color: white;">
+            <div style="margin-top: 18px; color: white;">
               <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 6px;">Payment Amount</div>
               <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">₱${amount.toFixed(2)}</div>
               <div style="font-size: 0.75rem; opacity: 0.85; line-height: 1.4; padding: 0 10px;">
@@ -906,7 +906,7 @@ function showGCashPaymentModal(paymentData) {
             </div>
             
             <!-- Transfer Fees Notice -->
-            <div style="margin-top: 16px; font-size: 0.7rem; color: rgba(255,255,255,0.8);">
+            <div style="margin-top: 14px; font-size: 0.7rem; color: rgba(255,255,255,0.8);">
               Transfer fees may apply.
             </div>
           </div>
