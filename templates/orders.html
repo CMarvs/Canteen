@@ -440,13 +440,14 @@
       if (typeof startChatNotificationPolling === 'function') {
         startChatNotificationPolling();
       }
-    });
-    
-    // Stop polling when page is hidden (save resources)
-    window.addEventListener('blur', () => {
-      stopUserOrderPolling();
-      stopChatNotificationPolling();
-    });
+      });
+      
+      // Stop polling when page is hidden (save resources)
+      window.addEventListener('blur', () => {
+        stopUserOrderPolling();
+        stopChatNotificationPolling();
+      });
+    }
   </script>
 </body>
 </html>

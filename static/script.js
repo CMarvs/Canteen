@@ -2662,9 +2662,9 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
       console.warn('loadChatMessages: orderId is missing');
       return;
     }
-    // Use AbortController for timeout (10 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+      // Use AbortController for timeout (30 seconds - increased for Render cold starts)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
     
     try {
       const response = await fetch(`${API_BASE}/orders/${orderId}/messages?t=${Date.now()}`, {
@@ -2844,7 +2844,23 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
     } catch (fetchError) {
       // Handle fetch errors (network, timeout, etc.)
       if (fetchError.name === 'AbortError') {
-        console.warn(`[CHAT] Request timeout for order ${orderId}`);
+        console.warn(`[CHAT] Request timeout for order ${orderId} after 30 seconds`);
+        // Show user-friendly message in chat box
+        const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+        if (messagesContainer && !messagesContainer.querySelector('.timeout-message')) {
+          const timeoutHTML = `
+            <div class="timeout-message" style="text-align: center; padding: 20px; color: #e74c3c; background: #ffe6e6; border-radius: 8px; margin: 10px 0;">
+              <div style="font-size: 1.2rem; margin-bottom: 8px;">⏱️</div>
+              <div>Request took longer than expected</div>
+              <div style="font-size: 0.85rem; margin-top: 8px; color: #666;">The server may be slow. Please try again.</div>
+              <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                      style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                Retry
+              </button>
+            </div>
+          `;
+          messagesContainer.insertAdjacentHTML('beforeend', timeoutHTML);
+        }
         return; // Silently handle timeout
       }
       console.error('[CHAT] Fetch error:', fetchError);
