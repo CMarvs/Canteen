@@ -368,7 +368,10 @@
         return;
       }
 
-      container.innerHTML = filteredOrders.map((o, displayIdx) => {
+      // Use document fragment for smoother DOM updates
+      const fragment = document.createDocumentFragment();
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = filteredOrders.map((o, displayIdx) => {
         const actualIdx = allOrders.indexOf(o);
         let badgeClass = "";
         switch (o.status) {
@@ -2220,7 +2223,17 @@
 
     /* -------- Chat Management Functions -------- */
     let chatFetchController = null;
+    let isRenderingChats = false;
+    
     async function renderAdminChats() {
+      // If already rendering, wait a bit and skip this call
+      if (isRenderingChats) {
+        console.log('[CHATS] Already rendering, skipping duplicate call');
+        return;
+      }
+      
+      isRenderingChats = true;
+      
       // Cancel previous request if still pending
       if (chatFetchController) {
         try {
@@ -2287,7 +2300,7 @@
               return null;
             }
             try {
-              // Check if controller still exists (might have been cleared)
+              // Store controller reference at the start of the promise
               const controller = chatFetchController;
               if (!controller) {
                 return null; // Request was cancelled
@@ -2372,9 +2385,11 @@
               }
               return null;
             } catch (err) {
-              if (err.name !== 'AbortError') {
-                console.warn(`Error fetching messages for order ${order.id}:`, err);
+              // Silently handle AbortError (request was cancelled)
+              if (err.name === 'AbortError') {
+                return null;
               }
+              console.warn(`[CHATS] Error fetching messages for order ${order.id}:`, err);
               return null;
             }
           });
@@ -2507,7 +2522,8 @@
           showNotification('Failed to load chats. Please try again.', 'error');
         }
       } finally {
-        chatFetchController = null;
+        isRenderingChats = false;
+        // Don't set chatFetchController to null here - let it be cleared on next call
       }
     }
     
@@ -2567,8 +2583,8 @@
     
     function startChatPolling() {
       checkUnreadChats();
-      // Poll every 8 seconds (reduced frequency)
-      chatPollInterval = setInterval(checkUnreadChats, 8000);
+      // Poll every 10 seconds (optimized for smoothness)
+      chatPollInterval = setInterval(checkUnreadChats, 10000);
       
       // Also refresh the chats list if we're on the chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {
@@ -2577,7 +2593,7 @@
           if (document.getElementById('chatsSection')?.classList.contains('active')) {
             renderAdminChats();
           }
-        }, 15000); // Refresh every 15 seconds (increased to reduce load)
+        }, 20000); // Refresh every 20 seconds (optimized for smoothness)
       }
     }
     

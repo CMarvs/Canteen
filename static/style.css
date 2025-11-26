@@ -174,7 +174,7 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
 
 /* Smooth transitions */
 * {
-  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* Disable transitions during heavy operations */
@@ -185,12 +185,137 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
 /* Smooth scroll */
 html {
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Optimize rendering */
-.order-card, .stat-card {
-  will-change: transform;
+/* Performance optimizations */
+.order-card, .stat-card, .card, .item {
+  will-change: transform, opacity;
   transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth fade-in for content */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Smooth slide-in for modals */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal, .chat-box {
+  animation: slideIn 0.25s ease-out;
+}
+
+/* Smooth tab transitions */
+.tab-content {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Smooth button press effect */
+.btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Smooth hover effects */
+.order-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(139, 69, 19, 0.15);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.item:hover {
+  transform: scale(1.02) translateY(-2px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Loading spinner smooth animation */
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+  will-change: transform;
+}
+
+/* Smooth badge animations */
+.badge {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.badge:hover {
+  transform: scale(1.1);
+}
+
+/* Smooth input focus */
+input:focus, textarea:focus, select:focus {
+  transform: scale(1.01);
+  transition: all 0.2s ease;
+}
+
+/* Smooth notification animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.order-notification {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.order-notification.slide-out {
+  animation: slideOutRight 0.3s ease-in;
+}
+
+/* Smooth status changes */
+.status-pending, .status-preparing, .status-delivery, .status-delivered {
+  transition: all 0.3s ease;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .chat-box [id^="chatMessages_"] {

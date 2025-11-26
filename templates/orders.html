@@ -51,9 +51,9 @@
     
     // Start polling for order updates
     function startUserOrderPolling() {
-      // Poll every 5 seconds for real-time updates
+      // Poll every 8 seconds for real-time updates (optimized for smoothness)
       if (!userOrderPollInterval) {
-        userOrderPollInterval = setInterval(checkUserOrderUpdates, 5000);
+        userOrderPollInterval = setInterval(checkUserOrderUpdates, 8000);
       }
     }
     
