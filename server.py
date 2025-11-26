@@ -6,6 +6,8 @@ from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 import psycopg2, json
 from psycopg2.extras import RealDictCursor
 from psycopg2 import errors as psycopg2_errors
+from decimal import Decimal
+from datetime import datetime, date
 import os
 
 app = FastAPI()
@@ -31,14 +33,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 def serialize_datetime(obj):
     """Recursively convert datetime and Decimal objects to JSON-serializable types"""
     # Handle Decimal types (from PostgreSQL numeric fields)
-    if hasattr(obj, '__class__') and obj.__class__.__name__ == 'Decimal':
+    if isinstance(obj, Decimal):
         return float(obj)
     # Handle datetime objects
-    elif hasattr(obj, 'isoformat'):
+    elif isinstance(obj, (datetime, date)):
         return obj.isoformat()
     elif isinstance(obj, dict):
+        # Handle RealDictRow and similar dict-like objects
         return {k: serialize_datetime(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    elif isinstance(obj, (list, tuple)):
         return [serialize_datetime(item) for item in obj]
     return obj
 
@@ -1290,26 +1293,31 @@ async def process_payment(request: Request):
 # --- Admin: Get orders ---
 @app.get("/orders")
 async def get_orders():
-    conn = get_db_connection()
+    conn = None
     try:
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders ORDER BY id DESC")
         orders = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
+        orders_list = []
         if orders:
-            orders_list = []
             for order in orders:
-                if isinstance(order, dict):
-                    orders_list.append(dict(order))
+                # RealDictCursor returns dict-like objects, convert to plain dict
+                if hasattr(order, 'keys'):
+                    # RealDictRow or similar dict-like object
+                    order_dict = {key: order[key] for key in order.keys()}
+                elif isinstance(order, dict):
+                    order_dict = dict(order)
                 else:
-                    # Handle tuple response
-                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    # Handle tuple response (shouldn't happen with RealDictCursor, but just in case)
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
                     if col_names:
-                        orders_list.append(dict(zip(col_names, order)))
+                        order_dict = dict(zip(col_names, order))
                     else:
                         # Fallback: create dict from tuple indices
-                        orders_list.append({
+                        order_dict = {
                             'id': order[0] if len(order) > 0 else None,
                             'user_id': order[1] if len(order) > 1 else None,
                             'fullname': order[2] if len(order) > 2 else None,
@@ -1321,14 +1329,15 @@ async def get_orders():
                             'created_at': order[8] if len(order) > 8 else None,
                             'payment_method': order[9] if len(order) > 9 else None,
                             'payment_status': order[10] if len(order) > 10 else None,
-                        })
-            return json_response(orders_list)
-        return json_response([])
+                        }
+                orders_list.append(order_dict)
+        
+        return json_response(orders_list)
     except Exception as e:
         print(f"❌ Get orders error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(500, f"Failed to get orders: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get orders: {str(e)}")
     finally:
         try:
             if conn:
@@ -2367,18 +2376,22 @@ async def get_order_messages(order_id: int, request: Request):
         messages = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
+        messages_list = []
         if messages:
-            messages_list = []
             for msg in messages:
-                if isinstance(msg, dict):
-                    messages_list.append(dict(msg))
+                # RealDictCursor returns dict-like objects, convert to plain dict
+                if hasattr(msg, 'keys'):
+                    # RealDictRow or similar dict-like object
+                    msg_dict = {key: msg[key] for key in msg.keys()}
+                elif isinstance(msg, dict):
+                    msg_dict = dict(msg)
                 else:
-                    # Handle tuple response
-                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    # Handle tuple response (shouldn't happen with RealDictCursor, but just in case)
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
                     if col_names:
-                        messages_list.append(dict(zip(col_names, msg)))
+                        msg_dict = dict(zip(col_names, msg))
                     else:
-                        messages_list.append({
+                        msg_dict = {
                             'id': msg[0] if len(msg) > 0 else None,
                             'order_id': msg[1] if len(msg) > 1 else None,
                             'user_id': msg[2] if len(msg) > 2 else None,
@@ -2389,9 +2402,10 @@ async def get_order_messages(order_id: int, request: Request):
                             'is_read': msg[7] if len(msg) > 7 else None,
                             'read_at': msg[8] if len(msg) > 8 else None,
                             'created_at': msg[9] if len(msg) > 9 else None
-                        })
-            return json_response(messages_list)
-        return json_response([])
+                        }
+                messages_list.append(msg_dict)
+        
+        return json_response(messages_list)
     except HTTPException:
         raise
     except Exception as e:
@@ -2752,18 +2766,22 @@ async def get_all_ratings():
         ratings = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
+        ratings_list = []
         if ratings:
-            ratings_list = []
             for rating in ratings:
-                if isinstance(rating, dict):
-                    ratings_list.append(dict(rating))
+                # RealDictCursor returns dict-like objects, convert to plain dict
+                if hasattr(rating, 'keys'):
+                    # RealDictRow or similar dict-like object
+                    rating_dict = {key: rating[key] for key in rating.keys()}
+                elif isinstance(rating, dict):
+                    rating_dict = dict(rating)
                 else:
-                    # Handle tuple response
-                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    # Handle tuple response (shouldn't happen with RealDictCursor, but just in case)
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
                     if col_names:
-                        ratings_list.append(dict(zip(col_names, rating)))
+                        rating_dict = dict(zip(col_names, rating))
                     else:
-                        ratings_list.append({
+                        rating_dict = {
                             'id': rating[0] if len(rating) > 0 else None,
                             'user_id': rating[1] if len(rating) > 1 else None,
                             'rating': rating[2] if len(rating) > 2 else None,
@@ -2771,9 +2789,10 @@ async def get_all_ratings():
                             'created_at': rating[4] if len(rating) > 4 else None,
                             'user_name': rating[5] if len(rating) > 5 else None,
                             'user_email': rating[6] if len(rating) > 6 else None,
-                        })
-            return json_response(ratings_list)
-        return json_response([])
+                        }
+                ratings_list.append(rating_dict)
+        
+        return json_response(ratings_list)
     except Exception as e:
         print(f"❌ Get all ratings error: {e}")
         import traceback

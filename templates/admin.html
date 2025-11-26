@@ -265,17 +265,25 @@
         });
         
         if (!response.ok) {
-          const errorText = await response.text();
+          let errorText = '';
+          try {
+            const errorData = await response.json();
+            errorText = errorData.detail || errorData.message || JSON.stringify(errorData);
+          } catch {
+            errorText = await response.text();
+          }
           console.error('Failed to load orders:', response.status, errorText);
-          throw new Error(`Failed to load orders: ${response.status}`);
+          throw new Error(`Failed to load orders: ${response.status} - ${errorText}`);
         }
         
         const orders = await response.json();
         
         if (!Array.isArray(orders)) {
           console.error('Invalid orders response format:', orders);
-          throw new Error('Invalid response format');
+          throw new Error('Invalid response format: expected array, got ' + typeof orders);
         }
+        
+        console.log(`[ORDERS] Loaded ${orders.length} orders successfully`);
         allOrders = orders.reverse();
         filteredOrders = [...allOrders];
         
