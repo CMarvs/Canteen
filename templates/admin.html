@@ -2333,8 +2333,33 @@
           });
         });
       } catch(error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[USERS] Request timeout - this may happen on slow connections or cold starts');
+          const usersArea = document.getElementById('usersList');
+          if (usersArea) {
+            usersArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle other errors
         console.error('Error loading users:', error);
-        document.getElementById('usersList').innerHTML = '<p class="muted">Failed to load users</p>';
+        const usersArea = document.getElementById('usersList');
+        if (usersArea) {
+          usersArea.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load users</div>
+              <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
       }
     }
 
@@ -2342,9 +2367,9 @@
     async function renderAdminRatings() {
       const startTime = performance.now();
       try {
-        // Use AbortController for timeout and parallel fetching (increased to 5 seconds for Render cold starts)
+        // Use AbortController for timeout and parallel fetching (increased to 10 seconds for Render cold starts)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
         // Load statistics and ratings in parallel for faster loading
         const [statsResponse, ratingsResponse] = await Promise.all([
@@ -2924,6 +2949,12 @@
         }
         renderStats();
       } catch(error) {
+        // Silently handle AbortError for polling (timeouts are expected)
+        if (error.name === 'AbortError') {
+          // Timeout during polling - this is normal, just skip this check
+          return;
+        }
+        // Only log non-timeout errors
         console.error('Error checking for new orders:', error);
       }
     }
@@ -3427,23 +3458,23 @@
             } else if (messagesResponse.status === 404) {
               // Order doesn't exist or has no messages - skip silently
               continue;
-            }
-          } catch (err) {
-            // Skip errors for individual orders (network errors, etc.)
-            if (err.name !== 'AbortError') {
-              console.warn(`Error checking messages for order ${order.id}:`, err);
-            }
-          }
         }
-        
-        // Update global unread count
-        window.unreadMessageCount = totalUnread;
-        
-        // Update stats if they're displayed
-        renderStats();
-        
-        // Update badge
-        const chatsBadge = document.getElementById('chatsBadge');
+      } catch (err) {
+        // Skip errors for individual orders (network errors, etc.)
+        if (err.name !== 'AbortError') {
+          console.warn(`Error checking messages for order ${order.id}:`, err);
+        }
+      }
+    }
+    
+    // Update global unread count
+    window.unreadMessageCount = totalUnread;
+    
+    // Update stats if they're displayed
+    renderStats();
+    
+    // Update badge
+    const chatsBadge = document.getElementById('chatsBadge');
         if (chatsBadge) {
           chatsBadge.textContent = totalUnread;
           if (totalUnread > 0) {
@@ -3464,7 +3495,13 @@
           });
         }
       } catch(error) {
-        console.error('Error checking unread chats:', error);
+        // Silently handle AbortError for polling (timeouts are expected)
+        if (error.name === 'AbortError') {
+          // Timeout during polling - this is normal, just skip this check
+          return;
+        }
+        // Only log non-timeout errors
+        console.warn('[CHATS] Error checking unread chats:', error);
       }
     }
     
