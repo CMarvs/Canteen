@@ -2602,43 +2602,11 @@
                 // Ensure messages is an array
                 const messagesArray = Array.isArray(messages) ? messages : [];
                 
+                console.log(`[CHATS] Order ${order.id} has ${messagesArray.length} messages`);
+                
                 if (messagesArray.length > 0) {
-                  // Order has messages
-                  
-                  // Convert messages to plain objects if needed (handle RealDictRow)
-                  const plainMessages = messagesArray.map(m => {
-                    if (typeof m === 'object' && m !== null) {
-                      // Handle both dict and RealDictRow
-                      if (typeof m.get === 'function') {
-                        // RealDictRow
-                        return {
-                          id: m.get('id'),
-                          order_id: m.get('order_id'),
-                          user_id: m.get('user_id'),
-                          sender_role: m.get('sender_role'),
-                          sender_name: m.get('sender_name'),
-                          message: m.get('message'),
-                          is_read: m.get('is_read'),
-                          read_at: m.get('read_at'),
-                          created_at: m.get('created_at')
-                        };
-                      } else {
-                        // Plain dict - ensure all fields exist
-                        return {
-                          id: m.id,
-                          order_id: m.order_id,
-                          user_id: m.user_id,
-                          sender_role: m.sender_role || 'user',
-                          sender_name: m.sender_name || 'Unknown',
-                          message: m.message || '',
-                          is_read: m.is_read || false,
-                          read_at: m.read_at || null,
-                          created_at: m.created_at || new Date().toISOString()
-                        };
-                      }
-                    }
-                    return m;
-                  });
+                  // Order has messages - backend already returns plain objects, no conversion needed
+                  const plainMessages = messagesArray;
                   
                   // Count unread messages (messages from users that admin hasn't read)
                   const unreadCount = plainMessages.filter(m => 
@@ -2650,9 +2618,15 @@
                   // Get last message
                   const lastMessage = plainMessages[plainMessages.length - 1];
                   
-                  if (!lastMessage || !lastMessage.created_at) {
-                    console.warn(`[CHATS] Order ${order.id}: Last message missing created_at`);
+                  if (!lastMessage) {
+                    console.warn(`[CHATS] Order ${order.id}: No last message found`);
                     return null;
+                  }
+                  
+                  // Ensure created_at exists, use current time as fallback
+                  if (!lastMessage.created_at) {
+                    console.warn(`[CHATS] Order ${order.id}: Last message missing created_at, using fallback`);
+                    lastMessage.created_at = new Date().toISOString();
                   }
                   
                   return {
@@ -2759,16 +2733,24 @@
                 </button>
               </div>
               
-              ${chat.lastMessage && chat.lastMessage.message ? `
+              ${chat.lastMessage ? `
               <div style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513;">
                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
                   <strong>${escapeHtml(chat.lastMessage.sender_name || 'Unknown')}</strong> • ${lastMsgTime}
                 </div>
-                <div style="color: #333; word-wrap: break-word;">
-                  ${escapeHtml(chat.lastMessage.message).length > 100 ? 
-                    escapeHtml(chat.lastMessage.message).substring(0, 100) + '...' : 
-                    escapeHtml(chat.lastMessage.message)}
-                </div>
+                ${chat.lastMessage.image ? `
+                  <div style="margin-top: 8px;">
+                    <img src="${chat.lastMessage.image}" alt="Message image" style="max-width: 200px; max-height: 200px; border-radius: 8px; cursor: pointer;" onclick="if(typeof openImageModal === 'function') openImageModal('${chat.lastMessage.image}'); else window.open('${chat.lastMessage.image}', '_blank');">
+                    <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">📷 Image</div>
+                  </div>
+                ` : ''}
+                ${chat.lastMessage.message ? `
+                  <div style="color: #333; word-wrap: break-word; margin-top: ${chat.lastMessage.image ? '8px' : '0'};">
+                    ${escapeHtml(chat.lastMessage.message).length > 100 ? 
+                      escapeHtml(chat.lastMessage.message).substring(0, 100) + '...' : 
+                      escapeHtml(chat.lastMessage.message)}
+                  </div>
+                ` : ''}
               </div>
               ` : ''}
             </div>
@@ -2912,8 +2894,8 @@
       stopChatPolling();
       
       checkUnreadChats();
-      // Poll every 10 seconds (optimized for smoothness)
-      chatPollInterval = setInterval(checkUnreadChats, 10000);
+      // Poll every 5 seconds for faster updates
+      chatPollInterval = setInterval(checkUnreadChats, 5000);
       
       // Also refresh the chats list if we're on the chats tab
       // Use a single interval to avoid duplicates
@@ -2921,7 +2903,7 @@
         if (document.getElementById('chatsSection')?.classList.contains('active')) {
           renderAdminChats();
         }
-      }, 20000); // Refresh every 20 seconds (optimized for smoothness)
+      }, 8000); // Refresh every 8 seconds for faster updates
       
       // Initial render if on chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {

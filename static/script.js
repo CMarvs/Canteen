@@ -2560,7 +2560,7 @@ async function openChatBox(orderId, userType) {
           header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
         }
       }
-    }, 4000); // Poll every 4 seconds (optimized for smoothness)
+    }, 3000); // Poll every 3 seconds for faster updates
   }
 }
 
