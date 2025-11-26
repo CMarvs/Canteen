@@ -154,6 +154,7 @@ input:focus, textarea:focus { border-color:var(--accent); box-shadow: 0 0 8px rg
   justify-content: center;
   align-items: center;
   z-index: 9999;
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 
@@ -365,7 +366,9 @@ input:focus, textarea:focus, select:focus {
 }
 
 .chat-box [id^="chatMessages_"] {
-  /* Standard scrollbar styling */
+  /* Safari/Webkit scrollbar styling (fallback) */
+  /* Webkit scrollbar for Safari and older browsers */
+  /* Standard scrollbar styling (Firefox, newer browsers) */
   scrollbar-width: thin;
   scrollbar-color: var(--primary) #f0f0f0;
   /* Safari fallback - use webkit scrollbar */

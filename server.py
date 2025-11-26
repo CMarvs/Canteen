@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 import psycopg2, json
@@ -8,6 +9,23 @@ from psycopg2 import errors as psycopg2_errors
 import os
 
 app = FastAPI()
+
+# Security and Performance Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        # Add security and performance headers to all responses
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Ensure Cache-Control is set (use existing or set default)
+        if "Cache-Control" not in response.headers or not response.headers.get("Cache-Control"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        # Ensure Content-Type has charset=utf-8 for text/html and application/json
+        content_type = response.headers.get("Content-Type", "")
+        if "text/html" in content_type and "charset" not in content_type.lower():
+            response.headers["Content-Type"] = "text/html; charset=utf-8"
+        elif "application/json" in content_type and "charset" not in content_type.lower():
+            response.headers["Content-Type"] = "application/json; charset=utf-8"
+        return response
 
 # Helper function to create JSONResponse with proper headers
 def json_response(content, status_code=200):
@@ -36,6 +54,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add security headers middleware (runs after CORS to ensure headers are set)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # NeonDB connection - use environment variable or fallback to default
 DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
@@ -970,7 +991,7 @@ async def process_payment(request: Request):
     # Order will be created after payment proof is uploaded
     if payment_method == "gcash" and not order_id:
         # Generate payment info without order (for pre-order payment setup)
-        from payment_gateway import process_gcash_direct_transfer
+        from payment_gateway import generate_gcash_payment_link
         import random
         import string
         
@@ -984,6 +1005,13 @@ async def process_payment(request: Request):
         if not gcash_number or len(gcash_number) != 11:
             raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
         
+        # Generate dynamic QR code with exact amount
+        payment_info = generate_gcash_payment_link(
+            amount=float(amount),
+            reference=reference,
+            admin_number=admin_gcash
+        )
+        
         # Return payment info for modal (order will be created later)
         return {
             "success": True,
@@ -991,7 +1019,10 @@ async def process_payment(request: Request):
             "admin_gcash_number": admin_gcash,
             "amount": amount,
             "reference": reference,
-            "payment_intent_id": reference
+            "payment_intent_id": reference,
+            "qr_code_image": payment_info.get("qr_code_image", ""),  # Dynamic QR code image (base64)
+            "qr_data": payment_info.get("qr_data", ""),  # QR code data for deep link
+            "instructions": payment_info.get("instructions", "")
         }
     
     if not order_id:
@@ -1100,7 +1131,8 @@ async def process_payment(request: Request):
                         "reference": payment_result.get("reference", payment_intent_id),
                         "instructions": payment_result.get("instructions", ""),
                         "qr_data": payment_result.get("qr_data", ""),
-                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.jpg")  # Path to GCash QR code image
+                        "qr_code_image": payment_result.get("qr_code_image", ""),  # Base64 encoded dynamic QR code
+                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.jpg")  # Fallback static QR code
                     }
                 
                 # Return success response for GCash

@@ -887,10 +887,26 @@ function showGCashPaymentModal(paymentData) {
         <div style="font-size: 0.8rem; color: #666;">Use the GCash app to send payment</div>
       </div>
     
-      <!-- QR Code -->
+      <!-- Dynamic QR Code -->
       <div style="text-align: center; margin-bottom: 20px;">
-        <img src="/static/gcash-qr.jpg" alt="GCash QR Code" 
-             style="max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto;">
+        ${paymentData.qr_code_image ? `
+          <div style="background: white; padding: 15px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+            <img src="${paymentData.qr_code_image}" alt="GCash QR Code - Scan to pay ₱${amount.toFixed(2)}" 
+                 style="max-width: 280px; width: 100%; height: auto; border-radius: 8px; display: block; margin: 0 auto;">
+            <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+              📱 Scan with GCash app
+            </div>
+            <div style="margin-top: 5px; font-size: 0.75rem; color: #999;">
+              Amount: ₱${amount.toFixed(2)} | To: ${adminNumber}
+            </div>
+          </div>
+        ` : `
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border: 2px dashed #0066cc;">
+            <div style="font-size: 3rem; margin-bottom: 10px;">📱</div>
+            <div style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">QR Code Loading...</div>
+            <div style="font-size: 0.8rem; color: #999;">Please send ₱${amount.toFixed(2)} to ${adminNumber}</div>
+          </div>
+        `}
       </div>
       
       <!-- Payment Instructions (Collapsible) -->

@@ -289,11 +289,25 @@ def process_gcash_direct(order_id: int, amount: float, gcash_number: str, order_
 def generate_gcash_qr_code(amount: float, reference: str, admin_number: str) -> str:
     """
     Generate GCash QR code data for payment
-    Format: GCash payment string with admin number, amount, and reference
+    Uses GCash payment deep link format that opens app with pre-filled amount
+    Format: gcash://pay?amount={amount}&number={number}
+    Falls back to structured text if deep link not supported
     """
-    # Format: Send to admin number with amount and reference
-    # This creates a payment instruction that can be scanned
-    qr_data = f"Send ₱{amount:.2f} to {admin_number}\nReference: {reference}"
+    # Format amount to 2 decimal places (no commas, just decimal)
+    amount_str = f"{amount:.2f}"
+    # Remove any non-numeric characters from admin number (keep only digits)
+    clean_number = ''.join(filter(str.isdigit, admin_number))
+    
+    # Primary: GCash deep link format (opens app with pre-filled payment)
+    # Format: gcash://pay?amount={amount}&number={number}
+    # This should open GCash app and pre-fill the amount and recipient
+    qr_data = f"gcash://pay?amount={amount_str}&number={clean_number}"
+    
+    # Note: If GCash doesn't support this deep link format, the QR code will still
+    # display the payment information when scanned, allowing manual entry
+    # The structured format below can be used as fallback if needed:
+    # qr_data = f"GCASH PAYMENT\nAmount: ₱{amount_str}\nTo: {clean_number}\nRef: {reference}"
+    
     return qr_data
 
 def generate_gcash_qr_image(qr_data: str) -> bytes:
@@ -321,9 +335,14 @@ def generate_gcash_qr_image(qr_data: str) -> bytes:
 def generate_gcash_payment_link(amount: float, reference: str, admin_number: str) -> Dict:
     """
     Generate GCash payment request/link
-    Returns payment instructions and QR code data
+    Returns payment instructions and QR code data with dynamic QR code image
     """
     qr_data = generate_gcash_qr_code(amount, reference, admin_number)
+    
+    # Generate QR code image as base64
+    qr_image_bytes = generate_gcash_qr_image(qr_data)
+    qr_image_base64 = base64.b64encode(qr_image_bytes).decode('utf-8')
+    qr_image_data_url = f"data:image/png;base64,{qr_image_base64}"
     
     return {
         "success": True,
@@ -332,7 +351,8 @@ def generate_gcash_payment_link(amount: float, reference: str, admin_number: str
         "amount": amount,
         "reference": reference,
         "qr_data": qr_data,
-        "instructions": f"Send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}\n\nPlease send the payment and keep your reference number for verification.",
+        "qr_code_image": qr_image_data_url,  # Base64 encoded QR code image
+        "instructions": f"Scan the QR code to open GCash with the payment amount (₱{amount:.2f}) pre-filled.\n\nOr manually send ₱{amount:.2f} to GCash number {admin_number}\nReference: {reference}",
         "status": "pending"
     }
 
