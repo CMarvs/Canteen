@@ -75,7 +75,10 @@ Fill in the following settings:
   ```bash
   uvicorn server:app --host 0.0.0.0 --port $PORT
   ```
-  ⚠️ **Important**: Render sets the `$PORT` environment variable automatically. Use `$PORT` instead of a fixed port number.
+  ⚠️ **Important**: 
+  - Render sets the `$PORT` environment variable automatically - **always use `$PORT`**
+  - Use `0.0.0.0` (not `127.0.0.1`) to allow external connections
+  - Don't use `--reload` in production (only for local development)
 
 ### 2.3 Environment Variables
 
@@ -83,7 +86,7 @@ Click on **"Environment"** tab and add:
 
 | Key | Value | Description |
 |-----|-------|-------------|
-| `DATABASE_URL` | `postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require` | Your NeonDB connection string |
+| `DATABASE_URL` | `postgresql://neondb_owner:npg_Y2KOWuHn9DMU@ep-lingering-tooth-a1kqy37g-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require` | Your NeonDB connection string (use your current connection string) |
 
 **⚠️ Security Note**: In production, consider using Render's environment variable encryption feature.
 

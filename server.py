@@ -79,16 +79,25 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # NeonDB connection - use environment variable or fallback to default
-DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y6Bh0RQzxKib@ep-red-violet-a1hjbfb0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_Y2KOWuHn9DMU@ep-lingering-tooth-a1kqy37g-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 
 def get_db_connection():
     try:
         conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
         return conn
     except psycopg2.OperationalError as e:
+        error_str = str(e)
         print(f"❌ Database connection error: {e}")
+        
+        # Check for quota exceeded error
+        if "exceeded the data transfer quota" in error_str or "quota" in error_str.lower():
+            error_message = "Database quota exceeded. Please upgrade your NeonDB plan at https://neon.tech or wait for quota reset. The database has reached its data transfer limit for this billing period."
+            raise HTTPException(status_code=503, detail=error_message)
+        
         print(f"[ERROR] Failed to connect to database. Check DATABASE_URL environment variable.")
         raise HTTPException(500, f"Database connection failed: {str(e)}")
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
     except Exception as e:
         print(f"❌ Database connection error: {e}")
         import traceback

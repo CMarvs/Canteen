@@ -275,19 +275,38 @@ async function loginUser(){
       // Handle error response
       let errorMsg = data.detail || data.message || 'Invalid credentials';
       
-      // Handle specific error codes
-      if(response.status === 403) {
+      // Check for quota exceeded error (check status code and error message)
+      const isQuotaError = response.status === 503 || 
+                          (data.error === 'database_quota_exceeded') ||
+                          (typeof errorMsg === 'string' && (
+                            errorMsg.toLowerCase().includes('quota') || 
+                            errorMsg.toLowerCase().includes('exceeded') ||
+                            errorMsg.toLowerCase().includes('data transfer')
+                          ));
+      
+      if(isQuotaError) {
+        errorMsg = '⚠️ Database Quota Exceeded\n\nThe database has reached its data transfer limit. Please:\n\n1. Upgrade your NeonDB plan at https://neon.tech\n2. Or wait for the monthly quota reset\n\nSee DATABASE_QUOTA_ERROR_SOLUTIONS.md for details.';
+      } else if(response.status === 403) {
         errorMsg = 'Your account is pending admin approval. Please wait for approval.';
       } else if(response.status === 400) {
         errorMsg = errorMsg || 'Invalid email or password. Please check your credentials and try again.';
       } else if(response.status === 500) {
-        errorMsg = 'Server error. Please try again later.';
+        // Check if it's a quota error in the detail message
+        if(typeof data.detail === 'string' && (data.detail.includes('quota') || data.detail.includes('exceeded'))) {
+          errorMsg = '⚠️ Database quota exceeded. Please upgrade your NeonDB plan or contact the administrator.';
+        } else {
+          errorMsg = 'Server error. Please try again later.';
+        }
       }
       
       console.error('[LOGIN] Login failed:', errorMsg, 'Status:', response.status);
       if(errorDiv) {
         errorDiv.style.display = 'block';
         errorDiv.textContent = errorMsg;
+        errorDiv.style.color = '#e74c3c';
+        errorDiv.style.padding = '12px';
+        errorDiv.style.borderRadius = '6px';
+        errorDiv.style.backgroundColor = '#fee';
       } else {
         alert('❌ ' + errorMsg);
       }
