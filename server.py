@@ -2064,8 +2064,8 @@ async def delete_order(oid: int, request: Request):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # Check if order exists and get full order data (including items and user_id)
-        cur.execute("SELECT id, status, items, user_id FROM orders WHERE id=%s", (oid,))
+        # Check if order exists and get full order data (including items, user_id, and refund_status)
+        cur.execute("SELECT id, status, items, user_id, refund_status FROM orders WHERE id=%s", (oid,))
         order = cur.fetchone()
         if not order:
             raise HTTPException(404, f"Order {oid} not found")
@@ -2075,14 +2075,25 @@ async def delete_order(oid: int, request: Request):
             order_status = order.get("status")
             order_items = order.get("items")
             order_user_id = order.get("user_id")
+            order_refund_status = order.get("refund_status")
         else:
             order_status = order[1] if len(order) > 1 else None
             order_items = order[2] if len(order) > 2 else None
             order_user_id = order[3] if len(order) > 3 else None
+            order_refund_status = order[4] if len(order) > 4 else None
         
-        # Only allow cancellation if status is Pending
-        if order_status != "Pending":
-            raise HTTPException(400, f"Cannot cancel order. Only orders with 'Pending' status can be cancelled. Current status: {order_status}")
+        # Allow deletion if:
+        # 1. Status is Pending (can be cancelled)
+        # 2. Status is Cancelled (already cancelled, can be deleted)
+        # 3. Refund status is 'refunded' (already refunded, can be deleted)
+        can_delete = (
+            order_status == "Pending" or 
+            order_status == "Cancelled" or 
+            order_refund_status == "refunded"
+        )
+        
+        if not can_delete:
+            raise HTTPException(400, f"Cannot delete order. Only orders with 'Pending' or 'Cancelled' status, or refunded orders can be deleted. Current status: {order_status}, Refund status: {order_refund_status}")
         
         # If user_id is provided, verify the order belongs to that user
         # (This allows users to cancel their own orders, admins can cancel any by not providing user_id)
