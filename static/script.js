@@ -1479,7 +1479,22 @@ async function renderUserOrders(){
         'Cache-Control': 'no-cache'
       }
     });
+    
+    if (!response.ok) {
+      console.error('Failed to fetch orders:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      list.innerHTML = '<p class="muted">Failed to load orders. Please try again.</p>';
+      return;
+    }
+    
     const allOrders = await response.json();
+    
+    if (!Array.isArray(allOrders)) {
+      console.error('Invalid response format:', allOrders);
+      list.innerHTML = '<p class="muted">Invalid response format. Please try again.</p>';
+      return;
+    }
     
     // Update global orders cache for sequential numbering
     updateGlobalOrdersCache(allOrders);
@@ -2576,11 +2591,19 @@ async function loadChatMessages(orderId, userType) {
     if (!response.ok) {
       if (response.status === 404) {
         console.warn(`Order ${orderId} not found or has no messages`);
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to fetch messages:', response.status, errorText);
       }
       return;
     }
     
     const messages = await response.json();
+    
+    if (!Array.isArray(messages)) {
+      console.error('Invalid messages response format:', messages);
+      return;
+    }
 
     if (messages.length === 0) {
       // Smooth fade-in for empty state

@@ -323,7 +323,13 @@
       try {
         const response = await fetch('/ratings/stats');
         if (response.ok) {
-          const stats = await response.json();
+          let stats;
+          try {
+            stats = await response.json();
+          } catch (e) {
+            console.error('Failed to parse stats response:', e);
+            return;
+          }
           const avgEl = document.getElementById('averageRatingStars');
           const textEl = document.getElementById('averageRatingText');
           

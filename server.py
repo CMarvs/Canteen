@@ -27,9 +27,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Content-Type"] = "application/json; charset=utf-8"
         return response
 
+# Helper function to serialize datetime objects for JSON
+def serialize_datetime(obj):
+    """Recursively convert datetime objects to ISO format strings"""
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: serialize_datetime(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_datetime(item) for item in obj]
+    return obj
+
 # Helper function to create JSONResponse with proper headers
 def json_response(content, status_code=200):
     """Create a JSONResponse with proper Content-Type charset and security headers"""
+    # Serialize datetime objects before creating JSON response
+    content = serialize_datetime(content)
     headers = {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
@@ -164,7 +177,11 @@ def ensure_menu_table_exists():
         print(f"[ERROR] Error ensuring menu table exists: {e}")
         conn.rollback()
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Initialize chat_messages table if it doesn't exist ---
 def ensure_chat_table_exists():
@@ -249,7 +266,11 @@ def ensure_chat_table_exists():
         print(f"[ERROR] Error ensuring chat table exists: {e}")
         conn.rollback()
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Initialize service_ratings table if it doesn't exist ---
 def ensure_ratings_table_exists():
@@ -297,7 +318,11 @@ def ensure_ratings_table_exists():
         print(f"[ERROR] Error ensuring ratings table exists: {e}")
         conn.rollback()
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # Initialize table on startup (non-blocking)
 # This runs on import, so we need to be very careful not to crash the server
@@ -706,7 +731,11 @@ async def update_user(user_id: int, request: Request):
         print(f"❌ Update user error: {e}")
         raise HTTPException(500, f"Failed to update profile: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Place order ---
 @app.post("/orders")
@@ -896,7 +925,11 @@ async def place_order(request: Request):
         traceback.print_exc()
         raise HTTPException(500, f"Order placement failed: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Payment Callback (Webhook) ---
 @app.post("/payment/callback")
@@ -1242,21 +1275,60 @@ async def process_payment(request: Request):
         traceback.print_exc()
         raise HTTPException(500, f"Payment processing failed: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Get orders ---
 @app.get("/orders")
-def get_orders():
+async def get_orders():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders ORDER BY id DESC")
-        return cur.fetchall()
+        orders = cur.fetchall()
+        
+        # Convert RealDictRow to plain dict for JSON serialization
+        if orders:
+            orders_list = []
+            for order in orders:
+                if isinstance(order, dict):
+                    orders_list.append(dict(order))
+                else:
+                    # Handle tuple response
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    if col_names:
+                        orders_list.append(dict(zip(col_names, order)))
+                    else:
+                        # Fallback: create dict from tuple indices
+                        orders_list.append({
+                            'id': order[0] if len(order) > 0 else None,
+                            'user_id': order[1] if len(order) > 1 else None,
+                            'fullname': order[2] if len(order) > 2 else None,
+                            'contact': order[3] if len(order) > 3 else None,
+                            'location': order[4] if len(order) > 4 else None,
+                            'items': order[5] if len(order) > 5 else None,
+                            'total': order[6] if len(order) > 6 else None,
+                            'status': order[7] if len(order) > 7 else None,
+                            'created_at': order[8] if len(order) > 8 else None,
+                            'payment_method': order[9] if len(order) > 9 else None,
+                            'payment_status': order[10] if len(order) > 10 else None,
+                        })
+            return json_response(orders_list)
+        return json_response([])
     except Exception as e:
         print(f"❌ Get orders error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get orders: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Menu Items: Get all menu items ---
 @app.get("/menu")
@@ -1575,7 +1647,11 @@ async def update_menu_item(item_id: int, request: Request):
         print(f"❌ Update menu item error: {e}")
         raise HTTPException(500, f"Failed to update menu item: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Menu Items: Delete menu item (Admin only) ---
 @app.delete("/menu/{item_id}")
@@ -1596,7 +1672,11 @@ async def delete_menu_item(item_id: int):
         print(f"❌ Delete menu item error: {e}")
         raise HTTPException(500, f"Failed to delete menu item: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Process Refund ---
 @app.post("/orders/{order_id}/refund")
@@ -1711,7 +1791,11 @@ async def process_refund(order_id: int, request: Request):
         traceback.print_exc()
         raise HTTPException(500, f"Failed to process refund: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Update order status or details ---
 @app.put("/orders/{oid}")
@@ -1840,7 +1924,11 @@ async def update_order(oid: int, request: Request):
         print(f"❌ Update order error: {e}")
         raise HTTPException(500, f"Failed to update order: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Update Payment Proof ---
 @app.put("/orders/{oid}/payment-proof")
@@ -1887,7 +1975,11 @@ async def update_payment_proof(oid: int, request: Request):
         traceback.print_exc()
         raise HTTPException(500, f"Failed to update payment proof: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Update Payment Status ---
 @app.put("/orders/{oid}/payment")
@@ -1927,7 +2019,11 @@ async def update_payment_status(oid: int, request: Request):
         print(f"[ERROR] Update payment status error: {e}")
         raise HTTPException(500, f"Failed to update payment status: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Delete/Cancel order (Users can cancel their own, Admins can cancel any) ---
 @app.delete("/orders/{oid}")
@@ -2031,7 +2127,11 @@ async def delete_order(oid: int, request: Request):
         traceback.print_exc()
         raise HTTPException(500, f"Failed to cancel order: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Get all users ---
 @app.get("/users")
@@ -2045,7 +2145,11 @@ def get_users():
         print(f"❌ Get users error: {e}")
         raise HTTPException(500, f"Failed to get users: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Approve/Reject user and set role ---
 @app.put("/users/{user_id}/approve")
@@ -2153,7 +2257,11 @@ async def approve_user(user_id: int, request: Request):
         print(f"❌ Approve user error: {e}")
         raise HTTPException(500, f"Failed to update user approval: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Reset: Delete all users (for development/testing) ---
 @app.delete("/reset/users")
@@ -2177,7 +2285,11 @@ async def reset_all_users():
         print(f"Reset users error: {e}")
         raise HTTPException(500, f"Failed to reset users: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Chat: Get messages for an order ---
 @app.get("/orders/{order_id}/messages")
@@ -2198,7 +2310,7 @@ async def get_order_messages(order_id: int, request: Request):
         if not order:
             # Return empty array instead of 404 for better UX (order might have been deleted)
             # This prevents console errors when checking messages for deleted orders
-            return []
+            return json_response([])
         
         # Get messages for this order
         cur.execute("""
@@ -2233,15 +2345,19 @@ async def get_order_messages(order_id: int, request: Request):
                             'read_at': msg[8] if len(msg) > 8 else None,
                             'created_at': msg[9] if len(msg) > 9 else None
                         })
-            return messages_list
-        return []
+            return json_response(messages_list)
+        return json_response([])
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Get messages error: {e}")
         raise HTTPException(500, f"Failed to get messages: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Chat: Send a message for an order ---
 @app.post("/orders/{order_id}/messages")
@@ -2420,7 +2536,11 @@ async def mark_messages_read(order_id: int, request: Request):
         print(f"❌ Mark messages read error: {e}")
         raise HTTPException(500, f"Failed to mark messages as read: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Service Rating: Submit rating ---
 @app.post("/ratings")
@@ -2485,7 +2605,11 @@ async def submit_rating(request: Request):
         print(f"❌ Submit rating error: {e}")
         raise HTTPException(500, f"Failed to submit rating: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Service Rating: Get user's rating ---
 @app.get("/ratings/user/{user_id}")
@@ -2506,12 +2630,43 @@ async def get_user_rating(user_id: int):
             WHERE user_id = %s
         """, (user_id,))
         rating = cur.fetchone()
-        return rating if rating else None
+        
+        # Convert RealDictRow to plain dict for JSON serialization
+        if rating:
+            if isinstance(rating, dict):
+                rating_dict = dict(rating)
+            else:
+                # Handle tuple response
+                col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                if col_names:
+                    rating_dict = dict(zip(col_names, rating))
+                else:
+                    rating_dict = {
+                        'id': rating[0] if len(rating) > 0 else None,
+                        'user_id': rating[1] if len(rating) > 1 else None,
+                        'rating': rating[2] if len(rating) > 2 else None,
+                        'comment': rating[3] if len(rating) > 3 else None,
+                        'created_at': rating[4] if len(rating) > 4 else None,
+                    }
+            # Convert datetime to string for JSON serialization
+            if 'created_at' in rating_dict and rating_dict['created_at']:
+                if hasattr(rating_dict['created_at'], 'isoformat'):
+                    rating_dict['created_at'] = rating_dict['created_at'].isoformat()
+                elif isinstance(rating_dict['created_at'], str):
+                    pass  # Already a string
+            return json_response(rating_dict)
+        return json_response(None)
     except Exception as e:
         print(f"❌ Get user rating error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get rating: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Service Rating: Get all ratings (Admin) ---
 @app.get("/ratings")
@@ -2533,12 +2688,41 @@ async def get_all_ratings():
             ORDER BY r.created_at DESC
         """)
         ratings = cur.fetchall()
-        return ratings if ratings else []
+        
+        # Convert RealDictRow to plain dict for JSON serialization
+        if ratings:
+            ratings_list = []
+            for rating in ratings:
+                if isinstance(rating, dict):
+                    ratings_list.append(dict(rating))
+                else:
+                    # Handle tuple response
+                    col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                    if col_names:
+                        ratings_list.append(dict(zip(col_names, rating)))
+                    else:
+                        ratings_list.append({
+                            'id': rating[0] if len(rating) > 0 else None,
+                            'user_id': rating[1] if len(rating) > 1 else None,
+                            'rating': rating[2] if len(rating) > 2 else None,
+                            'comment': rating[3] if len(rating) > 3 else None,
+                            'created_at': rating[4] if len(rating) > 4 else None,
+                            'user_name': rating[5] if len(rating) > 5 else None,
+                            'user_email': rating[6] if len(rating) > 6 else None,
+                        })
+            return json_response(ratings_list)
+        return json_response([])
     except Exception as e:
         print(f"❌ Get all ratings error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to get ratings: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Service Rating: Get statistics (Admin) ---
 @app.get("/ratings/stats")
@@ -2579,7 +2763,11 @@ async def get_rating_stats():
         print(f"❌ Get rating stats error: {e}")
         raise HTTPException(500, f"Failed to get rating stats: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Admin: Get user details with photos and orders ---
 @app.get("/users/{user_id}/details")
@@ -2693,4 +2881,8 @@ async def get_user_details(user_id: int):
         traceback.print_exc()
         raise HTTPException(500, f"Failed to get user details: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")

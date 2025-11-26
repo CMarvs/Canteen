@@ -265,10 +265,17 @@
         });
         
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Failed to load orders:', response.status, errorText);
           throw new Error(`Failed to load orders: ${response.status}`);
         }
         
         const orders = await response.json();
+        
+        if (!Array.isArray(orders)) {
+          console.error('Invalid orders response format:', orders);
+          throw new Error('Invalid response format');
+        }
         allOrders = orders.reverse();
         filteredOrders = [...allOrders];
         
@@ -1749,11 +1756,36 @@
       try {
         // Load statistics
         const statsResponse = await fetch('/ratings/stats');
-        const stats = statsResponse.ok ? await statsResponse.json() : null;
+        let stats = null;
+        if (statsResponse.ok) {
+          try {
+            stats = await statsResponse.json();
+          } catch (e) {
+            console.error('Failed to parse stats response:', e);
+          }
+        } else {
+          const errorText = await statsResponse.text();
+          console.error('Failed to fetch stats:', statsResponse.status, errorText);
+        }
         
         // Load all ratings
         const ratingsResponse = await fetch('/ratings');
-        const ratings = ratingsResponse.ok ? await ratingsResponse.json() : [];
+        let ratings = [];
+        if (ratingsResponse.ok) {
+          try {
+            ratings = await ratingsResponse.json();
+            if (!Array.isArray(ratings)) {
+              console.error('Invalid ratings response format:', ratings);
+              ratings = [];
+            }
+          } catch (e) {
+            console.error('Failed to parse ratings response:', e);
+            ratings = [];
+          }
+        } else {
+          const errorText = await ratingsResponse.text();
+          console.error('Failed to fetch ratings:', ratingsResponse.status, errorText);
+        }
 
         // Display statistics
         const statsArea = document.getElementById('ratingsStats');
