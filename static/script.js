@@ -1,7 +1,8 @@
 /* ===== RMLCanteen — API-Connected Version =====
    - Uses FastAPI backend with NeonDB PostgreSQL
    - Admin account: admin@canteen / admin123
-   - Version: 2.0 - Profile update enabled
+   - Version: 2.1 - Performance optimized, syntax fixed
+   - Last updated: 2025-01-27
 */
 
 // API Base URL
@@ -2729,8 +2730,6 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
         }, 50);
         return;
       }
-
-      const cur = getCurrent();
       
       // Store current scroll position for smooth updates
       const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
@@ -2851,28 +2850,28 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
       console.error('[CHAT] Fetch error:', fetchError);
     }
   } catch(outerError) {
-      // This catch handles any errors in the message processing code
-      console.error('[CHAT] Error processing messages:', outerError);
-      const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
-      if (messagesContainer) {
-        // Show error message in chat box
-        const errorHTML = `
-          <div style="text-align: center; padding: 20px; color: #e74c3c;">
-            <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
-            <div>Failed to load messages</div>
-            <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
-              ${outerError.message || 'Please try again'}
-            </div>
-            <button onclick="loadChatMessages(${orderId}, '${userType}')" 
-                    style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
-              Retry
-            </button>
+    // This catch handles any errors in the message processing code
+    console.error('[CHAT] Error processing messages:', outerError);
+    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+    if (messagesContainer) {
+      // Show error message in chat box
+      const errorHTML = `
+        <div style="text-align: center; padding: 20px; color: #e74c3c;">
+          <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
+          <div>Failed to load messages</div>
+          <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
+            ${outerError.message || 'Please try again'}
           </div>
-        `;
-        messagesContainer.innerHTML = errorHTML;
-      }
+          <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                  style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Retry
+          </button>
+        </div>
+      `;
+      messagesContainer.innerHTML = errorHTML;
     }
   }
+}
 
 // Store image data for each chat
 const chatImageData = {};
