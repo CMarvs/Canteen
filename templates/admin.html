@@ -2513,15 +2513,11 @@
       isRenderingChats = true;
       lastChatRenderTime = Date.now();
       
-      // Cancel previous request if still pending
-      if (chatFetchController) {
-        try {
-          chatFetchController.abort();
-        } catch (e) {
-          // Ignore errors when aborting
-        }
-      }
+      // Don't abort previous requests - let them complete to avoid race conditions
+      // Instead, we'll track render IDs to ignore stale results
+      const currentRenderId = Date.now();
       chatFetchController = new AbortController();
+      chatFetchController.renderId = currentRenderId;
       
       // Show loading state
       const chatsList = document.getElementById('chatsList');
@@ -2598,7 +2594,19 @@
               }
               
               if (messagesResponse.ok) {
-                const messages = await messagesResponse.json();
+                let messages;
+                try {
+                  const responseText = await messagesResponse.text();
+                  if (!responseText || responseText.trim() === '') {
+                    console.warn(`[CHATS] Order ${order.id}: Empty response from server`);
+                    return null;
+                  }
+                  messages = JSON.parse(responseText);
+                } catch (parseError) {
+                  console.error(`[CHATS] Order ${order.id}: Failed to parse messages response:`, parseError);
+                  return null;
+                }
+                
                 // Ensure messages is an array
                 const messagesArray = Array.isArray(messages) ? messages : [];
                 
@@ -2610,16 +2618,16 @@
                   
                   // Count unread messages (messages from users that admin hasn't read)
                   const unreadCount = plainMessages.filter(m => 
-                    m.sender_role === 'user' && !m.is_read
+                    m && m.sender_role === 'user' && !m.is_read
                   ).length;
                   
-                  // Checking unread messages
+                  console.log(`[CHATS] Order ${order.id}: ${unreadCount} unread messages out of ${plainMessages.length} total`);
                   
                   // Get last message
                   const lastMessage = plainMessages[plainMessages.length - 1];
                   
                   if (!lastMessage) {
-                    console.warn(`[CHATS] Order ${order.id}: No last message found`);
+                    console.warn(`[CHATS] Order ${order.id}: No last message found despite ${plainMessages.length} messages`);
                     return null;
                   }
                   
@@ -2629,6 +2637,8 @@
                     lastMessage.created_at = new Date().toISOString();
                   }
                   
+                  console.log(`[CHATS] Order ${order.id}: Returning chat data with last message from ${lastMessage.sender_role || 'unknown'}`);
+                  
                   return {
                     order: order,
                     messageCount: plainMessages.length,
@@ -2636,7 +2646,12 @@
                     lastMessage: lastMessage,
                     lastMessageTime: lastMessage.created_at
                   };
+                } else {
+                  console.log(`[CHATS] Order ${order.id}: No messages in array`);
                 }
+              } else {
+                const errorText = await messagesResponse.text().catch(() => 'Unknown error');
+                console.warn(`[CHATS] Order ${order.id}: Messages response not OK - ${messagesResponse.status}: ${errorText}`);
               }
               return null;
             } catch (err) {
@@ -2644,7 +2659,7 @@
               if (err.name === 'AbortError') {
                 return null;
               }
-              console.warn(`[CHATS] Error fetching messages for order ${order.id}:`, err);
+              console.error(`[CHATS] Error fetching messages for order ${order.id}:`, err);
               return null;
             }
           });
@@ -2652,8 +2667,21 @@
         // Process all orders in parallel (much faster)
         try {
           const allResults = await Promise.all(allMessagePromises);
-          allResults.forEach(result => {
-            if (result) chatsWithMessages.push(result);
+          
+          // Check if this render is still valid (not superseded by a newer one)
+          if (chatFetchController && chatFetchController.renderId !== currentRenderId) {
+            console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results`);
+            return;
+          }
+          
+          console.log(`[CHATS] All results:`, allResults);
+          allResults.forEach((result, index) => {
+            if (result) {
+              console.log(`[CHATS] Adding chat for order ${result.order.id} with ${result.messageCount} messages`);
+              chatsWithMessages.push(result);
+            } else {
+              console.log(`[CHATS] Result ${index} is null`);
+            }
           });
           console.log(`[CHATS] Processed ${allResults.length} orders, found ${chatsWithMessages.length} with messages`);
         } catch (allError) {

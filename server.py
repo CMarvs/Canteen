@@ -2392,6 +2392,8 @@ async def get_order_messages(order_id: int, request: Request):
         """, (order_id,))
         messages = cur.fetchall()
         
+        print(f"[DEBUG] Order {order_id}: Found {len(messages) if messages else 0} messages in database")
+        
         # Convert RealDictRow to plain dict for JSON serialization
         messages_list = []
         if messages:
