@@ -223,14 +223,7 @@
         if (sectionEl) sectionEl.classList.add('active');
         renderAdminChats();
         // Start auto-refresh for chats list when on chats tab
-        if (chatListRefreshInterval) {
-          clearInterval(chatListRefreshInterval);
-        }
-        chatListRefreshInterval = setInterval(() => {
-          if (document.getElementById('chatsSection')?.classList.contains('active')) {
-            renderAdminChats();
-          }
-        }, 15000); // Refresh every 15 seconds
+        // Note: The interval is managed by startChatPolling() to avoid duplicates
       } else if (tab === 'menu') {
         const tabEl = document.getElementById('tabMenu');
         const sectionEl = document.getElementById('menuSection');
@@ -2224,15 +2217,23 @@
     /* -------- Chat Management Functions -------- */
     let chatFetchController = null;
     let isRenderingChats = false;
+    let lastChatRenderTime = 0;
+    const CHAT_RENDER_DEBOUNCE = 2000; // Minimum 2 seconds between renders
     
     async function renderAdminChats() {
-      // If already rendering, wait a bit and skip this call
+      // Debounce: Skip if called too soon after last render
+      const now = Date.now();
+      if (now - lastChatRenderTime < CHAT_RENDER_DEBOUNCE) {
+        return; // Silently skip, no console log needed
+      }
+      
+      // If already rendering, skip this call
       if (isRenderingChats) {
-        console.log('[CHATS] Already rendering, skipping duplicate call');
-        return;
+        return; // Silently skip, no console log needed
       }
       
       isRenderingChats = true;
+      lastChatRenderTime = Date.now();
       
       // Cancel previous request if still pending
       if (chatFetchController) {
@@ -2582,18 +2583,24 @@
     let chatListRefreshInterval = null;
     
     function startChatPolling() {
+      // Stop any existing intervals first
+      stopChatPolling();
+      
       checkUnreadChats();
       // Poll every 10 seconds (optimized for smoothness)
       chatPollInterval = setInterval(checkUnreadChats, 10000);
       
       // Also refresh the chats list if we're on the chats tab
+      // Use a single interval to avoid duplicates
+      chatListRefreshInterval = setInterval(() => {
+        if (document.getElementById('chatsSection')?.classList.contains('active')) {
+          renderAdminChats();
+        }
+      }, 20000); // Refresh every 20 seconds (optimized for smoothness)
+      
+      // Initial render if on chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {
         renderAdminChats();
-        chatListRefreshInterval = setInterval(() => {
-          if (document.getElementById('chatsSection')?.classList.contains('active')) {
-            renderAdminChats();
-          }
-        }, 20000); // Refresh every 20 seconds (optimized for smoothness)
       }
     }
     
