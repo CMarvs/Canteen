@@ -1543,6 +1543,10 @@
         clearTimeout(timeoutId);
         
         if (!response.ok) {
+          // Handle 502 Bad Gateway errors
+          if (response.status === 502) {
+            throw new Error('Server temporarily unavailable. Please try again in a moment.');
+          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         const menuItems = await response.json();
@@ -1629,11 +1633,28 @@
         if (error.name === 'AbortError') {
           console.warn('[MENU] Request timeout - this may happen on slow connections or cold starts');
           const menuArea = document.getElementById('adminMenuList');
-          if (menuArea && !menuArea.innerHTML.includes('Loaded')) {
+          // Only show timeout message if content hasn't been loaded yet
+          if (menuArea && (!menuArea.innerHTML || menuArea.innerHTML.includes('Loading') || menuArea.innerHTML.includes('timeout'))) {
             menuArea.innerHTML = `
               <div style="text-align: center; padding: 40px; color: #666;">
                 <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
                 <div>Request took longer than expected</div>
+                <button onclick="renderAdminMenuList()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && error.message.includes('502') || error.message.includes('unavailable')) {
+          console.error('[MENU] Server error (502):', error);
+          const menuArea = document.getElementById('adminMenuList');
+          if (menuArea) {
+            menuArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
                 <button onclick="renderAdminMenuList()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
               </div>
             `;
@@ -1831,174 +1852,6 @@
       } catch(error) {
         console.error('Error deleting menu item:', error);
         alert('Failed to delete menu item. Please try again.');
-      }
-    }
-
-    /* -------- User Management Functions -------- */
-    async function renderAdminUsers() {
-      const startTime = performance.now();
-      try {
-        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
-        
-        const response = await fetch(`/users?t=${Date.now()}`, {
-          cache: 'no-cache',
-          headers: { 'Cache-Control': 'no-cache' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        const users = await response.json();
-        
-        const usersArea = document.getElementById('usersList');
-        if (!usersArea) return;
-
-        // Separate users by approval status
-        const pendingUsers = users.filter(u => (u.is_approved === false || u.is_approved === 0) && u.role !== 'admin');
-        const approvedUsers = users.filter(u => (u.is_approved === true || u.is_approved === 1) && u.role !== 'admin');
-        const adminUsers = users.filter(u => u.role === 'admin');
-
-        // Update badge
-        const badge = document.getElementById('usersBadge');
-        if (badge) badge.textContent = pendingUsers.length;
-
-        const loadTime = performance.now() - startTime;
-        console.log(`[USERS] Loaded in ${loadTime.toFixed(2)}ms`);
-
-        let html = '';
-
-        // Pending Users Section
-        if (pendingUsers.length > 0) {
-          html += `
-            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #ff9800;">
-              <h3 style="margin: 0 0 16px 0; color: #ff9800;">⏳ Pending Approval (${pendingUsers.length})</h3>
-              ${pendingUsers.map(user => {
-                const isApproved = user.is_approved === true || user.is_approved === 1;
-                return `
-                  <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: #fff8f1;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
-                      <div style="flex: 1;">
-                        <strong style="font-size: 1.1rem;">${user.name || 'N/A'}</strong>
-                        <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">${user.email || 'N/A'}</div>
-                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" class="proof-comparison-grid">
-                          ${user.id_proof ? `
-                          <div>
-                            <strong>📷 ID Proof:</strong>
-                            <img src="${user.id_proof}" alt="ID Proof" 
-                                 onclick="showUserProofModal('${user.id_proof}', '${user.name || 'User'}', 'ID Proof')"
-                                 style="width: 100%; max-width: 200px; margin-top: 8px; border: 2px solid #8b4513; border-radius: 8px; cursor: pointer;">
-                          </div>
-                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No ID Proof</div></div>'}
-                          ${user.selfie_proof ? `
-                          <div>
-                            <strong>🤳 Selfie Proof:</strong>
-                            <img src="${user.selfie_proof}" alt="Selfie Proof" 
-                                 onclick="showUserProofModal('${user.selfie_proof}', '${user.name || 'User'}', 'Selfie Proof')"
-                                 style="width: 100%; max-width: 200px; margin-top: 8px; border: 2px solid #2196F3; border-radius: 8px; cursor: pointer;">
-                          </div>
-                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No Selfie Proof</div></div>'}
-                        </div>
-                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
-                          <label for="roleSelect_${user.id}" style="font-weight: 600; min-width: 80px;">Role:</label>
-                          <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
-                            <option value="user" ${user.role === 'user' ? 'selected' : ''}>👤 User</option>
-                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>👑 Admin</option>
-                          </select>
-                        </div>
-                        <div style="margin-top: 12px; display: flex; gap: 8px;">
-                          <button class="btn small" onclick="approveUserWithRole(${user.id}, true)" style="background: #4caf50; color: white; flex: 1;">✅ Approve</button>
-                          <button class="btn delete small" onclick="approveUser(${user.id}, false)" style="flex: 1;">❌ Reject</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-        } else {
-          html += `
-            <div class="card" style="margin-bottom: 20px; text-align: center; padding: 40px; color: var(--muted);">
-              ✅ No pending user approvals
-            </div>
-          `;
-        }
-
-        // Approved Users Section
-        if (approvedUsers.length > 0) {
-          html += `
-            <div class="card" style="margin-bottom: 20px;">
-              <h3 style="margin: 0 0 16px 0;">✅ Approved Users (${approvedUsers.length})</h3>
-              ${approvedUsers.map(user => {
-                return `
-                  <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
-                    <div style="flex: 1;">
-                      <strong>${user.name || 'N/A'}</strong>
-                      <div style="color: var(--muted); font-size: 0.9rem; margin-top: 4px;">${user.email || 'N/A'}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                      <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">✅ Approved</span>
-                      <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : '#666'}; color: white; border-radius: 12px; font-size: 0.85rem;">
-                        ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
-                      </span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-        }
-
-        // Admin Users Section
-        if (adminUsers.length > 0) {
-          html += `
-            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #2196F3;">
-              <h3 style="margin: 0 0 16px 0; color: #2196F3;">👑 Administrators (${adminUsers.length})</h3>
-              ${adminUsers.map(user => {
-                return `
-                  <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
-                    <div style="flex: 1;">
-                      <strong>${user.name || 'N/A'}</strong>
-                      <div style="color: var(--muted); font-size: 0.9rem; margin-top: 4px;">${user.email || 'N/A'}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                      <span style="padding: 4px 12px; background: #2196F3; color: white; border-radius: 12px; font-size: 0.85rem;">👑 Admin</span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-        }
-
-        if (html === '') {
-          html = '<p class="muted">No users found.</p>';
-        }
-
-        usersArea.innerHTML = html;
-      } catch (error) {
-        // Handle AbortError gracefully
-        if (error.name === 'AbortError') {
-          console.warn('[USERS] Request timeout - this may happen on slow connections or cold starts');
-          const usersArea = document.getElementById('usersList');
-          if (usersArea) {
-            usersArea.innerHTML = `
-              <div style="text-align: center; padding: 40px; color: #666;">
-                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
-                <div>Request took longer than expected</div>
-                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
-              </div>
-            `;
-          }
-          return;
-        }
-        console.error('Error loading users:', error);
-        const usersArea = document.getElementById('usersList');
-        if (usersArea) {
-          usersArea.innerHTML = '<p class="muted">Failed to load users</p>';
-        }
       }
     }
 
@@ -2352,11 +2205,28 @@
         if (error.name === 'AbortError') {
           console.warn('[USERS] Request timeout - this may happen on slow connections or cold starts');
           const usersArea = document.getElementById('usersList');
-          if (usersArea && !usersArea.innerHTML.includes('Loaded')) {
+          // Only show timeout message if content hasn't been loaded yet
+          if (usersArea && (!usersArea.innerHTML || usersArea.innerHTML.includes('Loading') || usersArea.innerHTML.includes('timeout'))) {
             usersArea.innerHTML = `
               <div style="text-align: center; padding: 40px; color: #666;">
                 <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
                 <div>Request took longer than expected</div>
+                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && (error.message.includes('502') || error.message.includes('unavailable'))) {
+          console.error('[USERS] Server error (502):', error);
+          const usersArea = document.getElementById('usersList');
+          if (usersArea) {
+            usersArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
                 <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
               </div>
             `;
@@ -2448,8 +2318,14 @@
             ratings = [];
           }
         } else {
-          const errorText = await ratingsResponse.text();
-          console.error('Failed to fetch ratings:', ratingsResponse.status, errorText);
+          // Handle 502 Bad Gateway errors gracefully
+          if (ratingsResponse.status === 502) {
+            console.warn('[RATINGS] Ratings endpoint returned 502 - server may be restarting');
+            ratings = []; // Use empty array, will show "No ratings yet" message
+          } else {
+            const errorText = await ratingsResponse.text();
+            console.error('Failed to fetch ratings:', ratingsResponse.status, errorText);
+          }
         }
         
         const loadTime = performance.now() - startTime;
@@ -2549,11 +2425,28 @@
         if (error.name === 'AbortError') {
           console.warn('[RATINGS] Request timeout - this may happen on slow connections or cold starts');
           const ratingsArea = document.getElementById('ratingsList');
-          if (ratingsArea) {
+          // Only show timeout message if content hasn't been loaded yet
+          if (ratingsArea && (!ratingsArea.innerHTML || ratingsArea.innerHTML.includes('Loading') || ratingsArea.innerHTML.includes('timeout'))) {
             ratingsArea.innerHTML = `
               <div style="text-align: center; padding: 40px; color: #666;">
                 <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
                 <div>Request took longer than expected</div>
+                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && (error.message.includes('502') || error.message.includes('unavailable'))) {
+          console.error('[RATINGS] Server error (502):', error);
+          const ratingsArea = document.getElementById('ratingsList');
+          if (ratingsArea) {
+            ratingsArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
                 <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
               </div>
             `;
