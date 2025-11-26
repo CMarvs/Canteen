@@ -2544,7 +2544,7 @@ async function openChatBox(orderId, userType) {
         <button onclick="clearChatImage(${orderId})" style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; font-weight: bold;">×</button>
       </div>
       <div style="display: flex; gap: 8px;">
-        <input type="file" id="chatImageInput_${orderId}" accept="image/*" capture="environment" style="display: none;" onchange="handleChatImageSelect(${orderId})">
+        <input type="file" id="chatImageInput_${orderId}" accept="image/*" capture="environment" style="display: none;" onchange="handleChatImageSelect(${orderId})" title="Select an image to send" aria-label="Select an image to send">
         <button onclick="document.getElementById('chatImageInput_${orderId}').click()" 
                 style="background: #f0f0f0; color: #333; border: 1px solid #ddd; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 4px;">
           📷
@@ -3021,9 +3021,9 @@ async function sendChatMessage(orderId, userType) {
     try {
       const startTime = performance.now();
       
-      // Use AbortController for timeout (15 seconds)
+      // Use AbortController for timeout (30 seconds - increased for Render cold starts)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       
       let response;
       try {

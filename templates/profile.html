@@ -22,17 +22,17 @@
     <h2 class="headline">My Profile</h2>
 
     <section class="card">
-      <label class="input-label">Full name</label>
-      <input id="profileName" type="text">
+      <label class="input-label" for="profileName">Full name</label>
+      <input id="profileName" type="text" name="profileName" placeholder="Enter your full name" title="Your full name">
 
-      <label class="input-label">Email (readonly)</label>
-      <input id="profileEmail" type="email" readonly>
+      <label class="input-label" for="profileEmail">Email (readonly)</label>
+      <input id="profileEmail" type="email" name="profileEmail" readonly title="Your email address">
 
       <label class="input-label">New Password (leave blank to keep current)</label>
       <input id="profilePass" type="password" placeholder="New password">
 
       <div style="margin-top:10px">
-        <button class="btn" onclick="saveProfile()">Save</button>
+        <button class="btn" onclick="if(typeof saveProfile === 'function') { saveProfile(); } else { alert('Please wait for page to fully load'); }">Save</button>
       </div>
     </section>
 
@@ -93,7 +93,18 @@
 
   </main>
 
-  <script src="/static/script.js"></script>
+  <script>
+    // Load script.js with cache-busting to ensure fresh version
+    (function() {
+      const script = document.createElement('script');
+      script.src = '/static/script.js?v=' + Date.now();
+      script.onerror = function() {
+        console.error('Failed to load script.js');
+        alert('Error: Failed to load required scripts. Please refresh the page.');
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
   <script>
     window.addEventListener('DOMContentLoaded', () => {
       // Check authentication
@@ -140,9 +151,25 @@
         }
       }
       
-      loadProfilePage();
-      loadUserRating();
-      loadAverageRating();
+      // Wait for script.js to load before calling functions
+      if (typeof loadProfilePage === 'function') {
+        loadProfilePage();
+      } else {
+        console.warn('loadProfilePage not available yet, will retry...');
+        setTimeout(() => {
+          if (typeof loadProfilePage === 'function') {
+            loadProfilePage();
+          } else {
+            console.error('loadProfilePage still not available after wait');
+          }
+        }, 500);
+      }
+      if (typeof loadUserRating === 'function') {
+        loadUserRating();
+      }
+      if (typeof loadAverageRating === 'function') {
+        loadAverageRating();
+      }
     });
 
     let selectedRating = 0;

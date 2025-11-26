@@ -40,50 +40,81 @@
   </main>
 
   <script>
-    // Load script.js with cache-busting to ensure fresh version
+    // Load script.js with cache-busting and wait for it to load
     (function() {
-      const script = document.createElement('script');
-      script.src = '/static/script.js?v=' + Date.now();
-      script.onerror = function() {
-        console.error('Failed to load script.js');
-        alert('Error: Failed to load required scripts. Please refresh the page.');
-      };
-      document.head.appendChild(script);
-    })();
-  </script>
-  <script>
-    let userOrderPollInterval = null;
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/static/script.js?v=' + Date.now();
+        script.onerror = function() {
+          console.error('Failed to load script.js');
+          reject(new Error('Failed to load script.js'));
+        };
+        script.onload = function() {
+          // Wait a bit more to ensure all functions are defined
+          setTimeout(() => {
+            if (typeof getCurrent === 'function' && typeof renderUserOrders === 'function') {
+              resolve();
+            } else {
+              // Retry check
+              setTimeout(() => {
+                if (typeof getCurrent === 'function' && typeof renderUserOrders === 'function') {
+                  resolve();
+                } else {
+                  console.warn('Script loaded but functions not available yet');
+                  resolve(); // Continue anyway
+                }
+              }, 500);
+            }
+          }, 100);
+        };
+        document.head.appendChild(script);
+      });
+    })().then(() => {
+      // Script loaded, now run the inline scripts
+      initializeOrdersPage();
+    }).catch((error) => {
+      console.error('Error loading script.js:', error);
+      alert('Error: Failed to load required scripts. Please refresh the page.');
+    });
     
-    // Check for order updates in real-time
-    async function checkUserOrderUpdates() {
-      try {
-        if (typeof renderUserOrders === 'function') {
-          await renderUserOrders(); // This will update sequential numbers
+    // Define initialization function that will be called after script.js loads
+    function initializeOrdersPage() {
+      let userOrderPollInterval = null;
+      
+      // Check for order updates in real-time
+      async function checkUserOrderUpdates() {
+        try {
+          if (typeof renderUserOrders === 'function') {
+            await renderUserOrders(); // This will update sequential numbers
+          }
+        } catch(error) {
+          console.error('Error checking order updates:', error);
         }
-      } catch(error) {
-        console.error('Error checking order updates:', error);
       }
-    }
-    
-    // Start polling for order updates
-    function startUserOrderPolling() {
-      // Poll every 8 seconds for real-time updates (optimized for smoothness)
-      if (!userOrderPollInterval) {
-        userOrderPollInterval = setInterval(checkUserOrderUpdates, 8000);
+      
+      // Start polling for order updates
+      function startUserOrderPolling() {
+        // Poll every 8 seconds for real-time updates (optimized for smoothness)
+        if (!userOrderPollInterval) {
+          userOrderPollInterval = setInterval(checkUserOrderUpdates, 8000);
+        }
       }
-    }
-    
-    // Stop polling
-    function stopUserOrderPolling() {
-      if (userOrderPollInterval) {
-        clearInterval(userOrderPollInterval);
-        userOrderPollInterval = null;
+      
+      // Stop polling
+      function stopUserOrderPolling() {
+        if (userOrderPollInterval) {
+          clearInterval(userOrderPollInterval);
+          userOrderPollInterval = null;
+        }
       }
-    }
-    
-    // Check for unread chat messages
-    async function checkUnreadChatMessages() {
+      
+      // Check for unread chat messages
+      async function checkUnreadChatMessages() {
       try {
+        if (typeof getCurrent !== 'function') {
+          console.warn('getCurrent not available yet');
+          return;
+        }
         const currentUser = getCurrent();
         if (!currentUser) return;
         
@@ -222,22 +253,21 @@
           notification.style.animation = 'slideOutRight 0.3s ease-in';
           setTimeout(() => notification.remove(), 300);
         }
-      }, 8000);
-    }
-    
-    function startChatNotificationPolling() {
-      checkUnreadChatMessages();
-      chatNotificationInterval = setInterval(checkUnreadChatMessages, 5000);
-    }
-    
-    function stopChatNotificationPolling() {
-      if (chatNotificationInterval) {
-        clearInterval(chatNotificationInterval);
-        chatNotificationInterval = null;
+        }, 8000);
       }
-    }
+      
+      function startChatNotificationPolling() {
+        checkUnreadChatMessages();
+        chatNotificationInterval = setInterval(checkUnreadChatMessages, 5000);
+      }
+      
+      function stopChatNotificationPolling() {
+        if (chatNotificationInterval) {
+          clearInterval(chatNotificationInterval);
+          chatNotificationInterval = null;
+        }
+      }
     
-    window.addEventListener('DOMContentLoaded', () => {
       // Check authentication - use fallback to avoid ensureLoggedIn issues
       let isAuthenticated = false;
       
@@ -299,15 +329,25 @@
         startUserOrderPolling();
       }
       // Check for unread chat messages
-      checkUnreadChatMessages();
-      startChatNotificationPolling();
+      if (typeof checkUnreadChatMessages === 'function') {
+        checkUnreadChatMessages();
+      }
+      if (typeof startChatNotificationPolling === 'function') {
+        startChatNotificationPolling();
+      }
       // Check for refund notifications
-      checkRefundNotifications();
-    });
-    
-    // Check for refund notifications
-    async function checkRefundNotifications() {
+      if (typeof checkRefundNotifications === 'function') {
+        checkRefundNotifications();
+      }
+      }
+      
+      // Check for refund notifications
+      async function checkRefundNotifications() {
       try {
+        if (typeof getCurrent !== 'function') {
+          console.warn('getCurrent not available yet');
+          return;
+        }
         const currentUser = getCurrent();
         if (!currentUser) return;
         
@@ -365,10 +405,10 @@
       } catch (error) {
         console.error('Error checking refund notifications:', error);
       }
-    }
-    
-    // Also reload when page becomes visible (handles tab switching, back button)
-    document.addEventListener('visibilitychange', () => {
+      }
+      
+      // Also reload when page becomes visible (handles tab switching, back button)
+      document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         if (typeof renderUserOrders === 'function') {
           renderUserOrders();
@@ -383,17 +423,23 @@
       } else {
         stopUserOrderPolling();
         stopChatNotificationPolling();
-      }
-    });
-    
-    // Reload when page is focused (user switches back to tab)
-    window.addEventListener('focus', () => {
+        }
+      });
+      
+      // Reload when page is focused (user switches back to tab)
+      window.addEventListener('focus', () => {
       if (typeof renderUserOrders === 'function') {
         renderUserOrders();
       }
-      startUserOrderPolling();
-      checkUnreadChatMessages();
-      startChatNotificationPolling();
+      if (typeof startUserOrderPolling === 'function') {
+        startUserOrderPolling();
+      }
+      if (typeof checkUnreadChatMessages === 'function') {
+        checkUnreadChatMessages();
+      }
+      if (typeof startChatNotificationPolling === 'function') {
+        startChatNotificationPolling();
+      }
     });
     
     // Stop polling when page is hidden (save resources)
