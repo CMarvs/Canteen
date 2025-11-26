@@ -307,6 +307,48 @@ input:focus, textarea:focus, select:focus {
   transition: all 0.3s ease;
 }
 
+/* Chat message animations */
+@keyframes fadeInMessage {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-message {
+  will-change: transform, opacity;
+}
+
+/* Smooth chat container updates */
+[id^="chatMessages_"] {
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Chat message animations */
+@keyframes fadeInMessage {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-message {
+  will-change: transform, opacity;
+}
+
+/* Smooth chat container updates */
+[id^="chatMessages_"] {
+  transition: opacity 0.2s ease-in-out;
+}
+
 /* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -315,6 +357,10 @@ input:focus, textarea:focus, select:focus {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  
+  .chat-message {
+    animation: none !important;
   }
 }
 

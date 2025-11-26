@@ -2446,8 +2446,11 @@ async function openChatBox(orderId, userType) {
       </div>
       <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
     </div>
-    <div id="chatMessages_${orderId}" style="flex: 1; overflow-y: auto; padding: 16px; background: #f9f9f9;">
-      <div style="text-align: center; color: #999; padding: 20px;">Loading messages...</div>
+    <div id="chatMessages_${orderId}" style="flex: 1; overflow-y: auto; padding: 16px; background: #f9f9f9; transition: opacity 0.2s ease-in-out;">
+      <div style="text-align: center; color: #999; padding: 20px;">
+        <div class="loading-spinner" style="margin: 10px auto; width: 30px; height: 30px;"></div>
+        <div>Loading messages...</div>
+      </div>
     </div>
     <div style="border-top: 1px solid #ddd; padding: 12px; background: white;">
       <div style="display: flex; gap: 8px;">
@@ -2555,12 +2558,24 @@ async function loadChatMessages(orderId, userType) {
     const messages = await response.json();
 
     if (messages.length === 0) {
-      messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
+      // Smooth fade-in for empty state
+      messagesContainer.style.opacity = '0';
+      messagesContainer.innerHTML = '<div class="fade-in" style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</div>';
+      setTimeout(() => {
+        messagesContainer.style.opacity = '1';
+        messagesContainer.style.transition = 'opacity 0.3s ease-in-out';
+      }, 50);
       return;
     }
 
     const cur = getCurrent();
-    messagesContainer.innerHTML = messages.map(msg => {
+    
+    // Store current scroll position for smooth updates
+    const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+    const oldScrollHeight = messagesContainer.scrollHeight;
+    
+    // Create messages with smooth fade-in animation
+    const messagesHTML = messages.map((msg, index) => {
       const isMe = msg.user_id === cur.id || (cur.role === 'admin' && msg.sender_role === 'admin');
       const isAdmin = msg.sender_role === 'admin';
       const align = isMe ? 'flex-end' : 'flex-start';
@@ -2569,10 +2584,13 @@ async function loadChatMessages(orderId, userType) {
       const isUnread = !msg.is_read && !isMe;
       const unreadIndicator = isUnread ? '<span style="background: #e74c3c; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 4px;"></span>' : '';
       
+      // Add animation delay for smooth staggered appearance
+      const animationDelay = Math.min(index * 0.03, 0.5); // Cap at 0.5s
+      
       return `
-        <div style="display: flex; justify-content: ${align}; margin-bottom: 12px;">
+        <div class="chat-message" style="display: flex; justify-content: ${align}; margin-bottom: 12px; animation: fadeInMessage 0.3s ease-out ${animationDelay}s both;">
           <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; ${isUnread ? 'border-left: 3px solid #e74c3c;' : ''}">
-            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${msg.sender_name}${isAdmin ? ' (Admin)' : ''}${unreadIndicator}</div>
+            <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${escapeHtml(msg.sender_name)}${isAdmin ? ' (Admin)' : ''}${unreadIndicator}</div>
             <div style="font-size: 0.9rem;">${escapeHtml(msg.message)}</div>
             <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${new Date(msg.created_at).toLocaleTimeString()}</div>
           </div>
@@ -2580,8 +2598,34 @@ async function loadChatMessages(orderId, userType) {
       `;
     }).join('');
     
-    // Scroll to bottom
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // Smooth update - check if we need to preserve scroll position
+    const hasExistingMessages = messagesContainer.querySelector('.chat-message');
+    
+    if (hasExistingMessages) {
+      // Fade transition for updates
+      messagesContainer.style.opacity = '0.7';
+      setTimeout(() => {
+        messagesContainer.innerHTML = messagesHTML;
+        messagesContainer.style.opacity = '1';
+        messagesContainer.style.transition = 'opacity 0.2s ease-in-out';
+        
+        // Smart scroll: maintain position or scroll to bottom
+        if (wasAtBottom) {
+          setTimeout(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          }, 50);
+        } else {
+          const newScrollHeight = messagesContainer.scrollHeight;
+          messagesContainer.scrollTop = messagesContainer.scrollTop + (newScrollHeight - oldScrollHeight);
+        }
+      }, 100);
+    } else {
+      // First load - direct update with smooth scroll
+      messagesContainer.innerHTML = messagesHTML;
+      setTimeout(() => {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }, 100);
+    }
     
     // Mark messages as read after loading (if user is viewing)
     if (cur) {
@@ -2637,8 +2681,8 @@ async function sendChatMessage(orderId, userType) {
     // Clear input
     input.value = '';
     
-    // Reload messages
-    await loadChatMessages(orderId);
+    // Reload messages with smooth transition
+    await loadChatMessages(orderId, userType);
   } catch(error) {
     console.error('Error sending message:', error);
     alert('Failed to send message. Please try again.');

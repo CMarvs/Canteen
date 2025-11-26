@@ -2250,7 +2250,7 @@
         chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
       }
       
-      // Add timeout to prevent infinite loading
+      // Add timeout to prevent infinite loading (reduced to 15 seconds)
       let timeoutId = setTimeout(() => {
         const currentChatsList = document.getElementById('chatsList');
         if (currentChatsList && currentChatsList.innerHTML.includes('Loading chats')) {
@@ -2258,11 +2258,11 @@
             <div style="text-align: center; padding: 40px; color: #e74c3c;">
               <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
               <div>Loading is taking longer than expected</div>
-              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">Retry</button>
             </div>
           `;
         }
-      }, 30000); // 30 second timeout
+      }, 15000); // 15 second timeout (reduced for faster feedback)
       
       try {
         // Get all orders
@@ -2290,7 +2290,7 @@
         
         // Get messages for all orders (limit concurrent requests)
         const chatsWithMessages = [];
-        const batchSize = 5; // Process 5 orders at a time
+        const batchSize = 3; // Process 3 orders at a time (reduced for faster response)
         
         // Process orders in batches
         for (let i = 0; i < orders.length; i += batchSize) {
