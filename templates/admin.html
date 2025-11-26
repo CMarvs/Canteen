@@ -2525,21 +2525,28 @@
         chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
       }
       
-      // Add timeout to prevent infinite loading (reduced to 8 seconds for faster feedback)
+      // Add timeout to prevent infinite loading (increased to 15 seconds to allow messages to load)
       let timeoutId = setTimeout(() => {
-        const currentChatsList = document.getElementById('chatsList');
-        if (currentChatsList && currentChatsList.innerHTML.includes('Loading chats')) {
-          currentChatsList.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #e74c3c;">
-              <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
-              <div>Loading is taking longer than expected</div>
-              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">Retry</button>
-            </div>
-          `;
-          isRenderingChats = false;
-          clearTimeout(timeoutId);
+        // Only show timeout if we're still rendering and haven't displayed messages yet
+        if (!isRenderingChats) {
+          return; // Already finished, don't show timeout
         }
-      }, 8000); // 8 second timeout for faster feedback
+        const currentChatsList = document.getElementById('chatsList');
+        if (currentChatsList) {
+          const currentContent = currentChatsList.innerHTML;
+          // Only show timeout if still in loading state (not if messages are already displayed)
+          if (currentContent.includes('Loading chats') || currentContent.includes('loading-spinner')) {
+            currentChatsList.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Loading is taking longer than expected</div>
+                <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">Retry</button>
+              </div>
+            `;
+            isRenderingChats = false;
+          }
+        }
+      }, 15000); // 15 second timeout to give more time for messages to load
       
       try {
         // Get all orders
@@ -2669,9 +2676,15 @@
           const allResults = await Promise.all(allMessagePromises);
           
           // Check if this render is still valid (not superseded by a newer one)
+          // Only ignore if we're actually on the chats tab and a newer render has started
+          // This prevents messages from disappearing when switching tabs
+          const chatsSection = document.getElementById('chatsSection');
           if (chatFetchController && chatFetchController.renderId !== currentRenderId) {
-            console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results`);
-            return;
+            if (chatsSection && chatsSection.classList.contains('active')) {
+              console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results`);
+              return;
+            }
+            // If not on chats tab, continue anyway to avoid losing data
           }
           
           console.log(`[CHATS] All results:`, allResults);
@@ -2711,6 +2724,8 @@
         
         if (chatsWithMessages.length === 0) {
           // No chats with messages found
+          clearTimeout(timeoutId);
+          isRenderingChats = false;
           chatsList.innerHTML = `
             <div class="empty-state">
               <div class="empty-state-icon">💬</div>
@@ -2785,16 +2800,19 @@
           `;
         }).join('');
         
-        // Clear timeout on success
+        // Clear timeout on success and mark as not rendering
         clearTimeout(timeoutId);
+        isRenderingChats = false;
         console.log(`[CHATS] Successfully rendered ${chatsWithMessages.length} chat cards`);
       } catch(error) {
         // Clear timeout on error
         clearTimeout(timeoutId);
         
         if (error.name === 'AbortError') {
+          isRenderingChats = false;
           return; // Request was cancelled, don't show error
         }
+        isRenderingChats = false;
         console.error('Error loading chats:', error);
         console.error('Error details:', {
           message: error.message,
@@ -2929,9 +2947,12 @@
       // Use a single interval to avoid duplicates
       chatListRefreshInterval = setInterval(() => {
         if (document.getElementById('chatsSection')?.classList.contains('active')) {
-          renderAdminChats();
+          // Only refresh if not currently rendering to prevent clearing messages
+          if (!isRenderingChats) {
+            renderAdminChats();
+          }
         }
-      }, 8000); // Refresh every 8 seconds for faster updates
+      }, 12000); // Refresh every 12 seconds (increased to prevent interference with message display)
       
       // Initial render if on chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {
