@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
@@ -80,6 +81,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add compression middleware (compress responses > 1KB for faster loading)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Add security headers middleware (runs after CORS to ensure headers are set)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -1525,11 +1529,12 @@ def get_menu_items():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # Optimized query - only select needed columns
+        # Optimized query - only select needed columns, limit results for performance
         cur.execute("""
             SELECT id, name, price, category, is_available, quantity, created_at
             FROM menu_items 
             ORDER BY category, name
+            LIMIT 1000
         """)
         items = cur.fetchall()
         # Always return a list, even if empty
@@ -2774,9 +2779,18 @@ async def send_order_message(order_id: int, request: Request):
             """, (order_id,))
             conn.commit()
         
-        return message
+        # Serialize datetime objects before returning
+        message = serialize_datetime(message)
+        return json_response(message)
     except HTTPException:
         raise
+    except psycopg2.OperationalError as db_error:
+        error_str = str(db_error)
+        print(f"❌ Database error sending message: {db_error}")
+        # Check for quota exceeded
+        if "exceeded the data transfer quota" in error_str or "quota" in error_str.lower():
+            raise HTTPException(503, "Database temporarily unavailable. Please try again later.")
+        raise HTTPException(502, "Database connection error. Please try again.")
     except Exception as e:
         print(f"❌ Send message error: {e}")
         import traceback

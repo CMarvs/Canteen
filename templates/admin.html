@@ -683,7 +683,8 @@
                        onclick="showPaymentProofModal('${o.payment_proof}')"
                        style="max-width: 100%; max-height: 300px; border-radius: 8px; border: 2px solid #ffc107; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
                        onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)';"
-                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';">
+                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';"
+                       loading="lazy">
                   <p style="font-size: 0.75rem; color: #856404; margin-top: 4px;">Click to view full size</p>
                 </div>
               </div>
@@ -2100,7 +2101,8 @@
                                    class="user-selfie-proof-thumbnail"
                                    style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #2196F3; cursor: pointer;"
                                    data-user-id="${user.id}"
-                                   data-proof-type="selfie">
+                                   data-proof-type="selfie"
+                                   loading="lazy">
                             </div>
                             <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
                               Click to view full size
@@ -2875,7 +2877,7 @@
     function startRatingsPolling() {
       // Clear any existing interval
       stopRatingsPolling();
-      // Poll every 3 seconds for real-time updates
+      // Poll every 20 seconds for real-time updates (reduced frequency for better performance)
       ratingsPollInterval = setInterval(async () => {
         try {
           const [statsResponse, ratingsResponse] = await Promise.all([
@@ -2894,7 +2896,7 @@
         } catch (error) {
           console.error('Error polling ratings:', error);
         }
-      }, 10000); // Poll every 10 seconds (optimized for performance)
+      }, 20000); // Poll every 20 seconds (optimized for performance)
     }
     
     function stopRatingsPolling() {
@@ -2913,8 +2915,8 @@
         }
       });
 
-      // Poll every 15 seconds (optimized for performance)
-      orderPollInterval = setInterval(checkForNewOrders, 15000);
+      // Poll every 30 seconds (optimized for performance - reduced frequency)
+      orderPollInterval = setInterval(checkForNewOrders, 30000);
     }
 
     // Stop polling
@@ -3424,8 +3426,8 @@
       stopChatPolling();
       
       checkUnreadChats();
-      // Poll every 10 seconds (optimized for performance)
-      chatPollInterval = setInterval(checkUnreadChats, 10000);
+      // Poll every 20 seconds (optimized for performance - reduced frequency)
+      chatPollInterval = setInterval(checkUnreadChats, 20000);
       
       // Also refresh the chats list if we're on the chats tab
       // Use a single interval to avoid duplicates
@@ -3438,7 +3440,7 @@
             renderAdminChats();
           }
         }
-      }, 15000); // Refresh every 15 seconds (increased to prevent interference with message display)
+      }, 30000); // Refresh every 30 seconds (optimized for performance)
       
       // Initial render if on chats tab
       if (document.getElementById('chatsSection')?.classList.contains('active')) {

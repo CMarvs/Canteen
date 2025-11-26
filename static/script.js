@@ -3115,17 +3115,41 @@ async function sendChatMessage(orderId, userType) {
 
     try {
       const startTime = performance.now();
-      const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: message || '',
-          image: imageData,
-          user_id: cur.id,
-          sender_role: cur.role || 'user',
-          sender_name: cur.name || 'User'
-        })
-      });
+      
+      // Use AbortController for timeout (15 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      let response;
+      try {
+        response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: message || '',
+            image: imageData,
+            user_id: cur.id,
+            sender_role: cur.role || 'user',
+            sender_name: cur.name || 'User'
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Handle AbortError (timeout)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout. The server is taking too long to respond. Please try again.');
+        }
+        
+        // Handle network errors
+        if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+          throw new Error('Network error. Please check your internet connection and try again.');
+        }
+        
+        throw fetchError;
+      }
       
       const sendTime = performance.now() - startTime;
       console.log(`[CHAT] Message sent in ${sendTime.toFixed(2)}ms`);
@@ -3141,12 +3165,23 @@ async function sendChatMessage(orderId, userType) {
             errorMessage = 'Invalid request. Please check your message or image.';
           } else if (response.status === 404) {
             errorMessage = 'Order not found. The order may have been deleted.';
+          } else if (response.status === 502) {
+            errorMessage = 'Server temporarily unavailable (502 Bad Gateway). The server may be restarting. Please try again in a moment.';
+          } else if (response.status === 503) {
+            errorMessage = 'Service temporarily unavailable. Please try again in a moment.';
           } else if (response.status === 500) {
             errorMessage = 'Server error. Please try again later.';
           } else if (response.status === 0 || response.status >= 500) {
-            errorMessage = 'Network error. Please check your connection and try again.';
+            errorMessage = 'Server error. Please try again later.';
           }
         }
+        
+        // Remove optimistic message on error
+        if (tempId) {
+          const tempMsg = document.getElementById(tempId);
+          if (tempMsg) tempMsg.remove();
+        }
+        
         alert(`❌ ${errorMessage}`);
         return;
       }
@@ -3165,11 +3200,23 @@ async function sendChatMessage(orderId, userType) {
       await loadChatMessages(orderId, userType);
     } catch (networkError) {
       console.error('Network error sending message:', networkError);
-      if (networkError.name === 'TypeError' && networkError.message.includes('fetch')) {
-        alert('❌ Network error. Please check your internet connection and try again.');
-      } else {
-        alert('❌ Failed to send message. Please try again.');
+      
+      // Remove optimistic message on error
+      if (tempId) {
+        const tempMsg = document.getElementById(tempId);
+        if (tempMsg) tempMsg.remove();
       }
+      
+      let errorMessage = 'Failed to send message. Please try again.';
+      if (networkError.name === 'AbortError' || networkError.message.includes('timeout')) {
+        errorMessage = 'Request timeout. The server is taking too long to respond. Please try again.';
+      } else if (networkError.name === 'TypeError' && networkError.message.includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (networkError.message) {
+        errorMessage = networkError.message;
+      }
+      
+      alert(`❌ ${errorMessage}`);
     } finally {
       // Re-enable send button
       if (sendButton) {
@@ -3225,4 +3272,5 @@ function openImageModal(imageSrc) {
 /* ---------- Page Init ---------- */
 // Removed global DOMContentLoaded listener to avoid conflicts with page-specific initialization
 // Each page should handle its own initialization
+
 
