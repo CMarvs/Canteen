@@ -214,58 +214,102 @@
 
     /* -------- Tab Switching -------- */
     function switchTab(tab) {
-      // Remove active class from all tabs and sections (with null checks)
+      // Smooth tab transition with fade effect
       const tabs = ['tabOrders', 'tabChats', 'tabMenu', 'tabUsers', 'tabRatings'];
       const sections = ['ordersSection', 'chatsSection', 'menuSection', 'usersSection', 'ratingsSection'];
       
+      // Fade out current active section
+      sections.forEach(sectionId => {
+        const el = document.getElementById(sectionId);
+        if (el && el.classList.contains('active')) {
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.15s ease-out';
+          setTimeout(() => {
+            el.classList.remove('active');
+          }, 150);
+        }
+      });
+      
+      // Update tab buttons immediately for instant feedback
       tabs.forEach(tabId => {
         const el = document.getElementById(tabId);
         if (el) el.classList.remove('active');
       });
       
-      sections.forEach(sectionId => {
-        const el = document.getElementById(sectionId);
-        if (el) el.classList.remove('active');
+      // Use requestAnimationFrame for smooth transition
+      requestAnimationFrame(() => {
+        if (tab === 'orders') {
+          const tabEl = document.getElementById('tabOrders');
+          const sectionEl = document.getElementById('ordersSection');
+          if (tabEl) tabEl.classList.add('active');
+          if (sectionEl) {
+            sectionEl.classList.add('active');
+            sectionEl.style.opacity = '0';
+            requestAnimationFrame(() => {
+              sectionEl.style.transition = 'opacity 0.2s ease-in';
+              sectionEl.style.opacity = '1';
+            });
+          }
+          renderAdminOrders();
+        } else if (tab === 'chats') {
+          const tabEl = document.getElementById('tabChats');
+          const sectionEl = document.getElementById('chatsSection');
+          if (tabEl) tabEl.classList.add('active');
+          if (sectionEl) {
+            sectionEl.classList.add('active');
+            sectionEl.style.opacity = '0';
+            requestAnimationFrame(() => {
+              sectionEl.style.transition = 'opacity 0.2s ease-in';
+              sectionEl.style.opacity = '1';
+            });
+          }
+          renderAdminChats();
+        } else if (tab === 'menu') {
+          const tabEl = document.getElementById('tabMenu');
+          const sectionEl = document.getElementById('menuSection');
+          if (tabEl) tabEl.classList.add('active');
+          if (sectionEl) {
+            sectionEl.classList.add('active');
+            sectionEl.style.opacity = '0';
+            requestAnimationFrame(() => {
+              sectionEl.style.transition = 'opacity 0.2s ease-in';
+              sectionEl.style.opacity = '1';
+            });
+          }
+          renderAdminMenuList();
+        } else if (tab === 'users') {
+          const tabEl = document.getElementById('tabUsers');
+          const sectionEl = document.getElementById('usersSection');
+          if (tabEl) tabEl.classList.add('active');
+          if (sectionEl) {
+            sectionEl.classList.add('active');
+            sectionEl.style.opacity = '0';
+            requestAnimationFrame(() => {
+              sectionEl.style.transition = 'opacity 0.2s ease-in';
+              sectionEl.style.opacity = '1';
+            });
+          }
+          renderAdminUsers();
+        } else if (tab === 'ratings') {
+          const tabEl = document.getElementById('tabRatings');
+          const sectionEl = document.getElementById('ratingsSection');
+          if (tabEl) tabEl.classList.add('active');
+          if (sectionEl) {
+            sectionEl.classList.add('active');
+            sectionEl.style.opacity = '0';
+            requestAnimationFrame(() => {
+              sectionEl.style.transition = 'opacity 0.2s ease-in';
+              sectionEl.style.opacity = '1';
+            });
+          }
+          renderAdminRatings();
+          // Start real-time polling for ratings
+          startRatingsPolling();
+        } else {
+          // Stop ratings polling when switching to other tabs
+          stopRatingsPolling();
+        }
       });
-
-      if (tab === 'orders') {
-        const tabEl = document.getElementById('tabOrders');
-        const sectionEl = document.getElementById('ordersSection');
-        if (tabEl) tabEl.classList.add('active');
-        if (sectionEl) sectionEl.classList.add('active');
-        renderAdminOrders();
-      } else if (tab === 'chats') {
-        const tabEl = document.getElementById('tabChats');
-        const sectionEl = document.getElementById('chatsSection');
-        if (tabEl) tabEl.classList.add('active');
-        if (sectionEl) sectionEl.classList.add('active');
-        renderAdminChats();
-        // Start auto-refresh for chats list when on chats tab
-        // Note: The interval is managed by startChatPolling() to avoid duplicates
-      } else if (tab === 'menu') {
-        const tabEl = document.getElementById('tabMenu');
-        const sectionEl = document.getElementById('menuSection');
-        if (tabEl) tabEl.classList.add('active');
-        if (sectionEl) sectionEl.classList.add('active');
-        renderAdminMenuList();
-      } else if (tab === 'users') {
-        const tabEl = document.getElementById('tabUsers');
-        const sectionEl = document.getElementById('usersSection');
-        if (tabEl) tabEl.classList.add('active');
-        if (sectionEl) sectionEl.classList.add('active');
-        renderAdminUsers();
-      } else if (tab === 'ratings') {
-        const tabEl = document.getElementById('tabRatings');
-        const sectionEl = document.getElementById('ratingsSection');
-        if (tabEl) tabEl.classList.add('active');
-        if (sectionEl) sectionEl.classList.add('active');
-        renderAdminRatings();
-        // Start real-time polling for ratings
-        startRatingsPolling();
-      } else {
-        // Stop ratings polling when switching to other tabs
-        stopRatingsPolling();
-      }
     }
 
     /* -------- Render Orders (API) -------- */
@@ -483,11 +527,31 @@
       // Generate HTML for all orders
       let ordersHTML = '';
       try {
-        // Debug: Log order data sizes to detect issues
+        // Debug: Log order data sizes to detect issues and fix corrupted data BEFORE rendering
         filteredOrders.forEach((o, idx) => {
-          const itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
-          if (itemsStr.length > 10000) {
-            console.warn(`[ORDERS] Order ${o.id} has suspiciously large items data (${itemsStr.length} chars)`);
+          try {
+            const itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+            if (itemsStr.length > 10000) {
+              console.error(`[ORDERS] Order ${o.id} has suspiciously large items data (${itemsStr.length} chars). First 500 chars:`, itemsStr.substring(0, 500));
+              // Truncate corrupted items data BEFORE rendering
+              if (typeof o.items === 'string') {
+                o.items = '[]';
+              } else {
+                o.items = [];
+              }
+            }
+            // Additional check: if items is an array, check for nested corruption
+            if (Array.isArray(o.items) && o.items.length > 0) {
+              const firstItem = o.items[0];
+              const firstItemStr = JSON.stringify(firstItem);
+              if (firstItemStr.length > 1000) {
+                console.error(`[ORDERS] Order ${o.id} has corrupted item data (item string length: ${firstItemStr.length}). Resetting items.`);
+                o.items = [];
+              }
+            }
+          } catch (e) {
+            console.error(`[ORDERS] Error checking order ${o.id} items:`, e);
+            o.items = [];
           }
         });
         
@@ -529,9 +593,15 @@
             items = [];
           }
           // Safety check: limit items array size to prevent massive HTML
-          if (items.length > 1000) {
-            console.error(`[ORDERS] Order ${o.id} has suspiciously large items array (${items.length} items). Limiting to first 1000.`);
-            items = items.slice(0, 1000);
+          if (items.length > 100) {
+            console.error(`[ORDERS] Order ${o.id} has suspiciously large items array (${items.length} items). Limiting to first 100.`);
+            items = items.slice(0, 100);
+          }
+          // Additional safety: check if items data is corrupted (nested arrays, circular refs, etc.)
+          const itemsStr = JSON.stringify(items);
+          if (itemsStr.length > 100000) { // 100KB limit per order's items
+            console.error(`[ORDERS] Order ${o.id} items data is suspiciously large (${itemsStr.length} chars). Resetting items.`);
+            items = [];
           }
         } catch (e) {
           console.error(`[ORDERS] Error parsing items for order ${o.id}:`, e, o.items);
@@ -574,7 +644,12 @@
 
             <div class="order-items">
               <strong>📋 Items:</strong><br>
-              ${items.map(it => `• ${it.name} × ${it.qty} (₱${(Number(it.price) * Number(it.qty)).toFixed(2)})`).join('<br>')}
+              ${items.length > 0 ? items.slice(0, 50).map(it => {
+                const itemName = escapeHtml(String(it.name || 'Unknown Item'));
+                const itemQty = Number(it.qty || 1);
+                const itemPrice = Number(it.price || 0);
+                return `• ${itemName} × ${itemQty} (₱${(itemPrice * itemQty).toFixed(2)})`;
+              }).join('<br>') + (items.length > 50 ? `<br><em style="color: #999;">... and ${items.length - 50} more items</em>` : '') : 'No items'}
             </div>
 
             <div class="order-total">
@@ -669,12 +744,51 @@
           `;
         } else {
           // Safety check: prevent setting extremely large HTML (likely a bug)
-          if (ordersHTML.length > 10000000) { // 10MB limit
-            console.error(`[ORDERS] Generated HTML is suspiciously large (${ordersHTML.length} chars). Truncating to prevent browser crash.`);
-            ordersHTML = ordersHTML.substring(0, 1000000) + '<div style="color: red; padding: 20px; text-align: center;"><strong>⚠️ HTML too large - rendering truncated. Please refresh the page.</strong></div>';
+          // Normal order HTML should be < 10KB per order, so 1MB is more than enough for 100 orders
+          if (ordersHTML.length > 1000000) { // 1MB limit (reduced from 10MB)
+            console.error(`[ORDERS] Generated HTML is suspiciously large (${ordersHTML.length} chars = ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB). This indicates corrupted order data.`);
+            // Log order data for debugging
+            if (filteredOrders.length > 0) {
+              const firstOrder = filteredOrders[0];
+              const itemsPreview = typeof firstOrder.items === 'string' 
+                ? firstOrder.items.substring(0, 500) 
+                : JSON.stringify(firstOrder.items || []).substring(0, 500);
+              console.error(`[ORDERS] First order data:`, {
+                id: firstOrder.id,
+                itemsType: typeof firstOrder.items,
+                itemsLength: typeof firstOrder.items === 'string' ? firstOrder.items.length : JSON.stringify(firstOrder.items || []).length,
+                itemsPreview: itemsPreview
+              });
+            }
+            // Show error message instead of rendering corrupted data
+            container.innerHTML = `
+              <div style="color: red; padding: 20px; text-align: center; border: 2px solid red; border-radius: 8px; background: #ffe6e6; margin: 20px;">
+                <strong style="font-size: 1.2rem;">⚠️ Error: Order data is corrupted</strong>
+                <p style="margin: 10px 0;">One or more orders contain corrupted item data that would cause the page to crash.</p>
+                <p style="margin: 10px 0; font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px;">HTML size: ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB (expected: &lt; 0.1 MB)</p>
+                <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Please check the browser console for details about the corrupted order.</p>
+                <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Reload Page</button>
+              </div>
+            `;
+            return; // Don't render corrupted data
           }
-          container.innerHTML = ordersHTML;
-          console.log(`[ORDERS] Successfully rendered ${filteredOrders.length} orders to DOM. HTML length: ${ordersHTML.length}`);
+          // Use requestAnimationFrame for smooth rendering (only if content changed)
+          const currentHTML = container.innerHTML;
+          if (currentHTML !== ordersHTML) {
+            container.style.opacity = '0';
+            container.style.transition = 'opacity 0.15s ease-out';
+            requestAnimationFrame(() => {
+              container.innerHTML = ordersHTML;
+              requestAnimationFrame(() => {
+                container.style.transition = 'opacity 0.2s ease-in';
+                container.style.opacity = '1';
+              });
+            });
+          } else {
+            // Content unchanged, just ensure it's visible
+            container.style.opacity = '1';
+          }
+          console.log(`[ORDERS] Successfully rendered ${filteredOrders.length} orders to DOM. HTML length: ${ordersHTML.length} chars (${(ordersHTML.length / 1024).toFixed(2)} KB)`);
         }
       } catch (error) {
         console.error('[ORDERS] Error setting container innerHTML:', error);
