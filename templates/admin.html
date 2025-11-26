@@ -1597,7 +1597,7 @@
                     <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1;">
                       ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
                     </button>
-                    <button class="btn small" onclick="editMenuItem(${item.id}, '${item.name}', ${item.price}, '${item.category}', ${quantity})" style="flex: 1;">Edit</button>
+                    <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity})" style="flex: 1;">Edit</button>
                     <button class="btn delete small" onclick="deleteMenuItem(${item.id})" style="flex: 1;">Delete</button>
                   </div>
                 </div>
@@ -1870,58 +1870,120 @@
                         <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" class="proof-comparison-grid">
                           ${user.id_proof ? `
                           <div>
-          const items = grouped[category];
-          if (items.length === 0) return '';
-          
-          const categoryName = {
-            budget: '🍛 Budget Meals',
-            foods: '🍔 Foods',
-            drinks: '🥤 Drinks'
-          }[category] || category;
-          
-          const itemsHtml = items.map(item => {
-            const isAvailable = item.is_available !== false;
-            const quantity = item.quantity || 0;
-            const stockStatus = quantity > 0 ? `📦 ${quantity} in stock` : '⚠️ Out of Stock';
-            const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
-            const stockBadgeStyle = `display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
-            return `
-              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
-                <div style="flex: 1;">
-                  <strong style="font-size: 1.1rem;">${item.name}</strong>
-                  <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
-                  <div style="${stockBadgeStyle}">${stockStatus}</div>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
-                  <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
-                    <label for="stock_${item.id}" class="sr-only">Stock quantity for ${item.name}</label>
-                    <input type="number" id="stock_${item.id}" name="stock_${item.id}" value="${quantity}" min="0" 
-                           style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
-                           onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
-                    <button class="btn small" onclick="updateStockQuantity(${item.id})" style="flex: 1;">Update Stock</button>
+                            <strong>📷 ID Proof:</strong>
+                            <img src="${user.id_proof}" alt="ID Proof" 
+                                 onclick="showUserProofModal('${user.id_proof}', '${user.name || 'User'}', 'ID Proof')"
+                                 style="width: 100%; max-width: 200px; margin-top: 8px; border: 2px solid #8b4513; border-radius: 8px; cursor: pointer;">
+                          </div>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No ID Proof</div></div>'}
+                          ${user.selfie_proof ? `
+                          <div>
+                            <strong>🤳 Selfie Proof:</strong>
+                            <img src="${user.selfie_proof}" alt="Selfie Proof" 
+                                 onclick="showUserProofModal('${user.selfie_proof}', '${user.name || 'User'}', 'Selfie Proof')"
+                                 style="width: 100%; max-width: 200px; margin-top: 8px; border: 2px solid #2196F3; border-radius: 8px; cursor: pointer;">
+                          </div>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No Selfie Proof</div></div>'}
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+                          <label for="roleSelect_${user.id}" style="font-weight: 600; min-width: 80px;">Role:</label>
+                          <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="user" ${user.role === 'user' ? 'selected' : ''}>👤 User</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>👑 Admin</option>
+                          </select>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 8px;">
+                          <button class="btn small" onclick="approveUserWithRole(${user.id}, true)" style="background: #4caf50; color: white; flex: 1;">✅ Approve</button>
+                          <button class="btn delete small" onclick="approveUser(${user.id}, false)" style="flex: 1;">❌ Reject</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div style="display: flex; gap: 6px; width: 100%;">
-                    <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1;">
-                      ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
-                    </button>
-                    <button class="btn small" onclick="editMenuItem(${item.id}, '${item.name}', ${item.price}, '${item.category}', ${quantity})" style="flex: 1;">Edit</button>
-                    <button class="btn delete small" onclick="deleteMenuItem(${item.id})" style="flex: 1;">Delete</button>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('');
-          
-          return `
-            <div class="card" style="margin-bottom: 16px;">
-              <h4 style="margin: 0 0 12px 0;">${categoryName}</h4>
-              ${itemsHtml}
+                `;
+              }).join('')}
             </div>
           `;
-        }).join('');
-      } catch(error) {
-        console.error('Error loading menu:', error);
-        document.getElementById('adminMenuList').innerHTML = '<p class="muted">Failed to load menu items</p>';
+        } else {
+          html += `
+            <div class="card" style="margin-bottom: 20px; text-align: center; padding: 40px; color: var(--muted);">
+              ✅ No pending user approvals
+            </div>
+          `;
+        }
+
+        // Approved Users Section
+        if (approvedUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px;">
+              <h3 style="margin: 0 0 16px 0;">✅ Approved Users (${approvedUsers.length})</h3>
+              ${approvedUsers.map(user => {
+                return `
+                  <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
+                    <div style="flex: 1;">
+                      <strong>${user.name || 'N/A'}</strong>
+                      <div style="color: var(--muted); font-size: 0.9rem; margin-top: 4px;">${user.email || 'N/A'}</div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                      <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">✅ Approved</span>
+                      <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : '#666'}; color: white; border-radius: 12px; font-size: 0.85rem;">
+                        ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                      </span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        // Admin Users Section
+        if (adminUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #2196F3;">
+              <h3 style="margin: 0 0 16px 0; color: #2196F3;">👑 Administrators (${adminUsers.length})</h3>
+              ${adminUsers.map(user => {
+                return `
+                  <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
+                    <div style="flex: 1;">
+                      <strong>${user.name || 'N/A'}</strong>
+                      <div style="color: var(--muted); font-size: 0.9rem; margin-top: 4px;">${user.email || 'N/A'}</div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                      <span style="padding: 4px 12px; background: #2196F3; color: white; border-radius: 12px; font-size: 0.85rem;">👑 Admin</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        if (html === '') {
+          html = '<p class="muted">No users found.</p>';
+        }
+
+        usersArea.innerHTML = html;
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[USERS] Request timeout - this may happen on slow connections or cold starts');
+          const usersArea = document.getElementById('usersList');
+          if (usersArea) {
+            usersArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        console.error('Error loading users:', error);
+        const usersArea = document.getElementById('usersList');
+        if (usersArea) {
+          usersArea.innerHTML = '<p class="muted">Failed to load users</p>';
+        }
       }
     }
 
