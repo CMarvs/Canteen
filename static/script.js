@@ -68,6 +68,11 @@ function getCurrent(){ return readLocal(KEY_CURRENT, null); }
 function saveCurrent(u){ writeLocal(KEY_CURRENT, u); }
 function clearCurrent(){ localStorage.removeItem(KEY_CURRENT); }
 
+// Ensure functions are globally accessible
+window.getCurrent = getCurrent;
+window.saveCurrent = saveCurrent;
+window.clearCurrent = clearCurrent;
+
 /* ---------- Auth: Register ---------- */
 async function registerUser(){
   const name = (document.getElementById('regName')?.value || '').trim();
@@ -2672,11 +2677,13 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
   try {
     if (!orderId) {
       console.warn('loadChatMessages: orderId is missing');
+      chatRequestInProgress.delete(requestKey);
       return;
     }
-      // Use AbortController for timeout (30 seconds - increased for Render cold starts)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    // Use AbortController for timeout (30 seconds - increased for Render cold starts)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     
     try {
       const response = await fetch(`${API_BASE}/orders/${orderId}/messages?t=${Date.now()}`, {
@@ -2920,28 +2927,6 @@ function renderChatMessages(messages, messagesContainer, cur, orderId) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }, 100);
       }
-}
-    // This catch handles any errors in the message processing code
-    console.error('[CHAT] Error processing messages:', outerError);
-    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
-    if (messagesContainer) {
-      // Show error message in chat box
-      const errorHTML = `
-        <div style="text-align: center; padding: 20px; color: #e74c3c;">
-          <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
-          <div>Failed to load messages</div>
-          <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
-            ${outerError.message || 'Please try again'}
-          </div>
-          <button onclick="loadChatMessages(${orderId}, '${userType}')" 
-                  style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
-            Retry
-          </button>
-        </div>
-      `;
-      messagesContainer.innerHTML = errorHTML;
-    }
-  }
 }
 
 // Store image data for each chat
@@ -3252,5 +3237,24 @@ function openImageModal(imageSrc) {
 /* ---------- Page Init ---------- */
 // Removed global DOMContentLoaded listener to avoid conflicts with page-specific initialization
 // Each page should handle its own initialization
+
+// Ensure critical functions are globally accessible (for order.html and other pages)
+if (typeof window !== 'undefined') {
+  // Explicitly assign functions to window to ensure they're accessible
+  window.getCurrent = getCurrent;
+  window.saveCurrent = saveCurrent;
+  window.clearCurrent = clearCurrent;
+  window.renderCart = renderCart;
+  window.loadMenuToPage = loadMenuToPage;
+  
+  // Log for debugging (only in development)
+  if (window.location && window.location.hostname === 'localhost') {
+    console.log('[SCRIPT] Functions available:', {
+      getCurrent: typeof getCurrent,
+      renderCart: typeof renderCart,
+      loadMenuToPage: typeof loadMenuToPage
+    });
+  }
+}
 
 
