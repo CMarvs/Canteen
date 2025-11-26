@@ -403,15 +403,31 @@ async function updateCartQty(id, newQty){
   }
   
   let cart = getCart();
-  if(newQty <= 0) cart = cart.filter(x => x.id !== id);
-  else cart = cart.map(x => x.id === id ? {...x, qty: Number(newQty)} : x);
+  // Convert id to string for consistent comparison
+  const idStr = String(id);
+  if(newQty <= 0) {
+    cart = cart.filter(x => String(x.id) !== idStr);
+  } else {
+    // Update quantity for matching item
+    cart = cart.map(x => {
+      if(String(x.id) === idStr) {
+        return { ...x, qty: Number(newQty) };
+      }
+      return x;
+    });
+  }
   saveCart(cart);
   renderCart();
 }
 
 function removeCartItem(id){
   if(!confirm('Remove item from cart?')) return;
-  const cart = getCart().filter(x => x.id !== id);
+  // Convert id to string for consistent comparison (handles both number and string IDs)
+  const idStr = String(id);
+  const cart = getCart().filter(x => {
+    // Compare both as strings to handle type mismatches
+    return String(x.id) !== idStr;
+  });
   saveCart(cart);
   renderCart();
 }
@@ -2892,7 +2908,31 @@ async function sendChatMessage(orderId, userType) {
       sendButton.textContent = 'Sending...';
     }
 
+    // Optimistic update - show message immediately
+    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+    let tempId = null;
+    if (messagesContainer && (message || imageData)) {
+      tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const isMe = true;
+      const align = 'flex-end';
+      const bgColor = cur.role === 'admin' ? '#8B4513' : '#2196F3';
+      const textColor = 'white';
+      
+      let tempMessageHTML = `
+        <div id="${tempId}" style="display: flex; justify-content: ${align}; margin: 8px 0; animation: fadeIn 0.3s ease-in;">
+          <div style="max-width: 70%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word;">
+            ${message ? `<div>${message.replace(/\n/g, '<br>')}</div>` : ''}
+            ${imageData ? `<img src="${imageData}" alt="Sending..." style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 8px; opacity: 0.7;">` : ''}
+            <div style="font-size: 0.75rem; opacity: 0.8; margin-top: 4px; text-align: right;">Sending...</div>
+          </div>
+        </div>
+      `;
+      messagesContainer.insertAdjacentHTML('beforeend', tempMessageHTML);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
     try {
+      const startTime = performance.now();
       const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2904,6 +2944,9 @@ async function sendChatMessage(orderId, userType) {
           sender_name: cur.name || 'User'
         })
       });
+      
+      const sendTime = performance.now() - startTime;
+      console.log(`[CHAT] Message sent in ${sendTime.toFixed(2)}ms`);
 
       if (!response.ok) {
         let errorMessage = 'Failed to send message';
@@ -2930,7 +2973,13 @@ async function sendChatMessage(orderId, userType) {
       input.value = '';
       clearChatImage(orderId);
       
-      // Reload messages with smooth transition
+      // Remove optimistic message if it exists
+      if (tempId) {
+        const tempMsg = document.getElementById(tempId);
+        if (tempMsg) tempMsg.remove();
+      }
+      
+      // Reload messages with smooth transition (will show actual message from server)
       await loadChatMessages(orderId, userType);
     } catch (networkError) {
       console.error('Network error sending message:', networkError);

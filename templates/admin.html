@@ -247,11 +247,17 @@
         if (tabEl) tabEl.classList.add('active');
         if (sectionEl) sectionEl.classList.add('active');
         renderAdminRatings();
+        // Start real-time polling for ratings
+        startRatingsPolling();
+      } else {
+        // Stop ratings polling when switching to other tabs
+        stopRatingsPolling();
       }
     }
 
     /* -------- Render Orders (API) -------- */
     async function renderAdminOrders() {
+      const startTime = performance.now();
       // Show loading state
       const ordersList = document.getElementById('ordersList');
       if (ordersList) {
@@ -259,10 +265,17 @@
       }
       
       try {
+        // Use AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        
         const response = await fetch(`/orders?t=${Date.now()}`, {
           cache: 'no-cache',
-          headers: { 'Cache-Control': 'no-cache' }
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           let errorText = '';
@@ -318,6 +331,9 @@
         
         renderStats();
         displayOrders();
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`[ORDERS] Loaded in ${loadTime.toFixed(2)}ms`);
         
         // Update orders badge
         const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
@@ -555,6 +571,9 @@
                 <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
               ` : (o.status !== 'Delivered' && o.status !== 'Cancelled') ? `
                 <button class="btn small" onclick="processRefund(${o.id})" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💰 Refund</button>
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
+              ` : o.status === 'Delivered' ? `
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
               ` : ''}
             </div>
           </div>
@@ -1481,8 +1500,20 @@
 
     /* -------- Menu Management Functions -------- */
     async function renderAdminMenuList() {
+      const startTime = performance.now();
       try {
-        const response = await fetch('/menu');
+        // Use AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        
+        const response = await fetch(`/menu?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -1512,6 +1543,9 @@
           }
         });
 
+        const loadTime = performance.now() - startTime;
+        console.log(`[MENU] Loaded in ${loadTime.toFixed(2)}ms`);
+        
         menuArea.innerHTML = Object.keys(grouped).map(category => {
           const items = grouped[category];
           if (items.length === 0) return '';
@@ -1766,8 +1800,20 @@
 
     /* -------- User Management Functions -------- */
     async function renderAdminUsers() {
+      const startTime = performance.now();
       try {
-        const response = await fetch('/users');
+        // Use AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        
+        const response = await fetch(`/users?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
         const users = await response.json();
         
         const usersArea = document.getElementById('usersList');
@@ -1781,6 +1827,9 @@
         // Update badge
         const badge = document.getElementById('usersBadge');
         if (badge) badge.textContent = pendingUsers.length;
+
+        const loadTime = performance.now() - startTime;
+        console.log(`[USERS] Loaded in ${loadTime.toFixed(2)}ms`);
 
         let html = '';
 
@@ -1906,9 +1955,28 @@
 
     /* -------- Render Service Ratings (Admin) -------- */
     async function renderAdminRatings() {
+      const startTime = performance.now();
       try {
-        // Load statistics
-        const statsResponse = await fetch('/ratings/stats');
+        // Use AbortController for timeout and parallel fetching
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        
+        // Load statistics and ratings in parallel for faster loading
+        const [statsResponse, ratingsResponse] = await Promise.all([
+          fetch(`/ratings/stats?t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: controller.signal
+          }),
+          fetch(`/ratings?t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: controller.signal
+          })
+        ]);
+        
+        clearTimeout(timeoutId);
+        
         let stats = null;
         if (statsResponse.ok) {
           try {
@@ -1921,8 +1989,6 @@
           console.error('Failed to fetch stats:', statsResponse.status, errorText);
         }
         
-        // Load all ratings
-        const ratingsResponse = await fetch('/ratings');
         let ratings = [];
         if (ratingsResponse.ok) {
           try {
@@ -1939,6 +2005,9 @@
           const errorText = await ratingsResponse.text();
           console.error('Failed to fetch ratings:', ratingsResponse.status, errorText);
         }
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`[RATINGS] Loaded in ${loadTime.toFixed(2)}ms`);
 
         // Display statistics
         const statsArea = document.getElementById('ratingsStats');
@@ -2447,6 +2516,41 @@
         renderStats();
       } catch(error) {
         console.error('Error checking for new orders:', error);
+      }
+    }
+
+    // Real-time ratings polling
+    let ratingsPollInterval = null;
+    
+    function startRatingsPolling() {
+      // Clear any existing interval
+      stopRatingsPolling();
+      // Poll every 3 seconds for real-time updates
+      ratingsPollInterval = setInterval(async () => {
+        try {
+          const [statsResponse, ratingsResponse] = await Promise.all([
+            fetch(`/ratings/stats?t=${Date.now()}`, { cache: 'no-cache' }),
+            fetch(`/ratings?t=${Date.now()}`, { cache: 'no-cache' })
+          ]);
+          
+          if (statsResponse.ok && ratingsResponse.ok) {
+            // Only update if ratings section is visible
+            const ratingsSection = document.getElementById('ratingsSection');
+            if (ratingsSection && ratingsSection.classList.contains('active')) {
+              // Update stats and ratings display
+              await renderAdminRatings();
+            }
+          }
+        } catch (error) {
+          console.error('Error polling ratings:', error);
+        }
+      }, 3000); // Poll every 3 seconds
+    }
+    
+    function stopRatingsPolling() {
+      if (ratingsPollInterval) {
+        clearInterval(ratingsPollInterval);
+        ratingsPollInterval = null;
       }
     }
 
@@ -3012,6 +3116,7 @@
         // Stop all polling/intervals
         if (typeof stopOrderPolling === 'function') stopOrderPolling();
         if (typeof stopChatPolling === 'function') stopChatPolling();
+        stopRatingsPolling();
         if (orderPollInterval) clearInterval(orderPollInterval);
         if (chatPollInterval) clearInterval(chatPollInterval);
         
@@ -3099,6 +3204,7 @@
       if (document.hidden) {
         stopOrderPolling();
         stopChatPolling();
+        stopRatingsPolling();
       } else {
         startOrderPolling();
         startChatPolling();

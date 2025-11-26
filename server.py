@@ -1297,7 +1297,15 @@ async def get_orders():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM orders ORDER BY id DESC")
+        # Optimized query - only select needed columns and use index-friendly ordering
+        cur.execute("""
+            SELECT id, user_id, fullname, contact, location, items, total, status, 
+                   created_at, payment_method, payment_status, payment_proof, 
+                   payment_intent_id, refund_status
+            FROM orders 
+            ORDER BY id DESC
+            LIMIT 1000
+        """)
         orders = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
@@ -1364,7 +1372,12 @@ def get_menu_items():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM menu_items ORDER BY category, name")
+        # Optimized query - only select needed columns
+        cur.execute("""
+            SELECT id, name, price, category, is_available, quantity, created_at
+            FROM menu_items 
+            ORDER BY category, name
+        """)
         items = cur.fetchall()
         # Always return a list, even if empty
         return items if items else []
@@ -2171,7 +2184,13 @@ async def get_users():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, name, email, role, is_approved, id_proof, selfie_proof FROM users ORDER BY id DESC")
+        # Optimized query with limit for faster loading
+        cur.execute("""
+            SELECT id, name, email, role, is_approved, id_proof, selfie_proof 
+            FROM users 
+            ORDER BY id DESC
+            LIMIT 500
+        """)
         users = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
@@ -2383,14 +2402,17 @@ async def get_order_messages(order_id: int, request: Request):
             # This prevents console errors when checking messages for deleted orders
             return json_response([])
         
-        # Get messages for this order
+        # Get messages for this order - optimized with limit and index-friendly query
         cur.execute("""
             SELECT id, order_id, user_id, sender_role, sender_name, message, image, is_read, read_at, created_at
             FROM chat_messages
             WHERE order_id = %s
-            ORDER BY created_at ASC
+            ORDER BY created_at DESC
+            LIMIT 100
         """, (order_id,))
         messages = cur.fetchall()
+        # Reverse to get chronological order (oldest first)
+        messages = list(reversed(messages)) if messages else []
         
         print(f"[DEBUG] Order {order_id}: Found {len(messages) if messages else 0} messages in database")
         
@@ -2781,11 +2803,13 @@ async def get_all_ratings():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        # Optimized query with limit for faster loading
         cur.execute("""
             SELECT r.id, r.user_id, r.rating, r.comment, r.created_at, u.name as user_name, u.email as user_email
             FROM service_ratings r
             LEFT JOIN users u ON r.user_id = u.id
             ORDER BY r.created_at DESC
+            LIMIT 200
         """)
         ratings = cur.fetchall()
         
