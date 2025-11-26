@@ -133,9 +133,28 @@
     </div>
   </main>
 
-  <script src="/static/script.js" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js');"></script>
+  <script src="/static/script.js" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js'); window.scriptJsLoaded = false;"></script>
   <script>
     // Wait for script.js to fully load before using its functions
+    // Fallback for openChatBox if script.js fails to load
+    if (typeof openChatBox === 'undefined') {
+      window.openChatBox = function(orderId, userType) {
+        console.warn('openChatBox: script.js not loaded, redirecting to chats tab');
+        // Switch to chats tab and scroll to order
+        if (typeof switchTab === 'function') {
+          switchTab('chats');
+          setTimeout(() => {
+            const chatElement = document.querySelector(`[data-order-id="${orderId}"]`);
+            if (chatElement) {
+              chatElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              chatElement.click();
+            }
+          }, 300);
+        } else {
+          alert('Chat feature is loading. Please try again in a moment.');
+        }
+      };
+    }
     // Global state for filtering
     let allOrders = [];
     let filteredOrders = [];

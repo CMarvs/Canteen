@@ -2223,8 +2223,41 @@ async def delete_order(oid: int, request: Request):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        
+        # Check if refund_status column exists
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'orders' AND column_name = 'refund_status'
+            """)
+            has_refund_status = cur.fetchone() is not None
+            
+            if not has_refund_status:
+                print("[INFO] Adding refund_status column to orders table...")
+                cur.execute("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT NULL;")
+                conn.commit()
+        except Exception as col_error:
+            print(f"[WARNING] Could not check/add refund_status column: {col_error}")
+        
         # Check if order exists and get full order data (including items, user_id, and refund_status)
-        cur.execute("SELECT id, status, items, user_id, refund_status FROM orders WHERE id=%s", (oid,))
+        # Dynamically build SELECT query based on existing columns
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'orders'
+        """)
+        existing_columns = cur.fetchall()
+        existing_columns_set = {col.get('column_name') if isinstance(col, dict) else col[0] for col in existing_columns}
+        
+        base_columns = ['id', 'status', 'items', 'user_id']
+        optional_columns = ['refund_status']
+        
+        select_columns = [col for col in base_columns if col in existing_columns_set]
+        select_columns.extend([col for col in optional_columns if col in existing_columns_set])
+        
+        query = f"SELECT {', '.join(select_columns)} FROM orders WHERE id=%s"
+        cur.execute(query, (oid,))
         order = cur.fetchone()
         if not order:
             raise HTTPException(404, f"Order {oid} not found")
@@ -2234,12 +2267,15 @@ async def delete_order(oid: int, request: Request):
             order_status = order.get("status")
             order_items = order.get("items")
             order_user_id = order.get("user_id")
-            order_refund_status = order.get("refund_status")
+            order_refund_status = order.get("refund_status", None)
         else:
-            order_status = order[1] if len(order) > 1 else None
-            order_items = order[2] if len(order) > 2 else None
-            order_user_id = order[3] if len(order) > 3 else None
-            order_refund_status = order[4] if len(order) > 4 else None
+            # Get column names for tuple response
+            col_names = [desc[0] for desc in cur.description] if hasattr(cur, 'description') and cur.description else []
+            order_dict = {col: order[i] for i, col in enumerate(col_names)}
+            order_status = order_dict.get("status")
+            order_items = order_dict.get("items")
+            order_user_id = order_dict.get("user_id")
+            order_refund_status = order_dict.get("refund_status", None)
         
         # Allow deletion if:
         # 1. Status is Pending (can be cancelled)
