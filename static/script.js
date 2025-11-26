@@ -2453,7 +2453,16 @@ async function openChatBox(orderId, userType) {
       </div>
     </div>
     <div style="border-top: 1px solid #ddd; padding: 12px; background: white;">
+      <div id="chatImagePreview_${orderId}" style="display: none; margin-bottom: 8px; position: relative;">
+        <img id="chatPreviewImg_${orderId}" src="" alt="Preview" style="max-width: 200px; max-height: 150px; border-radius: 8px; border: 2px solid #8B4513;">
+        <button onclick="clearChatImage(${orderId})" style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 16px; font-weight: bold;">×</button>
+      </div>
       <div style="display: flex; gap: 8px;">
+        <input type="file" id="chatImageInput_${orderId}" accept="image/*" capture="environment" style="display: none;" onchange="handleChatImageSelect(${orderId})">
+        <button onclick="document.getElementById('chatImageInput_${orderId}').click()" 
+                style="background: #f0f0f0; color: #333; border: 1px solid #ddd; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 4px;">
+          📷
+        </button>
         <input type="text" id="chatInput_${orderId}" placeholder="Type your message..." 
                style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem;"
                onkeypress="if(event.key === 'Enter') sendChatMessage(${orderId}, '${userType}')">
@@ -2587,11 +2596,25 @@ async function loadChatMessages(orderId, userType) {
       // Add animation delay for smooth staggered appearance
       const animationDelay = Math.min(index * 0.03, 0.5); // Cap at 0.5s
       
+      let imageHTML = '';
+      if (msg.image) {
+        // Escape the image source for use in onclick
+        const escapedImageSrc = msg.image.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        imageHTML = `
+          <div style="margin: 8px 0;">
+            <img src="${msg.image.replace(/"/g, '&quot;')}" alt="Chat image" 
+                 style="max-width: 100%; max-height: 300px; border-radius: 8px; cursor: pointer; border: 2px solid ${isMe ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)'};"
+                 onclick="openImageModal('${escapedImageSrc}')">
+          </div>
+        `;
+      }
+      
       return `
         <div class="chat-message" style="display: flex; justify-content: ${align}; margin-bottom: 12px; animation: fadeInMessage 0.3s ease-out ${animationDelay}s both;">
           <div style="max-width: 75%; background: ${bgColor}; color: ${textColor}; padding: 10px 14px; border-radius: 12px; word-wrap: break-word; ${isUnread ? 'border-left: 3px solid #e74c3c;' : ''}">
             <div style="font-size: 0.75rem; opacity: 0.8; margin-bottom: 4px;">${escapeHtml(msg.sender_name)}${isAdmin ? ' (Admin)' : ''}${unreadIndicator}</div>
-            <div style="font-size: 0.9rem;">${escapeHtml(msg.message)}</div>
+            ${imageHTML}
+            ${msg.message ? `<div style="font-size: 0.9rem; ${imageHTML ? 'margin-top: 8px;' : ''}">${escapeHtml(msg.message)}</div>` : ''}
             <div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">${new Date(msg.created_at).toLocaleTimeString()}</div>
           </div>
         </div>
@@ -2644,6 +2667,49 @@ async function loadChatMessages(orderId, userType) {
   }
 }
 
+// Store image data for each chat
+const chatImageData = {};
+
+function handleChatImageSelect(orderId) {
+  const fileInput = document.getElementById(`chatImageInput_${orderId}`);
+  const previewDiv = document.getElementById(`chatImagePreview_${orderId}`);
+  const previewImg = document.getElementById(`chatPreviewImg_${orderId}`);
+  
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+  
+  const file = fileInput.files[0];
+  
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Image size must be less than 5MB');
+    fileInput.value = '';
+    return;
+  }
+  
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    alert('Please select an image file');
+    fileInput.value = '';
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    chatImageData[orderId] = e.target.result; // Store base64 data
+    previewImg.src = e.target.result;
+    previewDiv.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearChatImage(orderId) {
+  const fileInput = document.getElementById(`chatImageInput_${orderId}`);
+  const previewDiv = document.getElementById(`chatImagePreview_${orderId}`);
+  if (fileInput) fileInput.value = '';
+  if (previewDiv) previewDiv.style.display = 'none';
+  delete chatImageData[orderId];
+}
+
 async function sendChatMessage(orderId, userType) {
   const cur = getCurrent();
   if (!cur) return;
@@ -2658,14 +2724,21 @@ async function sendChatMessage(orderId, userType) {
   if (!input) return;
 
   const message = input.value.trim();
-  if (!message) return;
+  const imageData = chatImageData[orderId] || null;
+  
+  // Must have either message or image
+  if (!message && !imageData) {
+    alert('Please enter a message or select an image');
+    return;
+  }
 
   try {
     const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: message,
+        message: message || '',
+        image: imageData,
         user_id: cur.id,
         sender_role: cur.role || 'user',
         sender_name: cur.name || 'User'
@@ -2678,8 +2751,9 @@ async function sendChatMessage(orderId, userType) {
       return;
     }
 
-    // Clear input
+    // Clear input and image
     input.value = '';
+    clearChatImage(orderId);
     
     // Reload messages with smooth transition
     await loadChatMessages(orderId, userType);
@@ -2693,6 +2767,39 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function openImageModal(imageSrc) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  `;
+  
+  modal.innerHTML = `
+    <div style="position: relative; max-width: 90%; max-height: 90%;">
+      <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
+              style="position: absolute; top: -40px; right: 0; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+      <img src="${imageSrc.replace(/'/g, "\\'")}" alt="Full size" style="max-width: 100%; max-height: 90vh; border-radius: 8px;">
+    </div>
+  `;
+  
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+  
+  document.body.appendChild(modal);
 }
 
 /* ---------- Page Init ---------- */

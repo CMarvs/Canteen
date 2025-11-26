@@ -158,7 +158,8 @@
         preparing: orders.filter(o => o.status === 'Preparing').length,
         delivery: orders.filter(o => o.status === 'Out for Delivery').length,
         delivered: orders.filter(o => o.status === 'Delivered').length,
-        revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0)
+        revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0),
+        unreadMessages: window.unreadMessageCount || 0
       };
       if (!statsGrid) return;
 
@@ -182,6 +183,10 @@
         <div class="stat-card delivered">
           <div class="stat-label">✅ Delivered</div>
           <div class="stat-number">${stats.delivered}</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
+          <div class="stat-label">💬 Unread Messages</div>
+          <div class="stat-number">${stats.unreadMessages}</div>
         </div>
         <div class="stat-card total">
           <div class="stat-label">💰 Total Revenue</div>
@@ -2033,6 +2038,73 @@
       }, 5000);
     }
 
+    // Show message notification
+    function showMessageNotification(message, order) {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.className = 'message-notification';
+      notification.style.cssText = `
+        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid #FFD700;
+      `;
+
+      const buyerName = order.fullname || order.name || 'Customer';
+      const messageText = (message.message || '').substring(0, 100);
+      const orderNumber = order.id;
+      
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              💬 New Message
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
+              <strong>${buyerName}</strong> (Order #${orderNumber})
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.85; margin-top: 4px;">
+              ${messageText}${messageText.length >= 100 ? '...' : ''}
+            </div>
+          </div>
+          <button onclick="this.parentElement.parentElement.remove(); switchTab('chats');" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      // Click to view chat
+      notification.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          switchTab('chats');
+          notification.remove();
+        }
+      });
+
+      container.appendChild(notification);
+
+      // Play sound
+      if (typeof createNotificationSound === 'function') {
+        createNotificationSound();
+      }
+
+      // Auto-remove after 8 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 8000);
+    }
+
     // Show notification
     function showOrderNotification(order) {
       const container = document.getElementById('notificationContainer');
@@ -2220,6 +2292,8 @@
     let lastChatRenderTime = 0;
     let renderChatsTimeout = null;
     const CHAT_RENDER_DEBOUNCE = 3000; // Minimum 3 seconds between renders
+    let lastKnownMessageIds = new Set(); // Track known message IDs to detect new ones
+    window.unreadMessageCount = 0; // Global unread message count
     
     async function renderAdminChats() {
       // Clear any pending debounced call
@@ -2559,6 +2633,8 @@
         const orders = await ordersResponse.json();
         
         let totalUnread = 0;
+        const newMessages = []; // Track new messages for notifications
+        
         for (const order of orders) {
           if (!order || !order.id) {
             continue;
@@ -2568,10 +2644,30 @@
             if (messagesResponse.ok) {
               const messages = await messagesResponse.json();
               if (messages && Array.isArray(messages) && messages.length > 0) {
-                const unreadCount = messages.filter(m => 
+                // Process messages to find unread ones
+                const unreadMessages = messages.filter(m => 
                   m.sender_role === 'user' && !m.is_read
-                ).length;
-                totalUnread += unreadCount;
+                );
+                totalUnread += unreadMessages.length;
+                
+                // Check for new messages (not in lastKnownMessageIds)
+                unreadMessages.forEach(msg => {
+                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
+                  if (!lastKnownMessageIds.has(msgId)) {
+                    // New message detected
+                    newMessages.push({
+                      message: msg,
+                      order: order
+                    });
+                    lastKnownMessageIds.add(msgId);
+                  }
+                });
+                
+                // Also add all message IDs to the set (for tracking)
+                messages.forEach(msg => {
+                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
+                  lastKnownMessageIds.add(msgId);
+                });
               }
             } else if (messagesResponse.status === 404) {
               // Order doesn't exist or has no messages - skip silently
@@ -2585,6 +2681,12 @@
           }
         }
         
+        // Update global unread count
+        window.unreadMessageCount = totalUnread;
+        
+        // Update stats if they're displayed
+        renderStats();
+        
         // Update badge
         const chatsBadge = document.getElementById('chatsBadge');
         if (chatsBadge) {
@@ -2596,6 +2698,15 @@
             chatsBadge.style.background = '';
             chatsBadge.style.animation = '';
           }
+        }
+        
+        // Show notifications for new messages (only if not initial load)
+        // Initial load: lastKnownMessageIds is empty or only contains the new messages
+        const isInitialLoad = lastKnownMessageIds.size <= newMessages.length;
+        if (newMessages.length > 0 && !isInitialLoad) {
+          newMessages.forEach(({message, order}) => {
+            showMessageNotification(message, order);
+          });
         }
       } catch(error) {
         console.error('Error checking unread chats:', error);
@@ -2727,8 +2838,11 @@
       renderStats();
       renderAdminOrders();
       renderAdminMenuList(); // Load menu items on page load
-      checkUnreadChats(); // Check for unread chats
-      startChatPolling(); // Start polling for unread chats
+      // Check unread chats immediately on login (this will populate the message count)
+      checkUnreadChats().then(() => {
+        // After initial check, start polling
+        startChatPolling();
+      });
       
       // Start real-time order notifications
       startOrderPolling();

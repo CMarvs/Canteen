@@ -170,12 +170,26 @@ def ensure_chat_table_exists():
                     sender_role TEXT NOT NULL,
                     sender_name TEXT NOT NULL,
                     message TEXT NOT NULL,
+                    image TEXT,
                     is_read BOOLEAN DEFAULT FALSE,
                     read_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_order_id ON chat_messages(order_id);")
+            conn.commit()
+        else:
+            # Check if image column exists, add it if not
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='chat_messages' AND column_name='image'
+            """)
+            image_col_exists = cur.fetchone()
+            if not image_col_exists:
+                print("[INFO] Adding image column to chat_messages table...")
+                cur.execute("ALTER TABLE chat_messages ADD COLUMN image TEXT;")
+                conn.commit()
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_messages(created_at);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_is_read ON chat_messages(is_read);")
             conn.commit()
@@ -2124,7 +2138,7 @@ async def get_order_messages(order_id: int, request: Request):
         
         # Get messages for this order
         cur.execute("""
-            SELECT id, order_id, user_id, sender_role, sender_name, message, is_read, read_at, created_at
+            SELECT id, order_id, user_id, sender_role, sender_name, message, image, is_read, read_at, created_at
             FROM chat_messages
             WHERE order_id = %s
             ORDER BY created_at ASC
@@ -2150,9 +2164,10 @@ async def get_order_messages(order_id: int, request: Request):
                             'sender_role': msg[3] if len(msg) > 3 else None,
                             'sender_name': msg[4] if len(msg) > 4 else None,
                             'message': msg[5] if len(msg) > 5 else None,
-                            'is_read': msg[6] if len(msg) > 6 else None,
-                            'read_at': msg[7] if len(msg) > 7 else None,
-                            'created_at': msg[8] if len(msg) > 8 else None
+                            'image': msg[6] if len(msg) > 6 else None,
+                            'is_read': msg[7] if len(msg) > 7 else None,
+                            'read_at': msg[8] if len(msg) > 8 else None,
+                            'created_at': msg[9] if len(msg) > 9 else None
                         })
             return messages_list
         return []
@@ -2180,8 +2195,11 @@ async def send_order_message(order_id: int, request: Request):
         raise HTTPException(400, "Invalid JSON in request body")
     
     message_text = data.get("message", "").strip()
-    if not message_text:
-        raise HTTPException(400, "Message cannot be empty")
+    image_data = data.get("image")  # Base64 encoded image (optional)
+    
+    # Message or image must be provided
+    if not message_text and not image_data:
+        raise HTTPException(400, "Message or image is required")
     
     # Get user info from session (stored in request)
     # For now, we'll get it from the request body
@@ -2223,10 +2241,10 @@ async def send_order_message(order_id: int, request: Request):
         
         # Insert message
         cur.execute("""
-            INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message, is_read)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id, order_id, user_id, sender_role, sender_name, message, is_read, read_at, created_at
-        """, (order_id, user_id, sender_role, sender_name, message_text, False))
+            INSERT INTO chat_messages (order_id, user_id, sender_role, sender_name, message, image, is_read)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, order_id, user_id, sender_role, sender_name, message, image, is_read, read_at, created_at
+        """, (order_id, user_id, sender_role, sender_name, message_text, image_data, False))
         conn.commit()
         message = cur.fetchone()
         
@@ -2244,9 +2262,10 @@ async def send_order_message(order_id: int, request: Request):
                         'sender_role': message[3] if len(message) > 3 else None,
                         'sender_name': message[4] if len(message) > 4 else None,
                         'message': message[5] if len(message) > 5 else None,
-                        'is_read': message[6] if len(message) > 6 else None,
-                        'read_at': message[7] if len(message) > 7 else None,
-                        'created_at': message[8] if len(message) > 8 else None
+                        'image': message[6] if len(message) > 6 else None,
+                        'is_read': message[7] if len(message) > 7 else None,
+                        'read_at': message[8] if len(message) > 8 else None,
+                        'created_at': message[9] if len(message) > 9 else None
                     }
         
         # If admin sent a message, mark all previous user messages as read
