@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 import psycopg2, json
@@ -168,7 +168,16 @@ def ensure_menu_table_exists():
 
 # --- Initialize chat_messages table if it doesn't exist ---
 def ensure_chat_table_exists():
-    conn = get_db_connection()
+    """
+    Ensure chat_messages table exists
+    Returns True if successful, False if database connection failed
+    """
+    try:
+        conn = get_db_connection()
+    except Exception as conn_error:
+        # Database connection failed - don't crash, just return False
+        print(f"[WARNING] Could not connect to database for chat table check: {conn_error}")
+        return False
     try:
         cur = conn.cursor()
         # Check if table exists
@@ -244,7 +253,16 @@ def ensure_chat_table_exists():
 
 # --- Initialize service_ratings table if it doesn't exist ---
 def ensure_ratings_table_exists():
-    conn = get_db_connection()
+    """
+    Ensure service_ratings table exists
+    Returns True if successful, False if database connection failed
+    """
+    try:
+        conn = get_db_connection()
+    except Exception as conn_error:
+        # Database connection failed - don't crash, just return False
+        print(f"[WARNING] Could not connect to database for ratings table check: {conn_error}")
+        return False
     try:
         cur = conn.cursor()
         # Check if table exists
@@ -282,13 +300,25 @@ def ensure_ratings_table_exists():
         conn.close()
 
 # Initialize table on startup (non-blocking)
+# This runs on import, so we need to be very careful not to crash the server
 try:
-    ensure_menu_table_exists()
-    ensure_chat_table_exists()
-    ensure_ratings_table_exists()
+    # Only initialize if we can connect to database
+    # Don't fail server startup if database is temporarily unavailable
+    try:
+        ensure_menu_table_exists()
+        ensure_chat_table_exists()
+        ensure_ratings_table_exists()
+    except Exception as db_error:
+        # Database connection errors shouldn't crash the server
+        print(f"[WARNING] Could not initialize tables on startup: {db_error}")
+        print("[INFO] The tables will be created automatically when needed.")
+        print("[INFO] Server will continue to start. Database will be connected on first request.")
 except Exception as e:
-    print(f"[WARNING] Could not initialize tables on startup: {e}")
-    print("[INFO] The tables will be created automatically when needed.")
+    # Catch any other unexpected errors during startup
+    print(f"[WARNING] Unexpected error during startup initialization: {e}")
+    import traceback
+    traceback.print_exc()
+    print("[INFO] Server will continue to start. Tables will be created when needed.")
 
 # --- Safe FileResponse helper ---
 def safe_file_response(path: str):
