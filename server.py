@@ -2197,6 +2197,20 @@ async def send_order_message(order_id: int, request: Request):
     message_text = data.get("message", "").strip()
     image_data = data.get("image")  # Base64 encoded image (optional)
     
+    # Validate image data if provided
+    if image_data:
+        # Check if it's a valid base64 image string
+        if not isinstance(image_data, str):
+            raise HTTPException(400, "Invalid image format")
+        
+        # Check base64 prefix
+        if not image_data.startswith(('data:image/', 'data:image/jpeg', 'data:image/png', 'data:image/gif', 'data:image/webp')):
+            raise HTTPException(400, "Invalid image format. Only JPEG, PNG, GIF, and WebP are supported")
+        
+        # Check image size (base64 is ~33% larger than binary, so 5MB binary = ~6.7MB base64)
+        if len(image_data) > 7 * 1024 * 1024:  # 7MB base64 = ~5MB binary
+            raise HTTPException(400, "Image size exceeds 5MB limit. Please compress the image.")
+    
     # Message or image must be provided
     if not message_text and not image_data:
         raise HTTPException(400, "Message or image is required")
@@ -2282,9 +2296,15 @@ async def send_order_message(order_id: int, request: Request):
         raise
     except Exception as e:
         print(f"❌ Send message error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to send message: {str(e)}")
     finally:
-        conn.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
 
 # --- Chat: Mark messages as read ---
 @app.put("/orders/{order_id}/messages/read")

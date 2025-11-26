@@ -2664,6 +2664,24 @@ async function loadChatMessages(orderId, userType) {
     }
   } catch(error) {
     console.error('Error loading messages:', error);
+    const messagesContainer = document.getElementById(`chatMessages_${orderId}`);
+    if (messagesContainer) {
+      // Show error message in chat box
+      const errorHTML = `
+        <div style="text-align: center; padding: 20px; color: #e74c3c;">
+          <div style="font-size: 1.2rem; margin-bottom: 8px;">⚠️</div>
+          <div>Failed to load messages</div>
+          <div style="font-size: 0.85rem; color: #999; margin-top: 4px;">
+            ${error.message || 'Please try again'}
+          </div>
+          <button onclick="loadChatMessages(${orderId}, '${userType}')" 
+                  style="margin-top: 12px; padding: 8px 16px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            Retry
+          </button>
+        </div>
+      `;
+      messagesContainer.innerHTML = errorHTML;
+    }
   }
 }
 
@@ -2671,35 +2689,72 @@ async function loadChatMessages(orderId, userType) {
 const chatImageData = {};
 
 function handleChatImageSelect(orderId) {
-  const fileInput = document.getElementById(`chatImageInput_${orderId}`);
-  const previewDiv = document.getElementById(`chatImagePreview_${orderId}`);
-  const previewImg = document.getElementById(`chatPreviewImg_${orderId}`);
-  
-  if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
-  
-  const file = fileInput.files[0];
-  
-  // Validate file size (max 5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    alert('Image size must be less than 5MB');
-    fileInput.value = '';
-    return;
+  try {
+    const fileInput = document.getElementById(`chatImageInput_${orderId}`);
+    const previewDiv = document.getElementById(`chatImagePreview_${orderId}`);
+    const previewImg = document.getElementById(`chatPreviewImg_${orderId}`);
+    
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      console.warn('No file selected');
+      return;
+    }
+    
+    const file = fileInput.files[0];
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('⚠️ Image size must be less than 5MB. Please compress the image or choose a smaller file.');
+      fileInput.value = '';
+      return;
+    }
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!file.type.startsWith('image/') || !allowedTypes.includes(file.type.toLowerCase())) {
+      alert('⚠️ Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+      fileInput.value = '';
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onerror = function(error) {
+      console.error('Error reading file:', error);
+      alert('❌ Failed to read image file. Please try again.');
+      fileInput.value = '';
+      clearChatImage(orderId);
+    };
+    
+    reader.onload = function(e) {
+      try {
+        const base64Data = e.target.result;
+        
+        // Double-check size after conversion (base64 is ~33% larger)
+        if (base64Data.length > 7 * 1024 * 1024) {
+          alert('⚠️ Image is too large after conversion. Please use a smaller image.');
+          fileInput.value = '';
+          clearChatImage(orderId);
+          return;
+        }
+        
+        chatImageData[orderId] = base64Data; // Store base64 data
+        if (previewImg) {
+          previewImg.src = base64Data;
+        }
+        if (previewDiv) {
+          previewDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
+        alert('❌ Failed to process image. Please try again.');
+        clearChatImage(orderId);
+      }
+    };
+    
+    reader.readAsDataURL(file);
+  } catch (error) {
+    console.error('Error in handleChatImageSelect:', error);
+    alert('❌ An error occurred while selecting the image. Please try again.');
   }
-  
-  // Validate file type
-  if (!file.type.startsWith('image/')) {
-    alert('Please select an image file');
-    fileInput.value = '';
-    return;
-  }
-  
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    chatImageData[orderId] = e.target.result; // Store base64 data
-    previewImg.src = e.target.result;
-    previewDiv.style.display = 'block';
-  };
-  reader.readAsDataURL(file);
 }
 
 function clearChatImage(orderId) {
@@ -2711,55 +2766,104 @@ function clearChatImage(orderId) {
 }
 
 async function sendChatMessage(orderId, userType) {
-  const cur = getCurrent();
-  if (!cur) return;
-  
-  if (!orderId) {
-    console.error('sendChatMessage: orderId is missing');
-    alert('Order ID is missing. Cannot send message.');
-    return;
-  }
-
-  const input = document.getElementById(`chatInput_${orderId}`);
-  if (!input) return;
-
-  const message = input.value.trim();
-  const imageData = chatImageData[orderId] || null;
-  
-  // Must have either message or image
-  if (!message && !imageData) {
-    alert('Please enter a message or select an image');
-    return;
-  }
-
   try {
-    const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: message || '',
-        image: imageData,
-        user_id: cur.id,
-        sender_role: cur.role || 'user',
-        sender_name: cur.name || 'User'
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      alert(`Failed to send message: ${error.detail || 'Unknown error'}`);
+    const cur = getCurrent();
+    if (!cur) {
+      alert('⚠️ Please login to send messages');
+      return;
+    }
+    
+    if (!orderId) {
+      console.error('sendChatMessage: orderId is missing');
+      alert('❌ Order ID is missing. Cannot send message.');
       return;
     }
 
-    // Clear input and image
-    input.value = '';
-    clearChatImage(orderId);
+    const input = document.getElementById(`chatInput_${orderId}`);
+    if (!input) {
+      console.error('Chat input not found');
+      return;
+    }
+
+    const message = input.value.trim();
+    const imageData = chatImageData[orderId] || null;
     
-    // Reload messages with smooth transition
-    await loadChatMessages(orderId, userType);
-  } catch(error) {
-    console.error('Error sending message:', error);
-    alert('Failed to send message. Please try again.');
+    // Must have either message or image
+    if (!message && !imageData) {
+      alert('⚠️ Please enter a message or select an image');
+      return;
+    }
+    
+    // Validate image data size before sending
+    if (imageData && imageData.length > 7 * 1024 * 1024) {
+      alert('⚠️ Image is too large. Please select a smaller image.');
+      return;
+    }
+
+    // Disable send button to prevent double-sending
+    const sendButton = input.nextElementSibling || input.parentElement.querySelector('button[onclick*="sendChatMessage"]');
+    if (sendButton) {
+      sendButton.disabled = true;
+      sendButton.textContent = 'Sending...';
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/orders/${orderId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: message || '',
+          image: imageData,
+          user_id: cur.id,
+          sender_role: cur.role || 'user',
+          sender_name: cur.name || 'User'
+        })
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to send message';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || error.message || errorMessage;
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          if (response.status === 400) {
+            errorMessage = 'Invalid request. Please check your message or image.';
+          } else if (response.status === 404) {
+            errorMessage = 'Order not found. The order may have been deleted.';
+          } else if (response.status === 500) {
+            errorMessage = 'Server error. Please try again later.';
+          } else if (response.status === 0 || response.status >= 500) {
+            errorMessage = 'Network error. Please check your connection and try again.';
+          }
+        }
+        alert(`❌ ${errorMessage}`);
+        return;
+      }
+
+      // Clear input and image
+      input.value = '';
+      clearChatImage(orderId);
+      
+      // Reload messages with smooth transition
+      await loadChatMessages(orderId, userType);
+    } catch (networkError) {
+      console.error('Network error sending message:', networkError);
+      if (networkError.name === 'TypeError' && networkError.message.includes('fetch')) {
+        alert('❌ Network error. Please check your internet connection and try again.');
+      } else {
+        alert('❌ Failed to send message. Please try again.');
+      }
+    } finally {
+      // Re-enable send button
+      if (sendButton) {
+        sendButton.disabled = false;
+        sendButton.textContent = 'Send';
+      }
+    }
+  } catch (error) {
+    console.error('Unexpected error in sendChatMessage:', error);
+    alert('❌ An unexpected error occurred. Please try again.');
   }
 }
 
