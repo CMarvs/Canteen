@@ -232,6 +232,18 @@
   color: var(--primary);
 }
 
+.modal-body ul {
+  margin-left: 20px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+  padding-left: 20px;
+}
+
+.modal-body ul li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .auth-card {
