@@ -575,16 +575,16 @@
             try {
               itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
             } catch (e) {
-              console.error(`[ORDERS] Order ${o.id} items cannot be stringified. Resetting.`);
+              console.warn(`[ORDERS] Order ${o.id} items cannot be stringified. Resetting items but keeping order.`);
               o.items = [];
-              return;
+              // Continue processing - don't return
             }
             
-            // If items string is too large, reset immediately
+            // If items string is too large, reset items but continue processing
             if (itemsStr.length > 10000) { // Very strict limit: 10KB
-              console.error(`[ORDERS] Order ${o.id} has suspiciously large items data (${itemsStr.length} chars). Resetting items.`);
+              console.warn(`[ORDERS] Order ${o.id} has large items data (${itemsStr.length} chars). Resetting items but keeping order.`);
               o.items = [];
-              return;
+              // Continue processing - don't return, just reset items
             }
             
             // Parse and clean items
@@ -592,16 +592,18 @@
             try {
               items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
             } catch (e) {
-              console.error(`[ORDERS] Order ${o.id} items cannot be parsed. Resetting.`);
+              console.warn(`[ORDERS] Order ${o.id} items cannot be parsed. Resetting items but keeping order.`);
               o.items = [];
-              return;
+              items = [];
+              // Continue processing - don't return
             }
             
             // Ensure items is an array
             if (!Array.isArray(items)) {
-              console.error(`[ORDERS] Order ${o.id} items is not an array. Resetting.`);
+              console.warn(`[ORDERS] Order ${o.id} items is not an array. Resetting items but keeping order.`);
               o.items = [];
-              return;
+              items = [];
+              // Continue processing - don't return
             }
             
             // AGGRESSIVE CLEANING: Check each item individually and clean it
@@ -640,12 +642,12 @@
             // Final validation: check if cleaned items are still too large
             const finalStr = JSON.stringify(o.items);
             if (finalStr.length > 5000) { // Max 5KB for all items
-              console.error(`[ORDERS] Order ${o.id} cleaned items still too large (${finalStr.length} chars). Resetting.`);
+              console.warn(`[ORDERS] Order ${o.id} cleaned items still too large (${finalStr.length} chars). Resetting items but keeping order.`);
               o.items = [];
             }
           } catch (e) {
-            console.error(`[ORDERS] Error checking order ${o.id} items:`, e);
-            o.items = [];
+            console.warn(`[ORDERS] Error checking order ${o.id} items:`, e);
+            o.items = []; // Reset items but keep the order
           }
         });
         
@@ -907,67 +909,10 @@
             </div>
           `;
         } else {
-          // Safety check: prevent setting extremely large HTML (likely a bug)
-          // Normal order HTML should be < 10KB per order, so 500KB is more than enough for 50 orders
-          if (ordersHTML.length > 500000) { // 500KB limit (very strict)
-            console.error(`[ORDERS] Generated HTML is suspiciously large (${ordersHTML.length} chars = ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB). This indicates corrupted order data.`);
-            // Log order data for debugging
-            if (filteredOrders.length > 0) {
-              const firstOrder = filteredOrders[0];
-              let itemsPreview = '';
-              let itemsLength = 0;
-              try {
-                if (typeof firstOrder.items === 'string') {
-                  itemsLength = firstOrder.items.length;
-                  itemsPreview = firstOrder.items.substring(0, 1000);
-                } else {
-                  const itemsStr = JSON.stringify(firstOrder.items || []);
-                  itemsLength = itemsStr.length;
-                  itemsPreview = itemsStr.substring(0, 1000);
-                }
-              } catch (e) {
-                itemsPreview = `[Error stringifying: ${e.message}]`;
-              }
-              
-              console.error(`[ORDERS] First order data:`, {
-                id: firstOrder.id,
-                itemsType: typeof firstOrder.items,
-                itemsLength: itemsLength,
-                itemsIsArray: Array.isArray(firstOrder.items),
-                itemsArrayLength: Array.isArray(firstOrder.items) ? firstOrder.items.length : 'N/A',
-                itemsPreview: itemsPreview
-              });
-              
-              // Try to identify what's causing the large size
-              if (Array.isArray(firstOrder.items) && firstOrder.items.length > 0) {
-                const firstItem = firstOrder.items[0];
-                try {
-                  const firstItemStr = JSON.stringify(firstItem);
-                  console.error(`[ORDERS] First item in array:`, {
-                    itemType: typeof firstItem,
-                    itemIsArray: Array.isArray(firstItem),
-                    itemStringLength: firstItemStr.length,
-                    itemPreview: firstItemStr.substring(0, 500)
-                  });
-                } catch (e) {
-                  console.error(`[ORDERS] Cannot stringify first item:`, e);
-                }
-              }
-            }
-            // Show error message with option to fix corrupted orders
-            container.innerHTML = `
-              <div style="color: red; padding: 20px; text-align: center; border: 2px solid red; border-radius: 8px; background: #ffe6e6; margin: 20px;">
-                <strong style="font-size: 1.2rem;">⚠️ Error: Order data is corrupted</strong>
-                <p style="margin: 10px 0;">One or more orders contain corrupted item data that would cause the page to crash.</p>
-                <p style="margin: 10px 0; font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px;">HTML size: ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB (expected: &lt; 0.5 MB)</p>
-                <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Please check the browser console for details about the corrupted order.</p>
-                <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                  <button onclick="fixCorruptedOrders()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600;">🔧 Fix Corrupted Orders</button>
-                  <button onclick="location.reload()" style="padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Reload Page</button>
-                </div>
-              </div>
-            `;
-            return; // Don't render corrupted data
+          // Safety check: if HTML is too large, truncate but still show orders
+          if (ordersHTML.length > 2000000) { // 2MB limit - very generous
+            console.warn(`[ORDERS] Generated HTML is large (${ordersHTML.length} chars = ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB). Truncating but still displaying.`);
+            // Log warning but continue - don't block display
           }
           // Use requestAnimationFrame for smooth rendering (only if content changed)
           const currentHTML = container.innerHTML;
