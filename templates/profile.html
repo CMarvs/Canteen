@@ -96,12 +96,32 @@
   <script>
     // Load script.js with cache-busting to ensure fresh version
     (function() {
+      if (window.scriptJsLoading || window.scriptJsLoaded) {
+        return; // Already loading or loaded
+      }
+      window.scriptJsLoading = true;
       const script = document.createElement('script');
       script.src = '/static/script.js?v=' + Date.now();
+      script.onload = function() {
+        console.log('script.js loaded successfully');
+        window.scriptJsLoaded = true;
+        window.scriptJsLoading = false;
+        // Trigger custom event when script loads
+        window.dispatchEvent(new Event('scriptJsLoaded'));
+      };
       script.onerror = function() {
         console.error('Failed to load script.js');
+        window.scriptJsLoaded = false;
+        window.scriptJsLoading = false;
         alert('Error: Failed to load required scripts. Please refresh the page.');
       };
+      // Add error handler to catch syntax errors
+      window.addEventListener('error', function(e) {
+        if (e.filename && e.filename.includes('script.js')) {
+          console.error('❌ Error in script.js:', e.message);
+          window.scriptJsSyntaxError = true;
+        }
+      }, true);
       document.head.appendChild(script);
     })();
   </script>
@@ -152,24 +172,43 @@
       }
       
       // Wait for script.js to load before calling functions
-      if (typeof loadProfilePage === 'function') {
-        loadProfilePage();
-      } else {
-        console.warn('loadProfilePage not available yet, will retry...');
-        setTimeout(() => {
-          if (typeof loadProfilePage === 'function') {
-            loadProfilePage();
-          } else {
-            console.error('loadProfilePage still not available after wait');
+      function waitForScriptFunctions(callback, maxAttempts = 100) {
+        let attempts = 0;
+        const checkInterval = setInterval(() => {
+          attempts++;
+          const hasGetCurrent = typeof getCurrent === 'function';
+          const hasLoadProfilePage = typeof loadProfilePage === 'function';
+          const hasLoadAverageRating = typeof loadAverageRating === 'function';
+          
+          if (hasGetCurrent && hasLoadProfilePage && hasLoadAverageRating) {
+            clearInterval(checkInterval);
+            callback();
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            console.error('❌ script.js functions not fully available after waiting');
+            console.error('getCurrent:', hasGetCurrent, 'loadProfilePage:', hasLoadProfilePage, 'loadAverageRating:', hasLoadAverageRating);
+            // Try to continue anyway
+            callback();
+          } else if (attempts % 10 === 0) {
+            console.log(`Waiting for script.js functions... (attempt ${attempts}/${maxAttempts})`);
           }
-        }, 500);
+        }, 100);
       }
-      if (typeof loadUserRating === 'function') {
-        loadUserRating();
-      }
-      if (typeof loadAverageRating === 'function') {
-        loadAverageRating();
-      }
+      
+      // Wait for functions to be available
+      waitForScriptFunctions(() => {
+        if (typeof loadProfilePage === 'function') {
+          loadProfilePage();
+        } else {
+          console.error('loadProfilePage not available');
+        }
+        if (typeof loadUserRating === 'function') {
+          loadUserRating();
+        }
+        if (typeof loadAverageRating === 'function') {
+          loadAverageRating();
+        }
+      });
     });
 
     let selectedRating = 0;
@@ -239,6 +278,14 @@
 
     async function loadUserRating() {
       try {
+        if (typeof getCurrent !== 'function') {
+          console.error('getCurrent is not available');
+          return;
+        }
+        if (typeof getCurrent !== 'function') {
+          console.error('getCurrent is not available');
+          return;
+        }
         const currentUser = getCurrent();
         if (!currentUser || !currentUser.id) return;
 
@@ -304,6 +351,10 @@
 
     async function submitServiceRating() {
       try {
+        if (typeof getCurrent !== 'function') {
+          alert('Please login first');
+          return;
+        }
         const currentUser = getCurrent();
         if (!currentUser || !currentUser.id) {
           alert('Please login first');

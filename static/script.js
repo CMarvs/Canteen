@@ -3246,14 +3246,22 @@ if (typeof window !== 'undefined') {
   window.clearCurrent = clearCurrent;
   window.renderCart = renderCart;
   window.loadMenuToPage = loadMenuToPage;
+  window.loadProfilePage = loadProfilePage;
+  if (typeof loadAverageRating === 'function') {
+    window.loadAverageRating = loadAverageRating;
+  }
   
   // Log for debugging (only in development)
-  if (window.location && window.location.hostname === 'localhost') {
-    console.log('[SCRIPT] Functions available:', {
-      getCurrent: typeof getCurrent,
-      renderCart: typeof renderCart,
-      loadMenuToPage: typeof loadMenuToPage
-    });
+  try {
+    if (window.location && window.location.hostname === 'localhost') {
+      console.log('[SCRIPT] Functions available:', {
+        getCurrent: typeof getCurrent,
+        renderCart: typeof renderCart,
+        loadMenuToPage: typeof loadMenuToPage
+      });
+    }
+  } catch (e) {
+    // Silently ignore if window.location is not available
   }
 }
 
