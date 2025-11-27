@@ -446,6 +446,35 @@
       }
     }
 
+    // Fix corrupted orders by cleaning their items data
+    async function fixCorruptedOrders() {
+      if (!confirm('This will clean corrupted item data from all orders. Continue?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/orders/fix-corrupted', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          alert('✅ Corrupted orders have been fixed! The page will reload.');
+          location.reload();
+        } else {
+          alert('❌ Error fixing orders: ' + (result.detail || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error fixing corrupted orders:', error);
+        alert('❌ Error fixing orders. Please try again.');
+      }
+    }
+    
+    // Make function globally accessible
+    window.fixCorruptedOrders = fixCorruptedOrders;
+
     // Calculate sequential order numbers (only for active orders, not delivered or cancelled)
     // Uses global function from script.js for consistency
     function getOrderNumberMap() {
@@ -827,14 +856,17 @@
                 itemsPreview: itemsPreview
               });
             }
-            // Show error message instead of rendering corrupted data
+            // Show error message with option to fix corrupted orders
             container.innerHTML = `
               <div style="color: red; padding: 20px; text-align: center; border: 2px solid red; border-radius: 8px; background: #ffe6e6; margin: 20px;">
                 <strong style="font-size: 1.2rem;">⚠️ Error: Order data is corrupted</strong>
                 <p style="margin: 10px 0;">One or more orders contain corrupted item data that would cause the page to crash.</p>
                 <p style="margin: 10px 0; font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px;">HTML size: ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB (expected: &lt; 0.1 MB)</p>
                 <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Please check the browser console for details about the corrupted order.</p>
-                <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Reload Page</button>
+                <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                  <button onclick="fixCorruptedOrders()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600;">🔧 Fix Corrupted Orders</button>
+                  <button onclick="location.reload()" style="padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Reload Page</button>
+                </div>
               </div>
             `;
             return; // Don't render corrupted data

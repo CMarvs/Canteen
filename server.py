@@ -1558,6 +1558,95 @@ async def get_orders():
         except Exception as close_error:
             print(f"[WARNING] Error closing database connection: {close_error}")
 
+# --- Admin: Fix Corrupted Orders ---
+@app.post("/orders/fix-corrupted")
+async def fix_corrupted_orders(request: Request):
+    """Clean corrupted items data from all orders in the database"""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Get all orders
+        cur.execute("SELECT id, items FROM orders")
+        orders = cur.fetchall()
+        
+        fixed_count = 0
+        for order in orders:
+            order_id = order[0] if isinstance(order, (list, tuple)) else order.get('id')
+            items = order[1] if isinstance(order, (list, tuple)) else order.get('items')
+            
+            try:
+                # Parse items if it's a string
+                if isinstance(items, str):
+                    try:
+                        items = json.loads(items)
+                    except:
+                        items = []
+                
+                # Ensure items is a list
+                if not isinstance(items, list):
+                    items = []
+                
+                # Clean each item - only keep safe, simple properties
+                cleaned_items = []
+                original_count = len(items) if isinstance(items, list) else 0
+                
+                for item in (items[:100] if isinstance(items, list) else []):  # Limit to 100 items max
+                    if not isinstance(item, dict):
+                        continue
+                    
+                    # Extract only safe properties
+                    cleaned_item = {
+                        'id': item.get('id', len(cleaned_items) + 1),
+                        'name': str(item.get('name', 'Unknown Item'))[:100],  # Limit name to 100 chars
+                        'qty': max(1, min(1000, int(item.get('qty', 1)))),  # Clamp qty between 1-1000
+                        'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
+                    }
+                    
+                    # Validate cleaned item size
+                    item_str = json.dumps(cleaned_item)
+                    if len(item_str) <= 500:  # Each item should be < 500 chars
+                        cleaned_items.append(cleaned_item)
+                
+                # Limit to max 50 items
+                cleaned_items = cleaned_items[:50]
+                
+                # Update order if items were cleaned
+                if len(cleaned_items) != original_count or not isinstance(items, list):
+                    cleaned_items_json = json.dumps(cleaned_items)
+                    cur.execute("UPDATE orders SET items = %s::jsonb WHERE id = %s", (cleaned_items_json, order_id))
+                    fixed_count += 1
+                    print(f"[FIX] Cleaned order {order_id}: {original_count} items -> {len(cleaned_items)} items")
+                
+            except Exception as item_error:
+                print(f"[ERROR] Error fixing order {order_id}: {item_error}")
+                # Reset to empty array if cleaning fails
+                try:
+                    cur.execute("UPDATE orders SET items = '[]'::jsonb WHERE id = %s", (order_id,))
+                    fixed_count += 1
+                except:
+                    pass
+        
+        conn.commit()
+        return json_response({
+            "ok": True,
+            "message": f"Fixed {fixed_count} corrupted orders",
+            "fixed_count": fixed_count
+        })
+    except Exception as e:
+        print(f"❌ Fix corrupted orders error: {e}")
+        import traceback
+        traceback.print_exc()
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to fix corrupted orders: {str(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
+
 # --- Menu Items: Get all menu items ---
 @app.get("/menu")
 def get_menu_items():
