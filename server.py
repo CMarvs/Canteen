@@ -1545,6 +1545,9 @@ async def get_orders():
                 orders_list.append(order_dict)
         
         print(f"[DEBUG] Returning {len(orders_list)} orders")
+        if len(orders_list) > 0:
+            print(f"[DEBUG] Sample order structure: {list(orders_list[0].keys())}")
+            print(f"[DEBUG] Sample order ID: {orders_list[0].get('id')}, User ID: {orders_list[0].get('user_id')}, Status: {orders_list[0].get('status')}")
         return json_response(orders_list)
     except Exception as e:
         print(f"❌ Get orders error: {e}")

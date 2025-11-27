@@ -388,10 +388,21 @@
           throw new Error('Orders response is not an array');
         }
         
-        allOrders = orders.reverse();
+        // Reverse to show newest first (already ordered DESC in SQL, but reverse for display)
+        allOrders = [...orders]; // Keep original order from backend (newest first)
         filteredOrders = [...allOrders];
         
         console.log(`[ORDERS] Processed ${allOrders.length} orders, filteredOrders: ${filteredOrders.length}`);
+        if (allOrders.length > 0) {
+          console.log(`[ORDERS] First order details:`, {
+            id: allOrders[0].id,
+            user_id: allOrders[0].user_id,
+            fullname: allOrders[0].fullname,
+            status: allOrders[0].status,
+            itemsCount: Array.isArray(allOrders[0].items) ? allOrders[0].items.length : 'N/A',
+            total: allOrders[0].total
+          });
+        }
         
         // Update global orders cache for sequential numbering (if function exists)
         if (typeof updateGlobalOrdersCache === 'function') {
@@ -640,6 +651,26 @@
         
         ordersHTML = filteredOrders.map((o, displayIdx) => {
           try {
+            // CRITICAL: Check items size BEFORE generating any HTML
+            let itemsCheck = '';
+            let itemsCheckLength = 0;
+            try {
+              itemsCheck = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+              itemsCheckLength = itemsCheck.length;
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items cannot be stringified for size check:`, e);
+              // Reset items but still try to render the order
+              o.items = [];
+              itemsCheckLength = 0;
+            }
+            
+            // If items string is still too large after pre-validation, show order with warning
+            if (itemsCheckLength > 10000) {
+              console.error(`[ORDERS] Order ${o.id} items still too large after pre-validation (${itemsCheckLength} chars). Showing order with warning.`);
+              // Still render the order, but with empty items and a warning
+              o.items = [];
+            }
+            
             const actualIdx = allOrders.indexOf(o);
             let badgeClass = "";
             switch (o.status) {
@@ -668,11 +699,33 @@
         });
 
         // Parse items if it's a string (from database) - items should already be cleaned by pre-validation
-        let items;
+        let items = [];
         try {
           // Items should already be cleaned by the pre-validation loop above
           // But we do a final safety check here
-          items = Array.isArray(o.items) ? o.items : [];
+          if (Array.isArray(o.items)) {
+            items = o.items;
+          } else if (typeof o.items === 'string') {
+            try {
+              items = JSON.parse(o.items);
+              if (!Array.isArray(items)) {
+                items = [];
+              }
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items string cannot be parsed:`, e);
+              items = [];
+            }
+          } else {
+            items = [];
+          }
+          
+          // CRITICAL: Final safety check - if items array is still suspicious, reset it
+          const itemsStrCheck = JSON.stringify(items);
+          if (itemsStrCheck.length > 5000) {
+            console.error(`[ORDERS] Order ${o.id} items still too large in final check (${itemsStrCheck.length} chars). Resetting.`);
+            items = [];
+            o.items = []; // Also update the order object
+          }
           
           // Final safety: ensure items array is reasonable
           if (items.length > 50) {
@@ -861,15 +914,45 @@
             // Log order data for debugging
             if (filteredOrders.length > 0) {
               const firstOrder = filteredOrders[0];
-              const itemsPreview = typeof firstOrder.items === 'string' 
-                ? firstOrder.items.substring(0, 500) 
-                : JSON.stringify(firstOrder.items || []).substring(0, 500);
+              let itemsPreview = '';
+              let itemsLength = 0;
+              try {
+                if (typeof firstOrder.items === 'string') {
+                  itemsLength = firstOrder.items.length;
+                  itemsPreview = firstOrder.items.substring(0, 1000);
+                } else {
+                  const itemsStr = JSON.stringify(firstOrder.items || []);
+                  itemsLength = itemsStr.length;
+                  itemsPreview = itemsStr.substring(0, 1000);
+                }
+              } catch (e) {
+                itemsPreview = `[Error stringifying: ${e.message}]`;
+              }
+              
               console.error(`[ORDERS] First order data:`, {
                 id: firstOrder.id,
                 itemsType: typeof firstOrder.items,
-                itemsLength: typeof firstOrder.items === 'string' ? firstOrder.items.length : JSON.stringify(firstOrder.items || []).length,
+                itemsLength: itemsLength,
+                itemsIsArray: Array.isArray(firstOrder.items),
+                itemsArrayLength: Array.isArray(firstOrder.items) ? firstOrder.items.length : 'N/A',
                 itemsPreview: itemsPreview
               });
+              
+              // Try to identify what's causing the large size
+              if (Array.isArray(firstOrder.items) && firstOrder.items.length > 0) {
+                const firstItem = firstOrder.items[0];
+                try {
+                  const firstItemStr = JSON.stringify(firstItem);
+                  console.error(`[ORDERS] First item in array:`, {
+                    itemType: typeof firstItem,
+                    itemIsArray: Array.isArray(firstItem),
+                    itemStringLength: firstItemStr.length,
+                    itemPreview: firstItemStr.substring(0, 500)
+                  });
+                } catch (e) {
+                  console.error(`[ORDERS] Cannot stringify first item:`, e);
+                }
+              }
             }
             // Show error message with option to fix corrupted orders
             container.innerHTML = `
