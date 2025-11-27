@@ -1498,6 +1498,50 @@ async def get_orders():
                 if 'refund_status' not in order_dict:
                     order_dict['refund_status'] = None
                 
+                # Clean and validate items data to prevent corrupted data from causing massive HTML
+                if 'items' in order_dict and order_dict['items']:
+                    try:
+                        items = order_dict['items']
+                        # If items is a string, parse it
+                        if isinstance(items, str):
+                            try:
+                                items = json.loads(items)
+                            except:
+                                items = []
+                        
+                        # Ensure items is a list
+                        if not isinstance(items, list):
+                            items = []
+                        
+                        # Clean each item - only keep safe, simple properties
+                        cleaned_items = []
+                        for item in items[:100]:  # Limit to 100 items max
+                            if not isinstance(item, dict):
+                                continue
+                            
+                            # Extract only safe properties
+                            cleaned_item = {
+                                'id': item.get('id', len(cleaned_items) + 1),
+                                'name': str(item.get('name', 'Unknown Item'))[:100],  # Limit name to 100 chars
+                                'qty': max(1, min(1000, int(item.get('qty', 1)))),  # Clamp qty between 1-1000
+                                'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
+                            }
+                            
+                            # Validate cleaned item size
+                            item_str = json.dumps(cleaned_item)
+                            if len(item_str) <= 500:  # Each item should be < 500 chars
+                                cleaned_items.append(cleaned_item)
+                        
+                        # Update order_dict with cleaned items
+                        order_dict['items'] = cleaned_items[:50]  # Final limit: max 50 items for display
+                        
+                        # Log if we had to clean items
+                        if len(cleaned_items) < len(items) if isinstance(items, list) else True:
+                            print(f"[WARNING] Cleaned items for order {order_dict.get('id')}: {len(items) if isinstance(items, list) else 'unknown'} -> {len(cleaned_items)} items")
+                    except Exception as items_error:
+                        print(f"[ERROR] Error cleaning items for order {order_dict.get('id')}: {items_error}")
+                        order_dict['items'] = []  # Reset to empty array on error
+                
                 orders_list.append(order_dict)
         
         print(f"[DEBUG] Returning {len(orders_list)} orders")
