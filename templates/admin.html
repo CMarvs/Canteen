@@ -559,40 +559,78 @@
         // Debug: Log order data sizes to detect issues and fix corrupted data BEFORE rendering
         filteredOrders.forEach((o, idx) => {
           try {
-            // Pre-validate items data before rendering
-            const itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
-            if (itemsStr.length > 50000) { // Reduced from 10000 to catch issues earlier
+            // Pre-validate items data before rendering - VERY AGGRESSIVE CLEANING
+            let itemsStr = '';
+            try {
+              itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items cannot be stringified. Resetting.`);
+              o.items = [];
+              return;
+            }
+            
+            // If items string is too large, reset immediately
+            if (itemsStr.length > 10000) { // Very strict limit: 10KB
               console.error(`[ORDERS] Order ${o.id} has suspiciously large items data (${itemsStr.length} chars). Resetting items.`);
-              // Truncate corrupted items data BEFORE rendering
-              if (typeof o.items === 'string') {
-                o.items = '[]';
-              } else {
-                o.items = [];
+              o.items = [];
+              return;
+            }
+            
+            // Parse and clean items
+            let items = [];
+            try {
+              items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items cannot be parsed. Resetting.`);
+              o.items = [];
+              return;
+            }
+            
+            // Ensure items is an array
+            if (!Array.isArray(items)) {
+              console.error(`[ORDERS] Order ${o.id} items is not an array. Resetting.`);
+              o.items = [];
+              return;
+            }
+            
+            // AGGRESSIVE CLEANING: Check each item individually and clean it
+            const cleanedItems = [];
+            for (let itemIdx = 0; itemIdx < Math.min(items.length, 100); itemIdx++) {
+              const item = items[itemIdx];
+              try {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                  continue; // Skip invalid items
+                }
+                
+                // Extract only safe properties with strict limits
+                const cleanedItem = {
+                  id: item.id || itemIdx + 1,
+                  name: String(item.name || 'Unknown Item').substring(0, 50), // Max 50 chars
+                  qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
+                  price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
+                };
+                
+                // Validate cleaned item size
+                const itemStr = JSON.stringify(cleanedItem);
+                if (itemStr.length <= 200) { // Each item must be < 200 chars
+                  cleanedItems.push(cleanedItem);
+                } else {
+                  console.error(`[ORDERS] Order ${o.id} item ${itemIdx} is still too large after cleaning (${itemStr.length} chars). Skipping.`);
+                }
+              } catch (itemError) {
+                console.error(`[ORDERS] Order ${o.id} item ${itemIdx} cleaning error:`, itemError);
+                continue; // Skip this item
               }
             }
-            // Additional check: if items is an array, check for nested corruption
-            if (Array.isArray(o.items) && o.items.length > 0) {
-              // Check each item individually
-              o.items = o.items.filter((item, itemIdx) => {
-                try {
-                  if (!item || typeof item !== 'object') return false;
-                  const itemStr = JSON.stringify(item);
-                  if (itemStr.length > 1000) { // Each item should be < 1KB
-                    console.error(`[ORDERS] Order ${o.id} item ${itemIdx} is too large (${itemStr.length} chars). Removing.`);
-                    return false;
-                  }
-                  return true;
-                } catch (e) {
-                  console.error(`[ORDERS] Order ${o.id} item ${itemIdx} is corrupted. Removing.`);
-                  return false;
-                }
-              });
-              
-              // Limit total items count
-              if (o.items.length > 100) {
-                console.error(`[ORDERS] Order ${o.id} has too many items (${o.items.length}). Limiting to 100.`);
-                o.items = o.items.slice(0, 100);
-              }
+            
+            // Limit to max 50 items
+            o.items = cleanedItems.slice(0, 50);
+            
+            // Final validation: check if cleaned items are still too large
+            const finalStr = JSON.stringify(o.items);
+            if (finalStr.length > 5000) { // Max 5KB for all items
+              console.error(`[ORDERS] Order ${o.id} cleaned items still too large (${finalStr.length} chars). Resetting.`);
+              o.items = [];
             }
           } catch (e) {
             console.error(`[ORDERS] Error checking order ${o.id} items:`, e);
@@ -629,72 +667,49 @@
           minute: '2-digit'
         });
 
-        // Parse items if it's a string (from database)
+        // Parse items if it's a string (from database) - items should already be cleaned by pre-validation
         let items;
         try {
-          items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
-          if (!Array.isArray(items)) {
-            console.warn(`[ORDERS] Order ${o.id} items is not an array:`, items);
-            items = [];
-          }
+          // Items should already be cleaned by the pre-validation loop above
+          // But we do a final safety check here
+          items = Array.isArray(o.items) ? o.items : [];
           
-          // Safety check: limit items array size to prevent massive HTML
-          if (items.length > 100) {
-            console.error(`[ORDERS] Order ${o.id} has suspiciously large items array (${items.length} items). Limiting to first 100.`);
-            items = items.slice(0, 100);
-          }
-          
-          // Clean and validate each item to prevent corruption
-          items = items.map((item, idx) => {
-            try {
-              // Ensure item is an object
-              if (!item || typeof item !== 'object') {
-                return null;
-              }
-              
-              // Extract only safe, simple properties
-              const cleanItem = {
-                id: item.id || idx + 1,
-                name: String(item.name || 'Unknown Item').substring(0, 100), // Limit name to 100 chars
-                qty: Number(item.qty || 1),
-                price: Number(item.price || 0)
-              };
-              
-              // Validate numbers are reasonable
-              if (isNaN(cleanItem.qty) || cleanItem.qty < 1 || cleanItem.qty > 1000) {
-                cleanItem.qty = 1;
-              }
-              if (isNaN(cleanItem.price) || cleanItem.price < 0 || cleanItem.price > 100000) {
-                cleanItem.price = 0;
-              }
-              
-              // Check if cleaned item is too large when stringified
-              const itemStr = JSON.stringify(cleanItem);
-              if (itemStr.length > 500) { // Each item should be < 500 chars
-                console.error(`[ORDERS] Order ${o.id} item ${idx} is too large (${itemStr.length} chars). Truncating.`);
-                cleanItem.name = cleanItem.name.substring(0, 50);
-              }
-              
-              return cleanItem;
-            } catch (itemError) {
-              console.error(`[ORDERS] Error cleaning item ${idx} in order ${o.id}:`, itemError);
-              return null;
-            }
-          }).filter(item => item !== null); // Remove null items
-          
-          // Additional safety: check if items data is corrupted (nested arrays, circular refs, etc.)
-          const itemsStr = JSON.stringify(items);
-          if (itemsStr.length > 50000) { // 50KB limit per order's items (reduced from 100KB)
-            console.error(`[ORDERS] Order ${o.id} items data is still too large after cleaning (${itemsStr.length} chars). Resetting items.`);
-            items = [];
-          }
-          
-          // Final limit: max 50 items for display
+          // Final safety: ensure items array is reasonable
           if (items.length > 50) {
             items = items.slice(0, 50);
           }
+          
+          // Double-check each item one more time
+          items = items.map((item, idx) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+              return null;
+            }
+            
+            // Extract only safe properties with strict limits
+            const cleanItem = {
+              id: item.id || idx + 1,
+              name: String(item.name || 'Unknown Item').substring(0, 50), // Max 50 chars
+              qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
+              price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
+            };
+            
+            // Final size check
+            const itemStr = JSON.stringify(cleanItem);
+            if (itemStr.length > 200) {
+              return null; // Skip oversized items
+            }
+            
+            return cleanItem;
+          }).filter(item => item !== null);
+          
+          // Final validation: total items size
+          const itemsStr = JSON.stringify(items);
+          if (itemsStr.length > 5000) { // Max 5KB
+            console.error(`[ORDERS] Order ${o.id} items still too large after final cleaning (${itemsStr.length} chars). Resetting.`);
+            items = [];
+          }
         } catch (e) {
-          console.error(`[ORDERS] Error parsing items for order ${o.id}:`, e, o.items);
+          console.error(`[ORDERS] Error parsing items for order ${o.id}:`, e);
           items = [];
         }
 
@@ -734,15 +749,15 @@
 
             <div class="order-items">
               <strong>📋 Items:</strong><br>
-              ${items.length > 0 ? items.map(it => {
-                // Double-check item is valid before rendering
-                if (!it || typeof it !== 'object') return '';
-                const itemName = escapeHtml(String(it.name || 'Unknown Item').substring(0, 100));
-                const itemQty = Number(it.qty || 1);
-                const itemPrice = Number(it.price || 0);
+              ${items.length > 0 ? items.slice(0, 50).map(it => {
+                // Triple-check item is valid before rendering
+                if (!it || typeof it !== 'object' || Array.isArray(it)) return '';
+                const itemName = escapeHtml(String(it.name || 'Unknown Item').substring(0, 50));
+                const itemQty = parseInt(it.qty) || 1;
+                const itemPrice = parseFloat(it.price) || 0;
                 // Ensure values are safe
-                const safeQty = isNaN(itemQty) || itemQty < 1 ? 1 : Math.min(itemQty, 1000);
-                const safePrice = isNaN(itemPrice) || itemPrice < 0 ? 0 : Math.min(itemPrice, 100000);
+                const safeQty = Math.max(1, Math.min(1000, itemQty));
+                const safePrice = Math.max(0, Math.min(100000, itemPrice));
                 return `• ${itemName} × ${safeQty} (₱${(safePrice * safeQty).toFixed(2)})`;
               }).filter(html => html !== '').join('<br>') : 'No items'}
             </div>
@@ -840,8 +855,8 @@
           `;
         } else {
           // Safety check: prevent setting extremely large HTML (likely a bug)
-          // Normal order HTML should be < 10KB per order, so 1MB is more than enough for 100 orders
-          if (ordersHTML.length > 1000000) { // 1MB limit (reduced from 10MB)
+          // Normal order HTML should be < 10KB per order, so 500KB is more than enough for 50 orders
+          if (ordersHTML.length > 500000) { // 500KB limit (very strict)
             console.error(`[ORDERS] Generated HTML is suspiciously large (${ordersHTML.length} chars = ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB). This indicates corrupted order data.`);
             // Log order data for debugging
             if (filteredOrders.length > 0) {
@@ -861,7 +876,7 @@
               <div style="color: red; padding: 20px; text-align: center; border: 2px solid red; border-radius: 8px; background: #ffe6e6; margin: 20px;">
                 <strong style="font-size: 1.2rem;">⚠️ Error: Order data is corrupted</strong>
                 <p style="margin: 10px 0;">One or more orders contain corrupted item data that would cause the page to crash.</p>
-                <p style="margin: 10px 0; font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px;">HTML size: ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB (expected: &lt; 0.1 MB)</p>
+                <p style="margin: 10px 0; font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px;">HTML size: ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB (expected: &lt; 0.5 MB)</p>
                 <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Please check the browser console for details about the corrupted order.</p>
                 <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                   <button onclick="fixCorruptedOrders()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600;">🔧 Fix Corrupted Orders</button>
