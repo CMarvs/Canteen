@@ -56,30 +56,15 @@
       <textarea id="delAddress" name="delAddress" placeholder="Block, Building (Inside the Main Campus)"></textarea>
 
       <h4 style="margin-top:16px;">💳 Payment Method</h4>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; transition: all 0.3s;" 
-               onmouseover="this.style.borderColor='#8B4513'; this.style.background='#fff8f1';" 
-               onmouseout="if(!this.querySelector('input').checked) {this.style.borderColor='#ddd'; this.style.background='';}">
-          <input type="radio" name="paymentMethod" value="cod" id="paymentCOD" checked style="margin: 0;">
-          <span style="font-size: 1.2rem;">💵</span>
-          <span><strong>Cash on Delivery</strong></span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; transition: all 0.3s;" 
-               onmouseover="this.style.borderColor='#8B4513'; this.style.background='#fff8f1';" 
-               onmouseout="if(!this.querySelector('input').checked) {this.style.borderColor='#ddd'; this.style.background='';}">
-          <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" style="margin: 0;">
+      <div style="margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer;">
+          <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" checked style="margin: 0;">
           <span style="font-size: 1.2rem;">📱</span>
           <span><strong>GCash</strong></span>
         </label>
       </div>
-      <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: none;">
-        <div id="codDetails" style="display: block;">
-          <p style="font-size: 0.9rem; color: #666; margin: 0; line-height: 1.6;">
-            💵 <strong>Cash on Delivery (COD)</strong><br>
-            Pay with cash when your order is delivered. No online payment required.
-          </p>
-        </div>
-        <div id="gcashDetails" style="display: none;">
+      <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: block;">
+        <div id="gcashDetails">
           <label class="input-label" for="gcashNumber">GCash Mobile Number</label>
           <input type="tel" id="gcashNumber" name="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
                  oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
@@ -374,57 +359,24 @@
       }
     }
     
-    // Handle payment method selection
+    // Handle payment method selection (GCash only now)
     function setupPaymentMethodHandlers() {
-      const paymentMethods = document.querySelectorAll('input[name="paymentMethod"]');
       const paymentDetails = document.getElementById('paymentDetails');
-      const codDetails = document.getElementById('codDetails');
       const gcashDetails = document.getElementById('gcashDetails');
       
-      if (!paymentMethods.length || !paymentDetails || !codDetails || !gcashDetails) {
+      if (!paymentDetails || !gcashDetails) {
         console.warn('Payment method elements not found');
         return;
       }
       
-      paymentMethods.forEach(method => {
-        method.addEventListener('change', () => {
-          if (method.value === 'cod') {
-            if (codDetails) codDetails.style.display = 'block';
-            if (gcashDetails) gcashDetails.style.display = 'none';
-            if (paymentDetails) paymentDetails.style.display = 'block';
-          } else if (method.value === 'gcash') {
-            if (codDetails) codDetails.style.display = 'none';
-            if (gcashDetails) gcashDetails.style.display = 'block';
-            if (paymentDetails) paymentDetails.style.display = 'block';
-          }
-          
-          // Update label styles
-          document.querySelectorAll('label[for^="payment"]').forEach(label => {
-            const input = label.querySelector('input');
-            if (input && label) {
-              if (input.checked) {
-                label.style.borderColor = '#8B4513';
-                label.style.background = '#fff8f1';
-              } else {
-                label.style.borderColor = '#ddd';
-                label.style.background = '';
-              }
-            }
-          });
-        });
-      });
+      // GCash is the only option, always show it
+      if (gcashDetails) gcashDetails.style.display = 'block';
+      if (paymentDetails) paymentDetails.style.display = 'block';
       
-      // Initialize with COD selected
-      const paymentCOD = document.getElementById('paymentCOD');
-      const codLabel = document.querySelector('label[for="paymentCOD"]');
-      
-      if (paymentCOD && paymentCOD.checked && codDetails && paymentDetails) {
-        codDetails.style.display = 'block';
-        paymentDetails.style.display = 'block';
-        if (codLabel) {
-          codLabel.style.borderColor = '#8B4513';
-          codLabel.style.background = '#fff8f1';
-        }
+      // Ensure GCash is selected
+      const paymentGCash = document.getElementById('paymentGCash');
+      if (paymentGCash) {
+        paymentGCash.checked = true;
       }
     }
     
@@ -535,14 +487,16 @@
         return;
       }
       
-      // Validate payment details
-      if (paymentMethod === 'gcash') {
-        const gcashNumber = document.getElementById('gcashNumber').value.replace(/\D/g, '');
-        if (!gcashNumber || gcashNumber.length !== 11) {
-          alert('Please enter a valid GCash mobile number (11 digits).');
-          document.getElementById('gcashNumber').focus();
-          return;
-        }
+      // Validate payment details (GCash only)
+      if (paymentMethod !== 'gcash') {
+        alert('Please select GCash as your payment method.');
+        return;
+      }
+      const gcashNumber = document.getElementById('gcashNumber').value.replace(/\D/g, '');
+      if (!gcashNumber || gcashNumber.length !== 11) {
+        alert('Please enter a valid GCash mobile number (11 digits).');
+        document.getElementById('gcashNumber').focus();
+        return;
       }
       
       // Update contact to digits only
@@ -563,7 +517,7 @@
       }
       const grand = subtotal + DELIVERY_FEE;
       
-      const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'GCash';
+      const paymentMethodName = 'GCash';
       if(!confirm(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`)) return;
       
       placeOrder(name, validContact, address, paymentMethod);

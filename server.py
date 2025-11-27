@@ -643,20 +643,16 @@ async def register(request: Request):
             # First user becomes admin and is automatically approved
             user_role = 'admin'
             is_approved = True
-            id_proof = data.get("id_proof")  # Optional for first admin
-            selfie_proof = data.get("selfie_proof")  # Optional for first admin
             message = "Admin account created successfully! You can now login."
         else:
             # Subsequent users need approval
             user_role = 'user'
             is_approved = False
-            id_proof = data.get("id_proof")
-            selfie_proof = data.get("selfie_proof")
-            if not id_proof:
-                raise HTTPException(400, "ID proof is required for registration")
-            if not selfie_proof:
-                raise HTTPException(400, "Selfie proof is required for registration")
             message = "User registered successfully. Account pending admin approval."
+        
+        # ID proof and selfie proof are no longer required
+        id_proof = None
+        selfie_proof = None
         
         cur.execute(
             "INSERT INTO users(name,email,password,role,id_proof,selfie_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s,%s)",

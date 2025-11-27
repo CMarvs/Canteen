@@ -673,70 +673,18 @@ async function placeOrder(name, contact, address, paymentMethod){
   const subtotal = calcSubtotal();
   const total = subtotal + DELIVERY_FEE;
 
-  // Get payment details
-  let paymentDetails = {};
-  if (paymentMethod === 'cod') {
-    // COD doesn't need payment details
-    paymentDetails = {};
-  } else if (paymentMethod === 'gcash') {
-    paymentDetails = {
-      gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
-      // Payment proof will be uploaded in the GCash payment modal
-    };
+  // Get payment details (GCash only)
+  if (paymentMethod !== 'gcash') {
+    alert('Please select GCash as your payment method.');
+    return;
   }
+  
+  let paymentDetails = {
+    gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
+    // Payment proof will be uploaded in the GCash payment modal
+  };
 
   try {
-    // For COD, create order immediately (payment on delivery)
-    if (paymentMethod === 'cod') {
-      // Create the order for COD
-      const orderData = {
-        user_id: cur.id,
-        fullname: name.trim(),
-        contact: contactDigits,
-        location: address.trim(),
-        items: cart,
-        total: total,
-        payment_method: paymentMethod,
-        payment_status: 'paid' // COD is automatically paid
-      };
-      
-      const orderResponse = await fetch(`${API_BASE}/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData)
-      });
-
-      if(!orderResponse.ok) {
-        const errorData = await orderResponse.json();
-        alert(errorData.detail || 'Order placement failed');
-        return;
-      }
-      // COD orders are automatically marked as paid
-      // Clear cart and show success
-      saveCart([]);
-      
-      // Clear form fields
-      const delName = document.getElementById('delName');
-      const delContact = document.getElementById('delContact');
-      const delAddress = document.getElementById('delAddress');
-      if(delName) delName.value = '';
-      if(delContact) delContact.value = '';
-      if(delAddress) delAddress.value = '';
-      
-      // Re-render cart
-      if(typeof renderCart === 'function') {
-        renderCart();
-      }
-      
-      alert(`✅ Order placed successfully!\n\nPayment: Cash on Delivery (COD)\n\nPlease prepare cash payment when your order is delivered.`);
-      
-      // Redirect to orders page
-      setTimeout(() => {
-        location.href = 'orders.html?t=' + Date.now();
-      }, 300);
-      return;
-    }
-
     // For GCash, prepare order data but DON'T create order yet
     // Order will be created only after payment proof is uploaded and "Payment Sent" is clicked
     const pendingOrderData = {
@@ -1594,8 +1542,8 @@ function orderCardHtmlForUser(o){
   // Get payment information
   const paymentMethod = o.payment_method || 'cash';
   const paymentStatus = o.payment_status || 'pending';
-  const paymentMethodIcon = paymentMethod === 'cod' ? '💵' : paymentMethod === 'gcash' ? '📱' : '💵';
-  const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+  const paymentMethodIcon = paymentMethod === 'gcash' ? '📱' : '💵';
+  const paymentMethodName = paymentMethod === 'gcash' ? 'GCash' : 'Cash';
   const paymentStatusBadge = paymentStatus === 'paid' ? 
     '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
     paymentStatus === 'failed' ?

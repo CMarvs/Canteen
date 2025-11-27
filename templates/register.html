@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Version: 2.0 - Includes Selfie Proof -->
+<!-- Version: 2.1 - Simplified Registration (No Proof Required) -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -14,65 +14,58 @@
 <body>
   <div class="auth-wrap">
     <div class="auth-card card">
-      <h2 class="headline center">🍴 Create Account</h2>
+      <h2 class="headline center">🍴 Create your Account</h2>
 
       <label class="input-label">Full name</label>
-      <input id="regName" type="text" placeholder="">
+      <input id="regName" type="text" placeholder="Enter your full name">
 
       <label class="input-label">Email</label>
       <input id="regEmail" type="email" placeholder="you@example.com">
 
       <label class="input-label">Password</label>
       <div class="password-row">
-        <input id="regPass" type="password" placeholder="Password (min 4 chars)">
-        <button type="button" onclick="togglePasswordVisibility('regPass', 'regPassToggle')" id="regPassToggle" title="Show password">👁️</button>
+        <input id="regPass" type="password" placeholder="Enter your password (min 4 chars)">
+        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('regPass', 'regPassToggle')" id="regPassToggle" title="Show password">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
       </div>
 
       <label class="input-label">Confirm Password</label>
       <div class="password-row">
-        <input id="regConfirmPass" type="password" placeholder="Re-enter password">
-        <button type="button" onclick="togglePasswordVisibility('regConfirmPass', 'regConfirmPassToggle')" id="regConfirmPassToggle" title="Show password">👁️</button>
+        <input id="regConfirmPass" type="password" placeholder="Re-enter your password">
+        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('regConfirmPass', 'regConfirmPassToggle')" id="regConfirmPassToggle" title="Show password">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
       </div>
 
-      <label class="input-label" style="margin-top:16px;">📷 ID Proof (Required for account verification)</label>
-      <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
-        <div id="idProofPreview" style="display: none; margin-bottom: 12px;">
-          <img id="idProofImage" src="" alt="ID Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8b4513;">
-          <div style="margin-top: 8px;">
-            <button type="button" class="btn small ghost" onclick="clearIdProof()">Remove Photo</button>
-          </div>
-        </div>
-        <div id="idProofCapture" style="display: block;">
-          <input type="file" id="idProofFile" accept="image/*" capture="environment" style="display: none;" onchange="handleIdProofCapture(event)">
-          <button type="button" class="btn small" onclick="document.getElementById('idProofFile').click()">
-            📷 Take Photo / Upload ID
-          </button>
-          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
-            Upload a photo of your ID for account verification. Your account will be reviewed by admin.
-          </p>
-        </div>
+      <!-- Consent Checkboxes -->
+      <div class="consent-section">
+        <label class="consent-checkbox">
+          <input type="checkbox" id="consentPromotions" required>
+          <span class="checkmark"></span>
+          <span class="consent-text">I would like to receive announcements and promotions from RML Canteen.</span>
+        </label>
+
+        <label class="consent-checkbox">
+          <input type="checkbox" id="consentPrivacy" required>
+          <span class="checkmark"></span>
+          <span class="consent-text">I consent to the use and processing of my personal information for Customer Relationship Management purposes. I am aware of my data privacy rights including the option to withdraw my consent at any time.</span>
+        </label>
+
+        <label class="consent-checkbox">
+          <input type="checkbox" id="consentTerms" required>
+          <span class="checkmark"></span>
+          <span class="consent-text">I have fully read, understood, and agree to the <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Data Privacy Policy</a> and <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Terms & Conditions</a> of RML Canteen.</span>
+        </label>
       </div>
 
-      <label class="input-label" style="margin-top:16px;">🤳 Selfie Proof (Required for identity verification)</label>
-      <div style="border: 2px dashed #ddd; border-radius: 8px; padding: 16px; text-align: center; background: #f9f9f9;">
-        <div id="selfieProofPreview" style="display: none; margin-bottom: 12px;">
-          <img id="selfieProofImage" src="" alt="Selfie Proof" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #2196F3;">
-          <div style="margin-top: 8px;">
-            <button type="button" class="btn small ghost" onclick="clearSelfieProof()">Remove Photo</button>
-          </div>
-        </div>
-        <div id="selfieProofCapture" style="display: block;">
-          <input type="file" id="selfieProofFile" accept="image/*" capture="user" style="display: none;" onchange="handleSelfieProofCapture(event)">
-          <button type="button" class="btn small" onclick="document.getElementById('selfieProofFile').click()">
-            🤳 Take Selfie
-          </button>
-          <p style="font-size: 0.85rem; color: var(--muted); margin-top: 8px;">
-            Take a selfie to verify your identity. Admin will compare this with your ID proof.
-          </p>
-        </div>
-      </div>
-
-      <button class="btn mt-8" onclick="registerUser()">Register</button>
+      <button class="btn btn-primary-large mt-8" onclick="registerUser()">Create your Account</button>
       <p class="center mt-4 muted" style="font-size: 0.85rem;" id="regMessage">
         ⏳ Your account will be reviewed by admin before you can login.
       </p>
@@ -83,21 +76,65 @@
     </div>
   </div>
 
+  <!-- Terms Modal -->
+  <div id="termsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close-modal" onclick="closeTermsModal()">&times;</span>
+      <h3>Terms & Conditions / Data Privacy Policy</h3>
+      <div class="modal-body">
+        <p><strong>Data Privacy Policy:</strong></p>
+        <p>RML Canteen respects your privacy. We collect and process your personal information solely for the purpose of managing your account, processing orders, and providing customer service. Your data will not be shared with third parties without your consent.</p>
+        <p>You have the right to access, correct, or delete your personal information at any time. You may withdraw your consent by contacting us.</p>
+        <p><strong>Terms & Conditions:</strong></p>
+        <p>By creating an account, you agree to use the service responsibly and in accordance with our policies. Orders are subject to availability and delivery terms. We reserve the right to suspend accounts that violate our terms of service.</p>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/script.js"></script>
   <script>
     function togglePasswordVisibility(inputId, buttonId){
       const input = document.getElementById(inputId);
       const button = document.getElementById(buttonId);
       if(input && button) {
+        const svg = button.querySelector('svg');
         if(input.type === 'password') {
           input.type = 'text';
-          button.textContent = '🙈';
           button.title = 'Hide password';
+          // Change to eye-slash icon
+          if(svg) {
+            svg.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+          }
         } else {
           input.type = 'password';
-          button.textContent = '👁️';
           button.title = 'Show password';
+          // Change back to eye icon
+          if(svg) {
+            svg.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+          }
         }
+      }
+    }
+
+    function showTermsModal() {
+      const modal = document.getElementById('termsModal');
+      if(modal) {
+        modal.style.display = 'block';
+      }
+    }
+
+    function closeTermsModal() {
+      const modal = document.getElementById('termsModal');
+      if(modal) {
+        modal.style.display = 'none';
+      }
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('termsModal');
+      if (event.target == modal) {
+        closeTermsModal();
       }
     }
 
@@ -128,76 +165,7 @@
       }
     });
 
-    let idProofBase64 = null;
-    let selfieProofBase64 = null;
-
-    function handleIdProofCapture(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        idProofBase64 = e.target.result;
-        document.getElementById('idProofImage').src = idProofBase64;
-        document.getElementById('idProofPreview').style.display = 'block';
-        document.getElementById('idProofCapture').style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function clearIdProof() {
-      idProofBase64 = null;
-      document.getElementById('idProofFile').value = '';
-      document.getElementById('idProofPreview').style.display = 'none';
-      document.getElementById('idProofCapture').style.display = 'block';
-    }
-
-    function handleSelfieProofCapture(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        selfieProofBase64 = e.target.result;
-        document.getElementById('selfieProofImage').src = selfieProofBase64;
-        document.getElementById('selfieProofPreview').style.display = 'block';
-        document.getElementById('selfieProofCapture').style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function clearSelfieProof() {
-      selfieProofBase64 = null;
-      document.getElementById('selfieProofFile').value = '';
-      document.getElementById('selfieProofPreview').style.display = 'none';
-      document.getElementById('selfieProofCapture').style.display = 'block';
-    }
-
-    // Override registerUser to include ID proof
+    // Override registerUser
     const originalRegisterUser = window.registerUser;
     window.registerUser = async function() {
       const name = (document.getElementById('regName')?.value || '').trim();
@@ -217,15 +185,21 @@
         return alert('❌ Passwords do not match! Please try again.');
       }
 
-      // Check if this is first user (no ID proof required)
-      // For subsequent users, ID proof is required
-      let requiresIdProof = true;
+      // Check consent checkboxes
+      const consentPromotions = document.getElementById('consentPromotions');
+      const consentPrivacy = document.getElementById('consentPrivacy');
+      const consentTerms = document.getElementById('consentTerms');
+
+      if (!consentPromotions.checked || !consentPrivacy.checked || !consentTerms.checked) {
+        return alert('Please accept all terms and conditions to continue.');
+      }
+
+      // Check if this is first user (becomes admin)
       let isFirstUser = false;
       try {
         const checkResponse = await fetch('/users');
         const existingUsers = await checkResponse.json();
         if (existingUsers.length === 0) {
-          requiresIdProof = false; // First user doesn't need ID proof
           isFirstUser = true;
           // Update message
           const msgEl = document.getElementById('regMessage');
@@ -235,16 +209,7 @@
           }
         }
       } catch(e) {
-        // If we can't check, assume ID proof is required
         console.log('Could not check existing users:', e);
-      }
-
-      if (requiresIdProof && !idProofBase64) {
-        return alert('Please upload an ID proof photo for account verification.');
-      }
-
-      if (requiresIdProof && !selfieProofBase64) {
-        return alert('Please take a selfie for identity verification.');
       }
 
       try {
@@ -254,9 +219,7 @@
           body: JSON.stringify({ 
             name, 
             email, 
-            password: pass, 
-            id_proof: idProofBase64 || null,
-            selfie_proof: selfieProofBase64 || null
+            password: pass
           })
         });
 
@@ -264,7 +227,7 @@
         
         if(response.ok) {
           // Check if this was the first user (admin)
-          if (!requiresIdProof) {
+          if (isFirstUser) {
             alert('✅ Admin account created successfully! You can now login.');
           } else {
             alert('✅ Registration successful! Your account is pending admin approval. You will be notified once approved.');
