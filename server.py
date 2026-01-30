@@ -649,9 +649,31 @@ async def register(request: Request):
             is_approved = False
             message = "User registered successfully. Account pending admin approval."
         
-        # ID proof and selfie proof are no longer required
-        id_proof = None
-        selfie_proof = None
+        # Get ID proof and selfie proof from request (optional for first user/admin)
+        id_proof = data.get("id_proof")  # Base64 encoded image
+        selfie_proof = data.get("selfie_proof")  # Base64 encoded image
+        
+        # Validate image format if provided
+        if id_proof and not isinstance(id_proof, str):
+            raise HTTPException(400, "Invalid ID proof format")
+        if selfie_proof and not isinstance(selfie_proof, str):
+            raise HTTPException(400, "Invalid selfie proof format")
+        
+        # Validate base64 image format
+        if id_proof and not id_proof.startswith(('data:image/', 'data:image/jpeg', 'data:image/png', 'data:image/gif', 'data:image/webp')):
+            raise HTTPException(400, "Invalid ID proof image format. Only JPEG, PNG, GIF, and WebP are supported")
+        if selfie_proof and not selfie_proof.startswith(('data:image/', 'data:image/jpeg', 'data:image/png', 'data:image/gif', 'data:image/webp')):
+            raise HTTPException(400, "Invalid selfie proof image format. Only JPEG, PNG, GIF, and WebP are supported")
+        
+        # Check image size (base64 is ~33% larger than binary, so 5MB binary = ~6.7MB base64)
+        if id_proof and len(id_proof) > 7 * 1024 * 1024:  # 7MB base64 = ~5MB binary
+            raise HTTPException(400, "ID proof image size exceeds 5MB limit. Please compress the image.")
+        if selfie_proof and len(selfie_proof) > 7 * 1024 * 1024:  # 7MB base64 = ~5MB binary
+            raise HTTPException(400, "Selfie proof image size exceeds 5MB limit. Please compress the image.")
+        
+        # For non-admin users, proofs are required (unless it's the first user)
+        if not is_first_user and (not id_proof or not selfie_proof):
+            raise HTTPException(400, "ID proof and selfie proof are required for registration")
         
         cur.execute(
             "INSERT INTO users(name,email,password,role,id_proof,selfie_proof,is_approved) VALUES(%s,%s,%s,%s,%s,%s,%s)",

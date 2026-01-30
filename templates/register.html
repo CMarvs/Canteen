@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Version: 2.1 - Simplified Registration (No Proof Required) -->
+<!-- Version: 2.2 - Registration with ID Proof and Selfie Proof -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -44,6 +44,42 @@
         </button>
       </div>
 
+      <label class="input-label">📷 ID Proof (Required)</label>
+      <input type="file" id="regIdProof" accept="image/*" capture="environment" style="display: none;">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <button type="button" class="btn" onclick="document.getElementById('regIdProof').click()" style="flex: 1; padding: 10px;">
+          📷 Upload ID Proof
+        </button>
+        <button type="button" class="btn" onclick="document.getElementById('regIdProof').click()" style="flex: 1; padding: 10px;">
+          📸 Take Photo
+        </button>
+      </div>
+      <div id="idProofPreview" style="display: none; margin-top: 8px;">
+        <img id="idProofImage" src="" alt="ID Proof Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8B4513;">
+        <button type="button" class="btn ghost" onclick="clearIdProof()" style="margin-top: 8px; width: 100%;">Remove ID Proof</button>
+      </div>
+      <p style="font-size: 0.85rem; color: #666; margin-top: 4px;">
+        💡 Upload a clear photo of your valid ID (Student ID, Driver's License, etc.)
+      </p>
+
+      <label class="input-label" style="margin-top: 16px;">🤳 Selfie Proof (Required)</label>
+      <input type="file" id="regSelfieProof" accept="image/*" capture="user" style="display: none;">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <button type="button" class="btn" onclick="document.getElementById('regSelfieProof').click()" style="flex: 1; padding: 10px;">
+          📷 Upload Selfie
+        </button>
+        <button type="button" class="btn" onclick="document.getElementById('regSelfieProof').click()" style="flex: 1; padding: 10px;">
+          📸 Take Selfie
+        </button>
+      </div>
+      <div id="selfieProofPreview" style="display: none; margin-top: 8px;">
+        <img id="selfieProofImage" src="" alt="Selfie Proof Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #2196F3;">
+        <button type="button" class="btn ghost" onclick="clearSelfieProof()" style="margin-top: 8px; width: 100%;">Remove Selfie</button>
+      </div>
+      <p style="font-size: 0.85rem; color: #666; margin-top: 4px;">
+        💡 Take a selfie holding your ID next to your face for verification
+      </p>
+
       <!-- Consent Checkboxes -->
       <div class="consent-section">
         <label class="consent-checkbox">
@@ -62,17 +98,6 @@
           <input type="checkbox" id="consentTerms" required>
           <span class="checkmark"></span>
           <span class="consent-text">I have fully read, understood, and agree to the <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Data Privacy Policy</a> and <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Terms & Conditions</a> of RML Canteen.</span>
-        </label>
-      </div>
-
-      <!-- Legal Agreement Checkbox - Prominent and Binding -->
-      <div class="legal-agreement-section" style="margin: 24px 0; padding: 16px; background: #f8f9fa; border: 2px solid var(--primary); border-radius: 8px;">
-        <label class="legal-agreement-checkbox" style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
-          <input type="checkbox" id="legalAgreement" required style="margin-top: 4px; width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary);">
-          <span style="font-size: 14px; line-height: 1.6; color: var(--text); flex: 1;">
-            <strong style="color: var(--primary);">I AGREE TO THE TERMS & CONDITIONS AND PRIVACY POLICY</strong><br>
-            <span style="color: #666; font-size: 13px;">By checking this box, I acknowledge that I have read, understood, and agree to be legally bound by RML Canteen's <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Terms & Conditions</a> and <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Data Privacy Policy</a>, including but not limited to: payment terms, delivery procedures, mandatory delivery photo requirements, refund policies, and all other terms stated therein. I understand that this agreement is legally binding and enforceable.</span>
-          </span>
         </label>
       </div>
 
@@ -206,9 +231,10 @@
             msgEl.innerHTML = '👑 You will be the first admin! No approval needed.';
             msgEl.style.color = '#4caf50';
           }
-          // Make ID proof and selfie optional - update label text
-          const labels = document.querySelectorAll('.input-label');
-          labels.forEach(label => {
+          // Make ID proof and selfie optional for first admin - update label text
+          const idProofLabel = document.querySelector('label[for="regIdProof"], .input-label');
+          const selfieProofLabel = document.querySelectorAll('.input-label');
+          selfieProofLabel.forEach(label => {
             if (label.textContent.includes('ID Proof')) {
               label.innerHTML = '📷 ID Proof (Optional for first admin)';
             }
@@ -221,6 +247,90 @@
         console.log('Could not check existing users:', e);
       }
     });
+
+    // Store base64 images
+    let idProofBase64 = null;
+    let selfieProofBase64 = null;
+
+    // Handle ID Proof file selection
+    document.getElementById('regIdProof').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        idProofBase64 = e.target.result;
+        const preview = document.getElementById('idProofPreview');
+        const image = document.getElementById('idProofImage');
+        if (preview && image) {
+          image.src = idProofBase64;
+          preview.style.display = 'block';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Handle Selfie Proof file selection
+    document.getElementById('regSelfieProof').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        selfieProofBase64 = e.target.result;
+        const preview = document.getElementById('selfieProofPreview');
+        const image = document.getElementById('selfieProofImage');
+        if (preview && image) {
+          image.src = selfieProofBase64;
+          preview.style.display = 'block';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Clear ID Proof
+    function clearIdProof() {
+      idProofBase64 = null;
+      document.getElementById('regIdProof').value = '';
+      document.getElementById('idProofPreview').style.display = 'none';
+      document.getElementById('idProofImage').src = '';
+    }
+
+    // Clear Selfie Proof
+    function clearSelfieProof() {
+      selfieProofBase64 = null;
+      document.getElementById('regSelfieProof').value = '';
+      document.getElementById('selfieProofPreview').style.display = 'none';
+      document.getElementById('selfieProofImage').src = '';
+    }
+
+    // Make functions global
+    window.clearIdProof = clearIdProof;
+    window.clearSelfieProof = clearSelfieProof;
 
     // Override registerUser
     const originalRegisterUser = window.registerUser;
@@ -242,37 +352,35 @@
         return alert('❌ Passwords do not match! Please try again.');
       }
 
-      // Check consent checkboxes
-      const consentPromotions = document.getElementById('consentPromotions');
-      const consentPrivacy = document.getElementById('consentPrivacy');
-      const consentTerms = document.getElementById('consentTerms');
-
-        if (!consentPromotions.checked || !consentPrivacy.checked || !consentTerms.checked) {
-          return alert('Please accept all terms and conditions to continue.');
-        }
-        
-        // Check legal agreement checkbox
-        const legalAgreement = document.getElementById('legalAgreement');
-        if (!legalAgreement || !legalAgreement.checked) {
-          return alert('You must agree to the Terms & Conditions and Privacy Policy to create an account. Please check the agreement box and review the terms if needed.');
-        }
-
-      // Check if this is first user (becomes admin)
+      // Check if this is first user (becomes admin - proofs optional)
       let isFirstUser = false;
       try {
         const checkResponse = await fetch('/users');
         const existingUsers = await checkResponse.json();
         if (existingUsers.length === 0) {
           isFirstUser = true;
-          // Update message
-          const msgEl = document.getElementById('regMessage');
-          if (msgEl) {
-            msgEl.innerHTML = '👑 You will be the first admin! No approval needed.';
-            msgEl.style.color = '#4caf50';
-          }
         }
       } catch(e) {
         console.log('Could not check existing users:', e);
+      }
+
+      // Validate proof requirements (not required for first user/admin)
+      if (!isFirstUser) {
+        if (!idProofBase64) {
+          return alert('Please upload your ID Proof.');
+        }
+        if (!selfieProofBase64) {
+          return alert('Please upload your Selfie Proof.');
+        }
+      }
+
+      // Check consent checkboxes
+      const consentPromotions = document.getElementById('consentPromotions');
+      const consentPrivacy = document.getElementById('consentPrivacy');
+      const consentTerms = document.getElementById('consentTerms');
+
+      if (!consentPromotions.checked || !consentPrivacy.checked || !consentTerms.checked) {
+        return alert('Please accept all terms and conditions to continue.');
       }
 
       try {
@@ -282,7 +390,9 @@
           body: JSON.stringify({ 
             name, 
             email, 
-            password: pass
+            password: pass,
+            id_proof: idProofBase64 || null,
+            selfie_proof: selfieProofBase64 || null
           })
         });
 
