@@ -65,6 +65,17 @@
         </label>
       </div>
 
+      <!-- Legal Agreement Checkbox - Prominent and Binding -->
+      <div class="legal-agreement-section" style="margin: 24px 0; padding: 16px; background: #f8f9fa; border: 2px solid var(--primary); border-radius: 8px;">
+        <label class="legal-agreement-checkbox" style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+          <input type="checkbox" id="legalAgreement" required style="margin-top: 4px; width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary);">
+          <span style="font-size: 14px; line-height: 1.6; color: var(--text); flex: 1;">
+            <strong style="color: var(--primary);">I AGREE TO THE TERMS & CONDITIONS AND PRIVACY POLICY</strong><br>
+            <span style="color: #666; font-size: 13px;">By checking this box, I acknowledge that I have read, understood, and agree to be legally bound by RML Canteen's <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Terms & Conditions</a> and <a href="#" onclick="showTermsModal(); return false;" class="consent-link">Data Privacy Policy</a>, including but not limited to: payment terms, delivery procedures, mandatory delivery photo requirements, refund policies, and all other terms stated therein. I understand that this agreement is legally binding and enforceable.</span>
+          </span>
+        </label>
+      </div>
+
       <button class="btn btn-primary-large mt-8" onclick="registerUser()">Create your Account</button>
       <p class="center mt-4 muted" style="font-size: 0.85rem;" id="regMessage">
         ⏳ Your account will be reviewed by admin before you can login.
@@ -236,9 +247,15 @@
       const consentPrivacy = document.getElementById('consentPrivacy');
       const consentTerms = document.getElementById('consentTerms');
 
-      if (!consentPromotions.checked || !consentPrivacy.checked || !consentTerms.checked) {
-        return alert('Please accept all terms and conditions to continue.');
-      }
+        if (!consentPromotions.checked || !consentPrivacy.checked || !consentTerms.checked) {
+          return alert('Please accept all terms and conditions to continue.');
+        }
+        
+        // Check legal agreement checkbox
+        const legalAgreement = document.getElementById('legalAgreement');
+        if (!legalAgreement || !legalAgreement.checked) {
+          return alert('You must agree to the Terms & Conditions and Privacy Policy to create an account. Please check the agreement box and review the terms if needed.');
+        }
 
       // Check if this is first user (becomes admin)
       let isFirstUser = false;

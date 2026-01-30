@@ -455,7 +455,6 @@ try:
     # Don't fail server startup if database is temporarily unavailable
     try:
         ensure_users_table_exists()
-        ensure_users_table_exists()
         ensure_menu_table_exists()
         ensure_chat_table_exists()
         ensure_ratings_table_exists()

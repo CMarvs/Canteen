@@ -673,80 +673,53 @@ async function placeOrder(name, contact, address, paymentMethod){
   const subtotal = calcSubtotal();
   const total = subtotal + DELIVERY_FEE;
 
-  // Get payment details (GCash only)
-  if (paymentMethod !== 'gcash') {
-    alert('Please select GCash as your payment method.');
-    return;
-  }
+  // Get payment details based on payment method
+  let paymentDetails = {};
   
-  let paymentDetails = {
-    gcashNumber: document.getElementById('gcashNumber').value.replace(/\D/g, '')
-    // Payment proof will be uploaded in the GCash payment modal
-  };
+  if (paymentMethod === 'gcash') {
+    const gcashNumber = document.getElementById('gcashNumber')?.value.replace(/\D/g, '');
+    if (!gcashNumber || gcashNumber.length !== 11) {
+      alert('Please enter a valid GCash mobile number (11 digits).');
+      return;
+    }
+    paymentDetails = {
+      gcashNumber: gcashNumber
+      // Payment proof will be uploaded in the GCash payment modal
+    };
+  } else if (paymentMethod === 'cod') {
+    // COD doesn't need payment details
+    paymentDetails = {};
+  }
 
   try {
-    // For GCash, prepare order data but DON'T create order yet
-    // Order will be created only after payment proof is uploaded and "Payment Sent" is clicked
-    const pendingOrderData = {
-      user_id: cur.id,
-      fullname: name.trim(),
-      contact: contactDigits,
-      location: address.trim(),
-      items: cart,
-      total: total,
-      payment_method: paymentMethod,
-      payment_status: 'pending',
-      payment_details: paymentDetails
-    };
-    
-    // Process payment for GCash (get payment info, but don't create order yet)
-    let paymentResponse;
-    let paymentData;
-    
-    try {
-      // Get payment processing info (reference number, etc.) without creating order
-      paymentResponse = await fetch(`${API_BASE}/payment/process`, {
+    // Handle COD payment - create order immediately and mark as paid
+    if (paymentMethod === 'cod') {
+      const orderData = {
+        user_id: cur.id,
+        fullname: name.trim(),
+        contact: contactDigits,
+        location: address.trim(),
+        items: cart,
+        total: total,
+        payment_method: 'cod',
+        payment_status: 'paid',
+        payment_details: paymentDetails
+      };
+
+      // Create order directly
+      const orderResponse = await fetch(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: null, // No order ID yet - order not created
-          payment_method: paymentMethod,
-          amount: total,
-          payment_details: paymentDetails
-        })
+        body: JSON.stringify(orderData)
       });
-      
-      if (!paymentResponse.ok) {
-        const errorData = await paymentResponse.json().catch(() => ({ detail: 'Payment processing failed' }));
-        throw new Error(errorData.detail || `Payment failed: ${paymentResponse.status}`);
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json().catch(() => ({ detail: 'Order creation failed' }));
+        throw new Error(errorData.detail || `Order failed: ${orderResponse.status}`);
       }
+
+      const orderResult = await orderResponse.json();
       
-      paymentData = await paymentResponse.json();
-    } catch (paymentError) {
-      console.error('Payment processing error:', paymentError);
-      alert(`⚠️ Payment Error: ${paymentError.message || 'Failed to process payment. Please try again.'}`);
-      return;
-    }
-
-    // Handle direct GCash transfer (show payment instructions)
-    if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
-      // Store pending order data in paymentData so modal can create order later
-      paymentData.pendingOrderData = pendingOrderData;
-      // Show payment modal with instructions (order will be created when user confirms payment)
-      showGCashPaymentModal(paymentData);
-      return;
-    }
-
-    // Handle payment that requires action (GCash redirect)
-    if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
-      // Show message and redirect to GCash payment page
-      if(confirm(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
-        window.location.href = paymentData.redirect_url;
-      }
-      return;
-    }
-
-    if(paymentResponse.ok && paymentData.success) {
       // Clear cart
       saveCart([]);
       
@@ -758,37 +731,128 @@ async function placeOrder(name, contact, address, paymentMethod){
       if(delContact) delContact.value = '';
       if(delAddress) delAddress.value = '';
       
-      // Clear payment fields
-      if (paymentMethod === 'gcash') {
-        document.getElementById('gcashNumber').value = '';
-      }
-      
       // Re-render cart
       if(typeof renderCart === 'function') {
         renderCart();
       }
       
       // Show success message
-      const paymentMethodName = 'GCash';
-      const statusMessage = paymentData.status === 'pending' ? 
-        'Payment request sent. Please confirm in your GCash app.' : 
-        'Payment successful!';
-      
-      alert(`✅ ${statusMessage}\n\nOrder placed successfully!`);
+      alert(`✅ Order placed successfully!\n\nPayment Method: Cash on Delivery\nPayment will be collected upon delivery.\n\nOrder ID: ${orderResult.id || 'N/A'}`);
       
       // Redirect to orders page
       setTimeout(() => {
         location.href = 'orders.html?t=' + Date.now();
       }, 300);
-    } else {
-      // Payment failed - order is created but payment pending
-      const errorMsg = paymentData.message || paymentData.detail || 'Payment processing failed';
-      alert(`⚠️ Payment Issue: ${errorMsg}\n\nYour order has been placed but payment is pending. Please complete the payment or contact support.`);
+      return;
+    }
+
+    // Handle GCash payment
+    if (paymentMethod === 'gcash') {
+      // For GCash, prepare order data but DON'T create order yet
+      // Order will be created only after payment proof is uploaded and "Payment Sent" is clicked
+      const pendingOrderData = {
+        user_id: cur.id,
+        fullname: name.trim(),
+        contact: contactDigits,
+        location: address.trim(),
+        items: cart,
+        total: total,
+        payment_method: paymentMethod,
+        payment_status: 'pending',
+        payment_details: paymentDetails
+      };
       
-      // Still redirect to orders page
-      setTimeout(() => {
-        location.href = 'orders.html?t=' + Date.now();
-      }, 500);
+      // Process payment for GCash (get payment info, but don't create order yet)
+      let paymentResponse;
+      let paymentData;
+      
+      try {
+        // Get payment processing info (reference number, etc.) without creating order
+        paymentResponse = await fetch(`${API_BASE}/payment/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_id: null, // No order ID yet - order not created
+            payment_method: paymentMethod,
+            amount: total,
+            payment_details: paymentDetails
+          })
+        });
+        
+        if (!paymentResponse.ok) {
+          const errorData = await paymentResponse.json().catch(() => ({ detail: 'Payment processing failed' }));
+          throw new Error(errorData.detail || `Payment failed: ${paymentResponse.status}`);
+        }
+        
+        paymentData = await paymentResponse.json();
+      } catch (paymentError) {
+        console.error('Payment processing error:', paymentError);
+        alert(`⚠️ Payment Error: ${paymentError.message || 'Failed to process payment. Please try again.'}`);
+        return;
+      }
+
+      // Handle direct GCash transfer (show payment instructions)
+      if(paymentResponse.ok && paymentData.payment_type === 'direct_gcash') {
+        // Store pending order data in paymentData so modal can create order later
+        paymentData.pendingOrderData = pendingOrderData;
+        // Show payment modal with instructions (order will be created when user confirms payment)
+        showGCashPaymentModal(paymentData);
+        return;
+      }
+
+      // Handle payment that requires action (GCash redirect)
+      if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
+        // Show message and redirect to GCash payment page
+        if(confirm(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
+          window.location.href = paymentData.redirect_url;
+        }
+        return;
+      }
+
+      if(paymentResponse.ok && paymentData.success) {
+        // Clear cart
+        saveCart([]);
+        
+        // Clear form fields
+        const delName = document.getElementById('delName');
+        const delContact = document.getElementById('delContact');
+        const delAddress = document.getElementById('delAddress');
+        if(delName) delName.value = '';
+        if(delContact) delContact.value = '';
+        if(delAddress) delAddress.value = '';
+        
+        // Clear payment fields
+        if (paymentMethod === 'gcash') {
+          document.getElementById('gcashNumber').value = '';
+        }
+        
+        // Re-render cart
+        if(typeof renderCart === 'function') {
+          renderCart();
+        }
+        
+        // Show success message
+        const paymentMethodName = 'GCash';
+        const statusMessage = paymentData.status === 'pending' ? 
+          'Payment request sent. Please confirm in your GCash app.' : 
+          'Payment successful!';
+        
+        alert(`✅ ${statusMessage}\n\nOrder placed successfully!`);
+        
+        // Redirect to orders page
+        setTimeout(() => {
+          location.href = 'orders.html?t=' + Date.now();
+        }, 300);
+      } else {
+        // Payment failed - order is created but payment pending
+        const errorMsg = paymentData.message || paymentData.detail || 'Payment processing failed';
+        alert(`⚠️ Payment Issue: ${errorMsg}\n\nYour order has been placed but payment is pending. Please complete the payment or contact support.`);
+        
+        // Still redirect to orders page
+        setTimeout(() => {
+          location.href = 'orders.html?t=' + Date.now();
+        }, 500);
+      }
     }
   } catch(error) {
     console.error('Order placement error:', error);
