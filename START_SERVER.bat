@@ -1,7 +1,7 @@
 @echo off
 cls
 echo ========================================
-echo   🍽️ RMLCanteen Server Starting...
+echo   🍽️ Online Canteen Server Starting...
 echo ========================================
 echo.
 echo 🌐 Server will run at: http://localhost:8000

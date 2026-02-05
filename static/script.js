@@ -1,4 +1,4 @@
-/* ===== RMLCanteen — API-Connected Version =====
+/* ===== Online Canteen — API-Connected Version =====
    - Uses FastAPI backend with NeonDB PostgreSQL
    - Admin account: admin@canteen / admin123
    - Version: 2.1 - Performance optimized, syntax fixed

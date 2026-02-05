@@ -2,7 +2,7 @@
 
 ## ✅ **STATUS: FULLY CONNECTED TO NEONDB**
 
-Your RMLCanteen application is now **100% integrated** with PostgreSQL database!
+Your Online Canteen application is now **100% integrated** with PostgreSQL database!
 
 ---
 
@@ -254,7 +254,7 @@ Your integration is successful if:
 
 ## 🎊 **CONGRATULATIONS!**
 
-Your RMLCanteen is now a **fully functional, database-backed food ordering system**!
+Your Online Canteen system is now a **fully functional, database-backed food ordering system**!
 
 All user data, orders, and order status updates are now permanently stored in PostgreSQL and accessible from anywhere.
 

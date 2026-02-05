@@ -1,8 +1,8 @@
-# 🧪 Testing Guide - RMLCanteen Database Integration
+# 🧪 Testing Guide - Online Canteen Database Integration
 
 ## ✅ **Database Connection Status: COMPLETE**
 
-Your RMLCanteen application is now **fully connected** to NeonDB PostgreSQL!
+Your Online Canteen application is now **fully connected** to NeonDB PostgreSQL!
 
 ---
 

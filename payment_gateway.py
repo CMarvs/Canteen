@@ -57,7 +57,7 @@ def process_gcash_payment_paymongo(order_id: int, amount: float, gcash_number: s
                     "amount": int(amount * 100),  # Convert to centavos
                     "currency": "PHP",
                     "payment_method_allowed": ["gcash"],
-                    "description": f"Order #{order_id} - RMLCanteen",
+                    "description": f"Order #{order_id} - Online Canteen",
                     "metadata": {
                         "order_id": str(order_id),
                         "customer_name": order_details.get("customer_name", ""),
@@ -251,7 +251,7 @@ def process_gcash_direct(order_id: int, amount: float, gcash_number: str, order_
             "amount": amount,
             "currency": "PHP",
             "mobile_number": gcash_number,
-            "description": f"Order #{order_id} - RMLCanteen",
+            "description": f"Order #{order_id} - Online Canteen",
             "reference_number": f"ORDER_{order_id}",
             "callback_url": order_details.get("callback_url", ""),
             "metadata": {

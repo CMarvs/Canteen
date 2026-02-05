@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database Setup Script for RMLCanteen
+Database Setup Script for Online Canteen
 This script will:
 1. Create all necessary database tables
 2. Create initial admin and user accounts
@@ -239,9 +239,9 @@ def create_initial_accounts(conn):
     print("\n[SUCCESS] Account setup complete!\n")
 
 def main():
-    """Main setup function"""
+"""Main setup function"""
     print("=" * 60)
-    print("RMLCanteen Database Setup")
+    print("Online Canteen Database Setup")
     print("=" * 60)
     print()
     

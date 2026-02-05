@@ -8,7 +8,7 @@ import os
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Starting RMLCanteen Server")
+    print("Starting Online Canteen Server")
     print("=" * 60)
     print()
     print("Server will start at: http://127.0.0.1:8000")
