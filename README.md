@@ -1,4 +1,4 @@
-# 🍽️ RMLCanteen - Food Ordering System
+# 🍽️ Online Canteen - Food Ordering System
 
 A full-stack food ordering system with FastAPI backend and NeonDB PostgreSQL database.
 
@@ -175,9 +175,9 @@ The application is fully responsive and works on:
 ## 📞 Support
 
 For issues or questions:
-- FB Page: RML Canteen Delivery
+- FB Page: Online Canteen Delivery
 - Contact: 09097444885
-- Email: RMLCanteen@gmail.com
+- Email: OnlineCanteen@gmail.com
 
 ## 📜 License
 
@@ -185,5 +185,5 @@ See LICENSE file for details.
 
 ---
 
-**Enjoy your RMLCanteen ordering system!** 🍽️✨
+**Enjoy your Online Canteen ordering system!** 🍽️✨
 
