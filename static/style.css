@@ -412,6 +412,48 @@ input:focus, textarea:focus, select:focus {
 .link { color:var(--primary); text-decoration:none; }
 .link:hover { text-decoration:underline; }
 
+/* Brand logo (plate with fork & spoon) */
+.app-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.app-logo-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff8f0;
+  box-shadow: 0 0 12px rgba(139, 69, 19, 0.15);
+}
+
+.app-logo-plate {
+  font-size: 26px;
+}
+
+.app-logo-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-logo-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--primary);
+}
+
+.app-logo-subtitle {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 /* responsive - Mobile First Approach */
 @media (max-width: 480px) {
   /* Small phones */

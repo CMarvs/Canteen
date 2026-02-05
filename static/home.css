@@ -7,6 +7,10 @@
   animation: fadeIn 1s ease-in;
 }
 
+.home-logo {
+  margin-bottom: 1.5rem;
+}
+
 .home-container h1 {
   color: #7b4b17;
   font-size: 2.5rem;
@@ -36,16 +40,6 @@
 .home-btn:hover {
   background-color: #a46a2e;
   transform: scale(1.05);
-}
-
-.coffee-emoji {
-  font-size: 3rem;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
 }
 
 @keyframes fadeIn {
