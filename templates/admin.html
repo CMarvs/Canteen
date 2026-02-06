@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin Dashboard — RML Canteen</title>
+  <title>Admin Dashboard — Online Canteen</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/admin.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🍽️ RML Canteen Admin</div>
+    <div class="brand">🍽️ Online Canteen Admin</div>
     <nav class="nav">
       <a href="#" onclick="handleLogout(event)">🚪 Logout</a>
     </nav>
@@ -1748,7 +1748,7 @@
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Order Receipt</title>
-          <title>Order #${sequentialNumber} - RML Canteen</title>
+          <title>Order #${sequentialNumber} - Online Canteen</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
             h1 { color: #8B4513; }
@@ -1758,7 +1758,7 @@
           </style>
         </head>
         <body>
-          <h1>🍽️ RML Canteen - Order Receipt</h1>
+          <h1>🍽️ Online Canteen - Order Receipt</h1>
           <div class="info"><strong>Order #:</strong> ${sequentialNumber}</div>
           <div class="info"><strong>Date:</strong> ${new Date(order.created_at || Date.now()).toLocaleString()}</div>
           <div class="info"><strong>Status:</strong> ${order.status}</div>
