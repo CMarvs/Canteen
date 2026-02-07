@@ -16,7 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_menu_category ON menu_items(category);
 CREATE INDEX IF NOT EXISTS idx_menu_available ON menu_items(is_available);
 
 -- Optional: Insert some sample menu items
-INSERT INTO menu_items (name, price, category, is_available) VALUES
+INSERT INTO menu_items (name, price, category, is_available, image_url) VALUES
 ('Budget Meal A (Chicken Teriyaki + Rice)', 50.00, 'budget', true,'/static/images/budget-meal-a.jpg'),
 ('Budget Meal B (Pork fillet + Rice)', 50.00, 'budget', true, '/static/images/budget-meal-b.jpg'),
 ('Budget Meal C (Burger Steak + Rice)', 50.00, 'budget', true, '/static/images/budget-meal-c.jpg'),
