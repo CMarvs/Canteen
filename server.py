@@ -10,8 +10,7 @@ from psycopg2 import errors as psycopg2_errors
 from decimal import Decimal
 from datetime import datetime, date
 import os
-from mock_gcash import mock_gcash 
-import httpx
+from mock_gcash import mock_gcash
 
 app = FastAPI()
 
