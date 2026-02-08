@@ -1925,6 +1925,7 @@ async def add_menu_item(request: Request):
         category = data.get("category", "foods")
         is_available = data.get("is_available", True)
         quantity = data.get("quantity", 0)
+        image_url = data.get("image_url")  # Optional image URL
         if quantity is None:
             quantity = 0
         
@@ -1935,8 +1936,22 @@ async def add_menu_item(request: Request):
         
         # Build INSERT statement based on available columns
         has_quantity = 'quantity' in existing_columns
+        has_image_url = 'image_url' in existing_columns
         
-        if has_quantity:
+        if has_quantity and has_image_url:
+            cur.execute("""
+                INSERT INTO menu_items (name, price, category, is_available, quantity, image_url)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING *
+            """, (
+                name.strip(),
+                price,
+                category,
+                is_available,
+                quantity,
+                image_url
+            ))
+        elif has_quantity:
             cur.execute("""
                 INSERT INTO menu_items (name, price, category, is_available, quantity)
                 VALUES (%s, %s, %s, %s, %s)
@@ -1978,17 +1993,43 @@ async def add_menu_item(request: Request):
             # Retry with new connection
             conn = get_db_connection()
             cur = conn.cursor()
+            
+            # Get columns again after table creation
             cur.execute("""
-                INSERT INTO menu_items (name, price, category, is_available, quantity)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING *
-            """, (
-                data.get("name"),
-                data.get("price"),
-                data.get("category", "foods"),
-                data.get("is_available", True),
-                data.get("quantity", 0) or 0
-            ))
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'menu_items'
+            """)
+            existing_columns = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+            
+            image_url = data.get("image_url")
+            has_image_url = 'image_url' in existing_columns
+            
+            if has_image_url:
+                cur.execute("""
+                    INSERT INTO menu_items (name, price, category, is_available, quantity, image_url)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    data.get("name"),
+                    data.get("price"),
+                    data.get("category", "foods"),
+                    data.get("is_available", True),
+                    data.get("quantity", 0) or 0,
+                    image_url
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO menu_items (name, price, category, is_available, quantity)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    data.get("name"),
+                    data.get("price"),
+                    data.get("category", "foods"),
+                    data.get("is_available", True),
+                    data.get("quantity", 0) or 0
+                ))
             conn.commit()
             result = cur.fetchone()
             conn.close()
@@ -2025,22 +2066,48 @@ async def add_menu_item(request: Request):
                     except:
                         pass
                     conn.close()
-                # Add quantity column if missing
+                # Add missing columns
                 ensure_menu_table_exists()  # This should add missing columns
                 # Retry insert
                 conn = get_db_connection()
                 cur = conn.cursor()
+                
+                # Check which columns are available
                 cur.execute("""
-                    INSERT INTO menu_items (name, price, category, is_available, quantity)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING *
-                """, (
-                    name.strip(),
-                    price,
-                    category,
-                    is_available,
-                    quantity
-                ))
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'menu_items'
+                """)
+                available_cols = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+                
+                image_url = data.get("image_url")
+                has_image = 'image_url' in available_cols
+                
+                if has_image:
+                    cur.execute("""
+                        INSERT INTO menu_items (name, price, category, is_available, quantity, image_url)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING *
+                    """, (
+                        name.strip(),
+                        price,
+                        category,
+                        is_available,
+                        quantity,
+                        image_url
+                    ))
+                else:
+                    cur.execute("""
+                        INSERT INTO menu_items (name, price, category, is_available, quantity)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING *
+                    """, (
+                        name.strip(),
+                        price,
+                        category,
+                        is_available,
+                        quantity
+                    ))
                 conn.commit()
                 result = cur.fetchone()
                 conn.close()
@@ -2072,17 +2139,43 @@ async def add_menu_item(request: Request):
                 # Retry with new connection
                 conn = get_db_connection()
                 cur = conn.cursor()
+                
+                # Check which columns are available
                 cur.execute("""
-                    INSERT INTO menu_items (name, price, category, is_available, quantity)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING *
-                """, (
-                    name.strip(),
-                    price,
-                    category,
-                    is_available,
-                    quantity
-                ))
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'menu_items'
+                """)
+                available_cols = [row.get('column_name') if isinstance(row, dict) else row[0] for row in cur.fetchall()]
+                
+                image_url = data.get("image_url")
+                has_image = 'image_url' in available_cols
+                
+                if has_image:
+                    cur.execute("""
+                        INSERT INTO menu_items (name, price, category, is_available, quantity, image_url)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING *
+                    """, (
+                        name.strip(),
+                        price,
+                        category,
+                        is_available,
+                        quantity,
+                        image_url
+                    ))
+                else:
+                    cur.execute("""
+                        INSERT INTO menu_items (name, price, category, is_available, quantity)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING *
+                    """, (
+                        name.strip(),
+                        price,
+                        category,
+                        is_available,
+                        quantity
+                    ))
                 conn.commit()
                 result = cur.fetchone()
                 conn.close()
