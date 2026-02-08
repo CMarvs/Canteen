@@ -2107,7 +2107,7 @@
                       <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1; min-width: 120px;">
                         ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
                       </button>
-                      <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity})">Edit</button>
+                      <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity}, ${JSON.stringify(item.image_url || '')})">Edit</button>
                       <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
                     </div>
                   </div>
@@ -2207,6 +2207,8 @@
           document.getElementById('newItemName').value = '';
           document.getElementById('newItemPrice').value = '';
           document.getElementById('newItemQuantity').value = '0';
+          document.getElementById('newItemImage').value = '';
+          document.getElementById('imageUploadStatus').innerHTML = '';
           window.currentUploadedImageUrl = null; // Clear uploaded image
           await renderAdminMenuList();
         } else {
@@ -2289,13 +2291,18 @@
         
         if (result.image_url) {
           window.currentUploadedImageUrl = result.image_url;
-          statusDiv.innerHTML = `<div style="color: #4caf50; font-weight: 600;">✅ Image uploaded! Ready to add item with this image.</div>`;
+          // Show image preview immediately
+          const previewHtml = `
+            <div style="display: flex; align-items: center; gap: 15px; padding: 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 8px;">
+              <img src="/${result.image_url}" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;">
+              <div>
+                <div style="color: #2e7d32; font-weight: 600;">✅ Image uploaded!</div>
+                <div style="color: #555; font-size: 0.9rem; margin-top: 4px;">Ready to add item with this image. It will appear immediately after you click "Add Item".</div>
+              </div>
+            </div>
+          `;
+          statusDiv.innerHTML = previewHtml;
           fileInput.value = ''; // Clear file input
-          
-          // Auto-clear status after 5 seconds
-          setTimeout(() => {
-            statusDiv.innerHTML = '';
-          }, 5000);
         } else {
           throw new Error('No image URL returned from server');
         }
@@ -2305,36 +2312,183 @@
       }
     }
 
-    async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity) {
-      const name = prompt('Enter new name:', currentName);
-      if (name === null) return;
+    async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity, currentImageUrl) {
+      // Create a modal for editing
+      const editModal = document.createElement('div');
+      editModal.id = `editModal_${id}`;
+      editModal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); display: flex; align-items: center;
+        justify-content: center; z-index: 5000;
+      `;
       
-      const priceStr = prompt('Enter new price:', currentPrice);
-      if (priceStr === null) return;
-      const price = parseFloat(priceStr);
+      editModal.innerHTML = `
+        <div style="background: white; border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+          <h2 style="margin: 0 0 25px 0; color: #333;">✏️ Edit Menu Item</h2>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Item Name</label>
+            <input type="text" id="editName_${id}" value="${currentName}" placeholder="e.g., Chicken Adobo" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Price (₱)</label>
+            <input type="number" id="editPrice_${id}" value="${currentPrice}" min="0" step="0.01" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Category</label>
+            <select id="editCategory_${id}" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+              <option value="budget" ${currentCategory === 'budget' ? 'selected' : ''}>Budget Meals</option>
+              <option value="foods" ${currentCategory === 'foods' ? 'selected' : ''}>Foods</option>
+              <option value="drinks" ${currentCategory === 'drinks' ? 'selected' : ''}>Drinks</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Stock Quantity</label>
+            <input type="number" id="editQuantity_${id}" value="${currentQuantity || 0}" min="0" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">📸 Image (Optional)</label>
+            <input type="file" id="editImage_${id}" accept="image/jpeg,image/png" style="width: 100%; padding: 10px; border: 2px dashed #8B4513; border-radius: 8px; background: #fff8f1; margin-bottom: 12px; box-sizing: border-box;">
+            <div id="editImagePreview_${id}" style="display: none; margin-bottom: 12px; text-align: center;">
+              <img id="editImagePreviewImg_${id}" src="" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8B4513;">
+            </div>
+            <div style="text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 12px;">— OR —</div>
+            <input type="text" id="editImageUrl_${id}" value="${currentImageUrl || ''}" placeholder="e.g., static/images/menu_items/pizza.jpg" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+            <p style="font-size: 0.8rem; color: #999; margin: 8px 0 0 0;">Upload a new image or enter URL directly</p>
+          </div>
+
+          <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 12px 0; color: #333; font-size: 0.95rem;">📋 Summary of Changes</h3>
+            <div style="font-size: 0.9rem; color: #555;">
+              <div style="margin-bottom: 8px;"><strong>Name:</strong> <span id="summary_name_${id}">${currentName}</span></div>
+              <div style="margin-bottom: 8px;"><strong>Price:</strong> ₱<span id="summary_price_${id}">${currentPrice}</span></div>
+              <div style="margin-bottom: 8px;"><strong>Category:</strong> <span id="summary_cat_${id}">${currentCategory}</span></div>
+              <div><strong>Stock:</strong> <span id="summary_qty_${id}">${currentQuantity || 0}</span></div>
+            </div>
+          </div>
+          
+          <div style="display: flex; gap: 12px;">
+            <button onclick="saveEditMenuItem(${id})" style="flex: 1; padding: 12px; background: #8B4513; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem;">💾 Save Changes</button>
+            <button onclick="document.getElementById('editModal_${id}').remove()" style="flex: 1; padding: 12px; background: #ddd; color: #333; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem;">✕ Cancel</button>
+          </div>
+        </div>
+      `;
       
-      if (!name.trim() || !price || price <= 0) {
+      document.body.appendChild(editModal);
+      
+      // Update summary in real-time as user types
+      const updateSummary = () => {
+        const name = document.getElementById(`editName_${id}`)?.value?.trim() || currentName;
+        const price = document.getElementById(`editPrice_${id}`)?.value || currentPrice;
+        const category = document.getElementById(`editCategory_${id}`)?.value || currentCategory;
+        const quantity = document.getElementById(`editQuantity_${id}`)?.value || currentQuantity || 0;
+        
+        document.getElementById(`summary_name_${id}`).textContent = name;
+        document.getElementById(`summary_price_${id}`).textContent = price;
+        document.getElementById(`summary_cat_${id}`).textContent = category;
+        document.getElementById(`summary_qty_${id}`).textContent = quantity;
+      };
+      
+      document.getElementById(`editName_${id}`)?.addEventListener('input', updateSummary);
+      document.getElementById(`editPrice_${id}`)?.addEventListener('input', updateSummary);
+      document.getElementById(`editCategory_${id}`)?.addEventListener('change', updateSummary);
+      document.getElementById(`editQuantity_${id}`)?.addEventListener('input', updateSummary);
+      
+      // Handle image file preview
+      const imageFileInput = document.getElementById(`editImage_${id}`);
+      if (imageFileInput) {
+        imageFileInput.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          const previewDiv = document.getElementById(`editImagePreview_${id}`);
+          const previewImg = document.getElementById(`editImagePreviewImg_${id}`);
+          
+          if (file) {
+            // Show preview immediately
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              previewImg.src = event.target.result;
+              previewDiv.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            
+            // Auto-upload the image automatically
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              const uploadResp = await fetch('/upload-menu-image', {
+                method: 'POST',
+                body: formData
+              });
+              
+              if (uploadResp.ok) {
+                const uploadResult = await uploadResp.json();
+                // Auto-populate the image URL field with uploaded path
+                document.getElementById(`editImageUrl_${id}`).value = uploadResult.image_url;
+                console.log('Image auto-uploaded:', uploadResult.image_url);
+              } else {
+                console.error('Auto-upload failed');
+              }
+            } catch(error) {
+              console.error('Auto-upload error:', error);
+            }
+          } else {
+            previewDiv.style.display = 'none';
+          }
+        });
+      }
+      
+      // Close modal when clicking outside
+      editModal.addEventListener('click', (e) => {
+        if (e.target === editModal) editModal.remove();
+      });
+    }
+
+    async function saveEditMenuItem(id) {
+      const name = document.getElementById(`editName_${id}`)?.value?.trim();
+      const price = parseFloat(document.getElementById(`editPrice_${id}`)?.value);
+      const category = document.getElementById(`editCategory_${id}`)?.value;
+      const quantity = parseInt(document.getElementById(`editQuantity_${id}`)?.value || 0);
+      let imageUrl = document.getElementById(`editImageUrl_${id}`)?.value?.trim();
+      const imageFile = document.getElementById(`editImage_${id}`)?.files?.[0];
+
+      if (!name || !price || price <= 0) {
         return alert('Invalid name or price.');
       }
 
-      const category = prompt('Enter category (budget/foods/drinks):', currentCategory);
-      if (category === null) return;
-      
-      if (!['budget', 'foods', 'drinks'].includes(category)) {
-        return alert('Invalid category. Must be: budget, foods, or drinks');
-      }
-
-      const quantityStr = prompt('Enter stock quantity:', currentQuantity || 0);
-      if (quantityStr === null) return;
-      const quantity = parseInt(quantityStr) || 0;
-      
-      if (quantity < 0) {
-        return alert('Stock quantity cannot be negative.');
-      }
-
       try {
-        const updateData = { name: name.trim(), price, category, quantity };
-        
+        // If user selected a new image file, upload it first
+        if (imageFile) {
+          console.log('Uploading image file:', imageFile.name);
+          const formData = new FormData();
+          formData.append('file', imageFile);
+          const uploadResp = await fetch('/upload-menu-image', {
+            method: 'POST',
+            body: formData
+          });
+          console.log('Upload response status:', uploadResp.status);
+          
+          if (uploadResp.ok) {
+            const uploadResult = await uploadResp.json();
+            console.log('Upload result:', uploadResult);
+            imageUrl = uploadResult.image_url;
+            alert(`✅ Image uploaded: ${uploadResult.filename}`);
+          } else {
+            const errorText = await uploadResp.text();
+            console.error('Upload error response:', errorText);
+            throw new Error(`Upload failed with status ${uploadResp.status}`);
+          }
+        }
+
+        console.log('Saving menu item with imageUrl:', imageUrl);
+        const updateData = { name, price, category, quantity };
+        if (imageUrl) {
+          updateData.image_url = imageUrl;
+        }
+
         const response = await fetch(`/menu/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -2343,6 +2497,7 @@
 
         if (response.ok) {
           alert('✅ Menu item updated successfully!');
+          document.getElementById(`editModal_${id}`).remove();
           await renderAdminMenuList();
         } else {
           const errorData = await response.json();
