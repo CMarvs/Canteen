@@ -605,9 +605,18 @@ function itemCardHtml(i){
   const isOutOfStock = quantity === 0 || isSold;
   const stockBadgeStyle = `display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
   
+  let imageUrl = '/static/images/menu_items/default.jpg';
+  if (i.image_url) {
+    const url = String(i.image_url).trim();
+    imageUrl = url.startsWith('/') ? url : `/${url}`;
+  }
+  
   return `
-    <div class="item card ${isOutOfStock ? 'sold' : ''}">
-      <div>
+    <div class="item card ${isOutOfStock ? 'sold' : ''}" style="display: flex; flex-direction: column;">
+      <div style="width: 100%; height: 180px; overflow: hidden; border-radius: 8px; background: #f0f0f0; margin-bottom: 12px;">
+        <img src="${imageUrl}" alt="${i.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+      </div>
+      <div style="flex: 1;">
         <h4 style="margin:0 0 6px 0;">${i.name}</h4>
         <div class="muted" style="font-size: 1rem; margin-bottom: 6px;">₱${Number(i.price).toFixed(2)}</div>
         <div style="${stockBadgeStyle}">${stockText}</div>

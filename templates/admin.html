@@ -71,7 +71,7 @@
         <!-- Add New Item Form -->
         <div class="card" style="margin-bottom: 20px; background: #fff8f1;">
           <h3 style="margin-top: 0;">➕ Add New Menu Item</h3>
-          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
+          <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 12px; align-items: end; margin-bottom: 15px;">
             <div>
               <label class="input-label" for="newItemName">Item Name</label>
               <input type="text" id="newItemName" name="newItemName" placeholder="e.g., Chicken Adobo" style="width: 100%;">
@@ -89,10 +89,24 @@
               </select>
             </div>
             <div>
-              <label class="input-label" for="newItemQuantity">Stock Quantity</label>
+              <label class="input-label" for="newItemQuantity">Stock</label>
               <input type="number" id="newItemQuantity" name="newItemQuantity" placeholder="0" min="0" value="0" style="width: 100%;">
             </div>
-            <button class="btn" onclick="addMenuItem()" style="height: fit-content;">Add Item</button>
+            <button class="btn" onclick="addMenuItem()" style="height: fit-content; white-space: nowrap;">Add Item</button>
+          </div>
+          
+          <!-- Image Upload Section -->
+          <div style="border-top: 1px solid #ddd; padding-top: 15px;">
+            <h4 style="margin-top: 0;">📸 Add Photo for Item</h4>
+            <div style="display: flex; gap: 12px; align-items: end;">
+              <div style="flex: 1;">
+                <label class="input-label" for="newItemImage">Upload Image (JPG/PNG)</label>
+                <input type="file" id="newItemImage" name="newItemImage" accept="image/jpeg,image/png" style="width: 100%; padding: 10px; border: 2px dashed #8B4513; border-radius: 8px; background: #fff8f1;">
+                <p style="font-size: 0.85rem; color: #666; margin-top: 6px;">💡 Drag & drop or click to select. Images will be displayed as 180×180px in customer menu.</p>
+              </div>
+              <button type="button" class="btn" onclick="uploadItemImage()" style="height: fit-content; white-space: nowrap;">Upload Photo</button>
+            </div>
+            <div id="imageUploadStatus" style="margin-top: 10px;"></div>
           </div>
         </div>
         
@@ -2115,27 +2129,39 @@
             const stockStatus = quantity > 0 ? `📦 ${quantity} in stock` : '⚠️ Out of Stock';
             const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
             const stockBadgeStyle = `display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
+            
+            let imageUrl = '/static/images/menu_items/default.jpg';
+            if (item.image_url) {
+              const url = String(item.image_url).trim();
+              imageUrl = url.startsWith('/') ? url : `/${url}`;
+            }
+            
             return `
-              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
-                <div style="flex: 1;">
-                  <strong style="font-size: 1.1rem;">${escapeHtml(item.name || 'N/A')}</strong>
-                  <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
-                  <div style="${stockBadgeStyle}">${stockStatus}</div>
+              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; gap: 16px;">
+                <div style="width: 140px; height: 140px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #f0f0f0;">
+                  <img src="${imageUrl}" alt="${escapeHtml(item.name)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
-                  <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
-                    <label for="stock_${item.id}" class="sr-only">Stock quantity for ${escapeHtml(item.name || 'item')}</label>
-                    <input type="number" id="stock_${item.id}" name="stock_${item.id}" value="${quantity}" min="0" 
-                           style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
-                           onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
-                    <button class="btn small" onclick="updateStockQuantity(${item.id})" style="flex: 1;">Update Stock</button>
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                  <div>
+                    <strong style="font-size: 1.1rem;">${escapeHtml(item.name || 'N/A')}</strong>
+                    <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
+                    <div style="${stockBadgeStyle}">${stockStatus}</div>
                   </div>
-                  <div style="display: flex; gap: 6px; width: 100%;">
-                    <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1;">
-                      ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
-                    </button>
-                    <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity})" style="flex: 1;">Edit</button>
-                    <button class="btn delete small" onclick="deleteMenuItem(${item.id})" style="flex: 1;">Delete</button>
+                  <div style="margin-top: auto;">
+                    <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+                      <label for="stock_${item.id}" class="sr-only">Stock quantity</label>
+                      <input type="number" id="stock_${item.id}" value="${quantity}" min="0" 
+                             style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
+                             onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
+                      <button class="btn small" onclick="updateStockQuantity(${item.id})">Update Stock</button>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1; min-width: 120px;">
+                        ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
+                      </button>
+                      <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity})">Edit</button>
+                      <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2257,6 +2283,67 @@
       } catch(error) {
         console.error('Error adding menu item:', error);
         alert(`Failed to add menu item: ${error.message || 'Please check your connection and try again.'}`);
+      }
+    }
+
+    async function uploadItemImage() {
+      const fileInput = document.getElementById('newItemImage');
+      const statusDiv = document.getElementById('imageUploadStatus');
+      
+      if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select an image file first.</div>';
+        return;
+      }
+      
+      const file = fileInput.files[0];
+      
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select a valid image file (JPG or PNG).</div>';
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Image file is too large (max 5MB).</div>';
+        return;
+      }
+      
+      try {
+        statusDiv.innerHTML = '<div style="color: #2196F3; font-weight: 600;">⏳ Uploading image...</div>';
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/upload-menu-image', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Upload failed with status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.image_url) {
+          statusDiv.innerHTML = `<div style="color: #4caf50; font-weight: 600;">✅ Image uploaded successfully! File: ${result.image_url}</div>`;
+          fileInput.value = ''; // Clear file input
+          
+          // Store the image URL in a data attribute for the next item creation
+          document.getElementById('newItemImage').dataset.imageUrl = result.image_url;
+          
+          // Auto-clear status after 5 seconds
+          setTimeout(() => {
+            statusDiv.innerHTML = '';
+          }, 5000);
+        } else {
+          throw new Error('No image URL returned from server');
+        }
+      } catch(error) {
+        console.error('Image upload error:', error);
+        statusDiv.innerHTML = `<div style="color: #e74c3c; font-weight: 600;">❌ Upload failed: ${error.message}</div>`;
       }
     }
 

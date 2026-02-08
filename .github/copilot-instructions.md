@@ -68,25 +68,66 @@ This creates all tables and inserts default accounts (admin@canteen/admin123, us
 
 ## Project-Specific Conventions & Patterns
 
-### 1. Item Images
-- **Storage**: Images uploaded to `/static/images/menu_items/` directory
-- **Database field**: `image_url` in `menu_items` and stored in order items JSON
-- **Display**: Use `imageUrl ? `/${item.image_url}` : '/static/images/menu_items/default.jpg'` fallback
-- **In orders**: Items now display with 70×70px thumbnails between price and quantity/total
+### 1. Item Images - Complete System
+**Storage**: Images uploaded via admin panel to `/static/images/menu_items/` directory
+- Customers see **180×180px fixed frame** images in menu
+- Admin sees **140×140px fixed frame** images in management page
+- Cart/orders show **70×70px fixed frame** images
 
-### 2. Order Status Flow
+**Database field**: `image_url` in `menu_items` table stores relative path (`static/images/menu_items/filename.jpg`)
+
+**Display pattern**: 
+```javascript
+// Always use this URL construction pattern
+let imageUrl = '/static/images/menu_items/default.jpg';
+if (item.image_url) {
+  const url = String(item.image_url).trim();
+  imageUrl = url.startsWith('/') ? url : `/${url}`;
+}
+// Always add error handler for missing images
+<img src="${imageUrl}" onerror="this.src='/static/images/menu_items/default.jpg';">
+```
+
+**Admin Upload Flow**:
+1. Admin selects image in Menu Management "Add Photo" section
+2. Frontend calls `POST /upload-menu-image` with multipart/form-data
+3. Backend saves file to `/static/images/menu_items/` with timestamp-based unique name
+4. Returns JSON with `image_url` path for storage in database
+5. When adding menu item, `image_url` is stored in database via POST `/menu`
+
+**File size limits**: Max 5MB, JPEG/PNG only
+
+### 2. Menu Item Display in Customer View
+- **Function**: `itemCardHtml()` renders each menu item with **180×180px fixed-size image frame**
+- **Layout**: Image at top in container, name, price, stock badge, quantity/add-to-cart below
+- **Stock display**: Color-coded badge (green >10 in stock, orange <10, red out-of-stock)  
+- **Sold-out items**: Show "SOLD OUT" label instead of add-to-cart button
+
+### 3. Admin Menu Management Interface  
+New unified UI in admin.html with easy image upload:
+- **Add Item Section**: Grid inputs for Name, Price, Category, Stock (all visible at once)
+- **Add Photo Section**: Dedicated file upload field with drag-drop, preview, and upload button
+- **Upload endpoint**: `POST /upload-menu-image` with multipart/form-data
+  - Returns: `{ok: true, image_url: "static/images/menu_items/file_timestamp.jpg"}`
+  - Files saved with Unix timestamp to ensure uniqueness
+  - Constraints: JPG/PNG only, max 5MB
+- **Item Display**: Each menu item shows **140×140px image on left** + info/controls on right
+- **Stock Update**: Quick edit fields for each item without modal dialogs
+
+### 4. Order Status Flow
 Possible statuses: `Pending` → `Preparing` → `Out for Delivery` → `Delivered`
 - Admin updates via PUT `/orders/{oid}` with `{status: "new_status"}`
 - Users see "Edit" button only on Pending orders
 - Completed orders show "Rate Service" button
 
-### 3. Cart to Order Pipeline
-1. User adds items to localStorage cart via `addToCartById(id, qty)` - **now includes `image_url`**
-2. Cart rendered with images via `renderCart()` - shows thumbnail + price calculation
-3. User places order: cart items serialized as JSON string in `orders.items`
-4. Admin receives with full item details including images
+### 5. Cart to Order Pipeline
+1. User adds items via `addToCartById(id, qty)` - **includes `image_url` from menu_items**
+2. Cart displayed with **70×70px images**, quantity, and calculations
+3. User places order: cart items serialized as JSON → `orders.items` column
+4. Admin views orders with **70×70px thumbnails** in order detail
+5. Customer sees order history with **70×70px thumbnails** per item
 
-### 4. User Approval Workflow
+### 6. User Approval Workflow
 - New users start as `is_approved = FALSE`
 - Admin can approve via PUT `/users/{user_id}/approve`
 - User sees approval status in profile.html
@@ -191,4 +232,104 @@ ADMIN_GCASH_NUMBER=09947784922
 3. **New images?** Store in `/static/images/menu_items/`, reference in DB as relative path
 4. **New endpoint?** Add CORS handling if cross-origin needed; use `json_response()` helper for proper headers
 5. **Changes to items JSON?** Update `addToCartById()`, `orderCardHtmlForUser()`, and admin order rendering
+
+---
+
+## Image Upload System (Detailed)
+
+### Backend Endpoint: POST /upload-menu-image
+**Location**: [server.py](server.py#L1946)
+**Request**: multipart/form-data with file field
+**Response**: 
+```json
+{
+  "ok": true,
+  "image_url": "static/images/menu_items/pizza_1702541234567.jpg",
+  "filename": "pizza_1702541234567.jpg"
+}
+```
+**File validation**:
+- Content-Type: `image/jpeg` or `image/png` only
+- File size: ≤ 5MB (5242880 bytes)
+- Directory: `/static/images/menu_items/` auto-created if missing
+- Filename format: `{original_name}_{unix_timestamp_ms}.{ext}` to prevent collisions
+
+### Frontend Upload Function
+**Location**: [templates/admin.html](templates/admin.html#L66)
+**Function**: `uploadItemImage()`
+- Validates file type/size on client before upload
+- Shows upload status message (success/error) to admin
+- Returns `image_url` value for database storage
+
+### Image Display in Customer Menu
+**Function**: [itemCardHtml()](static/script.js#L604)
+- Displays **180×180px fixed-size image frame** at top of card
+- Uses `object-fit: cover` to fill frame without distortion
+- Includes `onerror` handler to fallback to default.jpg
+- Stock badge (green/orange/red) overlays bottom-right
+
+### Image Display in Admin Management  
+**Function**: [renderAdminMenuList()](templates/admin.html#L2049)
+- Shows **140×140px fixed-size image on left** side of item row
+- Right side displays: name, price, stock, action buttons (edit, delete, toggle availability)
+- Grid layout keeps UI compact and scannable
+
+### Image Display in Cart
+**Function**: [renderCart()](static/script.js#L770)
+- Shows **70×70px image thumbnail** on left
+- Right side: item name, quantity selector, price calculation
+- `flex-shrink: 0` prevents image distortion
+- Fallback for missing images automatic via onerror
+
+### Image Display in Order History
+**Function**: [orderCardHtmlForUser()](static/script.js#L880)
+- Shows **70×70px image thumbnail** for each item in order
+- Displays in flexible grid layout
+- Includes item name, quantity, and unit price
+- Order total shows below all items
+
+### URL Handling Across All Functions
+**Critical pattern** used everywhere images display:
+```javascript
+let imageUrl = '/static/images/menu_items/default.jpg';
+if (item.image_url) {
+  const url = String(item.image_url).trim();
+  // Handle both 'static/...' and '/static/...' formats
+  imageUrl = url.startsWith('/') ? url : `/${url}`;
+}
+// Use with error handler
+<img src="${imageUrl}" onerror="this.src='/static/images/menu_items/default.jpg';">
+```
+
+### Database Integration
+- **Table**: `menu_items`
+- **Column**: `image_url` (text/varchar)
+- **What's stored**: Relative path like `static/images/menu_items/pizza_1702541234567.jpg`
+- **When saving menu item**: POST `/menu` endpoint receives `image_url` from upload response
+- **When order placed**: `addToCartById()` includes item's `image_url` in cart object
+- **In orders table**: Each order's `items` JSON includes `image_url` for all items
+
+### Default Placeholder Image
+- **Location**: `/static/images/menu_items/default.jpg`
+- **Created by**: [create_default_image.py](create_default_image.py)
+- **Size**: 180×180px (works for all display contexts)
+- **What it shows**: Gray background with camera emoji (📷)
+- **Usage**: Automatic fallback when image URL is missing or 404s
+
+### Adding Images to Existing Menu Items
+1. Admin goes to admin.html → Menu Management section
+2. Clicks "📸 Add Photo for Item" file input
+3. Selects JPG/PNG file (max 5MB)
+4. Clicks "Upload Photo" button
+5. File uploads via POST /upload-menu-image
+6. Success message shows filename
+7. Creates new menu item with that image_url, OR
+8. Edit existing item and replace image_url field
+
+### Error Handling
+- **Missing image**: Displays default.jpg via onerror handler
+- **404 on image URL**: Caught by onerror handler
+- **Invalid file upload**: Backend returns 400 with error message
+- **File too large**: Frontend validates before upload (also backend enforces)
+- **Wrong file type**: Backend rejects with 400 Bad Request
 

@@ -1953,6 +1953,80 @@ async def add_menu_item(request: Request):
             except:
                 pass
 
+# --- Upload Menu Item Image ---
+@app.post("/upload-menu-image")
+async def upload_menu_image(request: Request):
+    """
+    Upload an image for a menu item
+    Expects multipart/form-data with 'file' field containing the image
+    Returns JSON with image_url path
+    """
+    try:
+        form = await request.form()
+        file = form.get('file')
+        
+        if not file:
+            raise HTTPException(400, "No file provided")
+        
+        # Validate file type
+        content_type = file.content_type
+        if content_type not in ['image/jpeg', 'image/png']:
+            raise HTTPException(400, "Only JPG and PNG images are allowed")
+        
+        # Create directory if it doesn't exist
+        image_dir = os.path.join(os.path.dirname(__file__), 'static', 'images', 'menu_items')
+        os.makedirs(image_dir, exist_ok=True)
+        
+        # Read file contents
+        contents = await file.read()
+        
+        # Limit file size (5MB)
+        if len(contents) > 5 * 1024 * 1024:
+            raise HTTPException(400, "File size exceeds 5MB limit")
+        
+        # Generate unique filename
+        import time
+        timestamp = int(time.time() * 1000)
+        # Keep original filename but add timestamp to make it unique
+        original_filename = file.filename
+        if original_filename:
+            # Remove any unsafe characters
+            safe_filename = "".join(c if c.isalnum() or c in '.-_' else '_' for c in original_filename)
+        else:
+            safe_filename = f"menu_{timestamp}.jpg"
+        
+        # Add timestamp to ensure uniqueness
+        name_parts = safe_filename.rsplit('.', 1)
+        if len(name_parts) == 2:
+            filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+        else:
+            filename = f"{safe_filename}_{timestamp}"
+        
+        # Save file
+        filepath = os.path.join(image_dir, filename)
+        with open(filepath, 'wb') as f:
+            f.write(contents)
+        
+        # Return relative path for storage in database
+        relative_path = f"static/images/menu_items/{filename}"
+        
+        print(f"[INFO] Menu image uploaded successfully: {relative_path}")
+        
+        return json_response({
+            "ok": True,
+            "message": "Image uploaded successfully",
+            "image_url": relative_path,
+            "filename": filename
+        })
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"[ERROR] Image upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to upload image: {str(e)}")
+
 # --- Menu Items: Update menu item (Admin only) ---
 @app.put("/menu/{item_id}")
 async def update_menu_item(item_id: int, request: Request):
