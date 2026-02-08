@@ -230,44 +230,27 @@
     function switchTab(tab) {
       console.log('[DEBUG] switchTab called with:', tab);
       
-      // Hide all sections
-      const allSections = document.querySelectorAll('.tab-content');
-      allSections.forEach(section => {
-        section.classList.remove('active');
-        section.style.display = 'none';
-      });
-      
-      // Remove active from all tab buttons
-      const allTabs = document.querySelectorAll('.tab-buttons button');
-      allTabs.forEach(btn => {
-        btn.classList.remove('active');
-      });
-      
-      // Show selected section and mark tab active
       try {
+        // Remove active from all sections and buttons
+        document.querySelectorAll('.tab-content').forEach(section => {
+          section.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-buttons button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // Show selected section and mark tab active
         if (tab === 'orders') {
           document.getElementById('tabOrders')?.classList.add('active');
-          const section = document.getElementById('ordersSection');
-          if (section) {
-            section.classList.add('active');
-            section.style.display = 'block';
-          }
+          document.getElementById('ordersSection')?.classList.add('active');
           renderAdminOrders();
         } else if (tab === 'chats') {
           document.getElementById('tabChats')?.classList.add('active');
-          const section = document.getElementById('chatsSection');
-          if (section) {
-            section.classList.add('active');
-            section.style.display = 'block';
-          }
+          document.getElementById('chatsSection')?.classList.add('active');
           renderAdminChats();
         } else if (tab === 'menu') {
           document.getElementById('tabMenu')?.classList.add('active');
-          const section = document.getElementById('menuSection');
-          if (section) {
-            section.classList.add('active');
-            section.style.display = 'block';
-          }
+          document.getElementById('menuSection')?.classList.add('active');
           console.log('[DEBUG] About to call renderAdminMenuList');
           if (typeof renderAdminMenuList === 'function') {
             renderAdminMenuList().catch(err => {
@@ -278,19 +261,11 @@
           }
         } else if (tab === 'users') {
           document.getElementById('tabUsers')?.classList.add('active');
-          const section = document.getElementById('usersSection');
-          if (section) {
-            section.classList.add('active');
-            section.style.display = 'block';
-          }
+          document.getElementById('usersSection')?.classList.add('active');
           renderAdminUsers();
         } else if (tab === 'ratings') {
           document.getElementById('tabRatings')?.classList.add('active');
-          const section = document.getElementById('ratingsSection');
-          if (section) {
-            section.classList.add('active');
-            section.style.display = 'block';
-          }
+          document.getElementById('ratingsSection')?.classList.add('active');
           renderAdminRatings();
           startRatingsPolling();
         }
@@ -2376,11 +2351,6 @@
       } catch(error) {
         console.error('Error updating menu item:', error);
         alert(`Failed to update item: ${error.message}`);
-      }
-    }
-      } catch(error) {
-        console.error('Error updating menu item:', error);
-        alert('Failed to update menu item. Please try again.');
       }
     }
 
