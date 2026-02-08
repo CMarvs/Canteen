@@ -228,102 +228,75 @@
 
     /* -------- Tab Switching -------- */
     function switchTab(tab) {
-      // Smooth tab transition with fade effect
-      const tabs = ['tabOrders', 'tabChats', 'tabMenu', 'tabUsers', 'tabRatings'];
-      const sections = ['ordersSection', 'chatsSection', 'menuSection', 'usersSection', 'ratingsSection'];
+      console.log('[DEBUG] switchTab called with:', tab);
       
-      // Fade out current active section
-      sections.forEach(sectionId => {
-        const el = document.getElementById(sectionId);
-        if (el && el.classList.contains('active')) {
-          el.style.opacity = '0';
-          el.style.transition = 'opacity 0.15s ease-out';
-          setTimeout(() => {
-            el.classList.remove('active');
-          }, 150);
-        }
+      // Hide all sections
+      const allSections = document.querySelectorAll('.tab-content');
+      allSections.forEach(section => {
+        section.classList.remove('active');
+        section.style.display = 'none';
       });
       
-      // Update tab buttons immediately for instant feedback
-      tabs.forEach(tabId => {
-        const el = document.getElementById(tabId);
-        if (el) el.classList.remove('active');
+      // Remove active from all tab buttons
+      const allTabs = document.querySelectorAll('.tab-buttons button');
+      allTabs.forEach(btn => {
+        btn.classList.remove('active');
       });
       
-      // Use requestAnimationFrame for smooth transition
-      requestAnimationFrame(() => {
+      // Show selected section and mark tab active
+      try {
         if (tab === 'orders') {
-          const tabEl = document.getElementById('tabOrders');
-          const sectionEl = document.getElementById('ordersSection');
-          if (tabEl) tabEl.classList.add('active');
-          if (sectionEl) {
-            sectionEl.classList.add('active');
-            sectionEl.style.opacity = '0';
-            requestAnimationFrame(() => {
-              sectionEl.style.transition = 'opacity 0.2s ease-in';
-              sectionEl.style.opacity = '1';
-            });
+          document.getElementById('tabOrders')?.classList.add('active');
+          const section = document.getElementById('ordersSection');
+          if (section) {
+            section.classList.add('active');
+            section.style.display = 'block';
           }
           renderAdminOrders();
         } else if (tab === 'chats') {
-          const tabEl = document.getElementById('tabChats');
-          const sectionEl = document.getElementById('chatsSection');
-          if (tabEl) tabEl.classList.add('active');
-          if (sectionEl) {
-            sectionEl.classList.add('active');
-            sectionEl.style.opacity = '0';
-            requestAnimationFrame(() => {
-              sectionEl.style.transition = 'opacity 0.2s ease-in';
-              sectionEl.style.opacity = '1';
-            });
+          document.getElementById('tabChats')?.classList.add('active');
+          const section = document.getElementById('chatsSection');
+          if (section) {
+            section.classList.add('active');
+            section.style.display = 'block';
           }
           renderAdminChats();
         } else if (tab === 'menu') {
-          const tabEl = document.getElementById('tabMenu');
-          const sectionEl = document.getElementById('menuSection');
-          if (tabEl) tabEl.classList.add('active');
-          if (sectionEl) {
-            sectionEl.classList.add('active');
-            sectionEl.style.opacity = '0';
-            requestAnimationFrame(() => {
-              sectionEl.style.transition = 'opacity 0.2s ease-in';
-              sectionEl.style.opacity = '1';
-            });
+          document.getElementById('tabMenu')?.classList.add('active');
+          const section = document.getElementById('menuSection');
+          if (section) {
+            section.classList.add('active');
+            section.style.display = 'block';
           }
-          renderAdminMenuList();
-        } else if (tab === 'users') {
-          const tabEl = document.getElementById('tabUsers');
-          const sectionEl = document.getElementById('usersSection');
-          if (tabEl) tabEl.classList.add('active');
-          if (sectionEl) {
-            sectionEl.classList.add('active');
-            sectionEl.style.opacity = '0';
-            requestAnimationFrame(() => {
-              sectionEl.style.transition = 'opacity 0.2s ease-in';
-              sectionEl.style.opacity = '1';
+          console.log('[DEBUG] About to call renderAdminMenuList');
+          if (typeof renderAdminMenuList === 'function') {
+            renderAdminMenuList().catch(err => {
+              console.error('[ERROR] renderAdminMenuList failed:', err);
             });
+          } else {
+            console.error('[ERROR] renderAdminMenuList is not a function');
+          }
+        } else if (tab === 'users') {
+          document.getElementById('tabUsers')?.classList.add('active');
+          const section = document.getElementById('usersSection');
+          if (section) {
+            section.classList.add('active');
+            section.style.display = 'block';
           }
           renderAdminUsers();
         } else if (tab === 'ratings') {
-          const tabEl = document.getElementById('tabRatings');
-          const sectionEl = document.getElementById('ratingsSection');
-          if (tabEl) tabEl.classList.add('active');
-          if (sectionEl) {
-            sectionEl.classList.add('active');
-            sectionEl.style.opacity = '0';
-            requestAnimationFrame(() => {
-              sectionEl.style.transition = 'opacity 0.2s ease-in';
-              sectionEl.style.opacity = '1';
-            });
+          document.getElementById('tabRatings')?.classList.add('active');
+          const section = document.getElementById('ratingsSection');
+          if (section) {
+            section.classList.add('active');
+            section.style.display = 'block';
           }
           renderAdminRatings();
-          // Start real-time polling for ratings
           startRatingsPolling();
-        } else {
-          // Stop ratings polling when switching to other tabs
-          stopRatingsPolling();
         }
-      });
+      } catch(err) {
+        console.error('[ERROR] in switchTab:', err);
+      }
     }
 
     /* -------- Render Orders (API) -------- */
