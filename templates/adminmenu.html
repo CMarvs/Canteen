@@ -137,21 +137,23 @@
       list.innerHTML = '';
       result.items.forEach(item => {
         list.innerHTML += `
-          <div class="menu-item" style="text-align: center; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
-            <img src="/${item.image_url}" alt="${item.name}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 5px;">
-            <h4>${item.name}</h4>
-            <p>₱${item.price}</p>
-            <p style="color: ${item.quantity > 0 ? 'green' : 'red'};">${item.quantity} in stock</p>
+          <div class="menu-item" style="text-align: center; padding: 15px; border: 1px solid #e0cfc0; border-radius: 8px; background: #fefdfb;">
+            <div style="width: 120px; height: 120px; margin: 0 auto 10px; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, #f9f9f9 0%, #f0f0f0 100%); box-shadow: 0 2px 8px rgba(139, 69, 19, 0.1); border: 1px solid rgba(212, 163, 115, 0.15);">
+              <img src="/${item.image_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <h4 style="margin: 8px 0; color: #3b2f2f;">${item.name}</h4>
+            <p style="margin: 4px 0; font-weight: 600; color: #8b4513;">₱${item.price}</p>
+            <p style="margin: 4px 0; color: ${item.quantity > 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">${item.quantity} in stock</p>
             
             <form action="/edit-menu-item/${item.id}" method="POST" enctype="multipart/form-data" style="margin-top: 10px;">
               <input type="hidden" name="currentImagePath" value="${item.image_url}">
               <input type="hidden" name="itemName" value="${item.name}">
               <input type="hidden" name="itemPrice" value="${item.price}">
               <input type="hidden" name="itemCategory" value="${item.category}">
-              <input type="number" name="editItemStock" value="${item.quantity}" min="0" style="width: 50px; text-align: center;">
-              <input type="file" name="editItemImage" accept="image/jpeg, image/png" style="margin: 5px 0; font-size: 12px;">
-              <button type="submit" style="margin: 2px; background-color: brown; color: white; border: none; padding: 5px 10px;">Update</button>
-              <button type="button" style="margin: 2px; background-color: red; color: white; border: none; padding: 5px 10px;" onclick="deleteMenuItem(${item.id})">Delete</button>
+              <input type="number" name="editItemStock" value="${item.quantity}" min="0" style="width: 50px; text-align: center; padding: 6px; border-radius: 4px; border: 1px solid #ddd;">
+              <input type="file" name="editItemImage" accept="image/jpeg, image/png" style="margin: 5px 0; font-size: 12px; padding: 4px;">
+              <button type="submit" style="margin: 2px; background-color: #8b4513; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: 500;">Update</button>
+              <button type="button" style="margin: 2px; background-color: #f44336; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: 500;" onclick="deleteMenuItem(${item.id})">Delete</button>
             </form>
           </div>
         `;
@@ -205,10 +207,13 @@
       
       data.forEach(item => {
         list.innerHTML += `
-          <div class="menu-item">
-            <img src="/static/images/menu_items/${item.image_url}" alt="${item.name}" style="width:120px;">
-            <h4>${item.name}</h4>
-            <p>₱${item.price}</p>
+          <div class="menu-item" style="text-align: center; padding: 15px; border: 1px solid #e0cfc0; border-radius: 8px; background: #fefdfb;">
+            <div style="width: 120px; height: 120px; margin: 0 auto 10px; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, #f9f9f9 0%, #f0f0f0 100%); box-shadow: 0 2px 8px rgba(139, 69, 19, 0.1); border: 1px solid rgba(212, 163, 115, 0.15);">
+              <img src="/${item.image_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <h4 style="margin: 8px 0; color: #3b2f2f;">${item.name}</h4>
+            <p style="margin: 4px 0; font-weight: 600; color: #8b4513;">₱${item.price}</p>
+            <p style="margin: 4px 0; color: ${item.quantity > 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">${item.quantity} in stock</p>
           </div>
         `;
       });

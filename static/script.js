@@ -504,8 +504,8 @@ function renderCart() {
           
           return `
             <div class="cart-item" style="animation: fadeIn 0.3s ease-out; display: flex; gap: 12px; align-items: flex-start;">
-              <div style="width: 70px; height: 70px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #f0f0f0;">
-                <img src="${imageUrl}" alt="${it.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+              <div class="image-frame-cart">
+                <img src="${imageUrl}" alt="${it.name}" class="menu-item-image" onerror="this.src='/static/images/menu_items/default.jpg';">
               </div>
               <div style="flex: 1;">
                 <strong>${it.name || 'Unknown Item'}</strong><br>
@@ -618,8 +618,8 @@ function itemCardHtml(i) {
 
   return `
     <div class="item card ${isOutOfStock ? 'sold' : ''}">
-      <div style="width: 180px; height: 180px; margin: 0 auto 12px; border-radius: 8px; overflow: hidden; background: #f0f0f0;">
-        <img src="${imageUrl}" alt="${escapeHtml(i.name)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+      <div class="image-frame-menu">
+        <img src="${imageUrl}" alt="${escapeHtml(i.name)}" class="menu-item-image" onerror="this.src='/static/images/menu_items/default.jpg';">
       </div>
       <div>
         <h4 style="margin:0 0 6px 0;">${i.name}</h4>
@@ -1614,10 +1614,10 @@ function orderCardHtmlForUser(o) {
           }
           return `
             <div style="text-align: center;">
-              <div style="width: 70px; height: 70px; margin: 0 auto 6px; border-radius: 6px; overflow: hidden; background: #f0f0f0;">
-                <img src="${imageUrl}" alt="${i.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+              <div class="image-frame-order">
+                <img src="${imageUrl}" alt="${i.name}" class="menu-item-image" onerror="this.src='/static/images/menu_items/default.jpg';">
               </div>
-              <div style="font-size: 0.75rem; color: #666;">${i.name}</div>
+              <div style="font-size: 0.75rem; color: #666; margin-top: 6px;">${i.name}</div>
               <div style="font-size: 0.7rem; color: #999;">×${i.qty}</div>
             </div>
           `;
