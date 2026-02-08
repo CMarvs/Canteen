@@ -1848,7 +1848,7 @@ def get_menu_items():
         cur = conn.cursor()
         # Optimized query - only select needed columns, limit results for performance
         cur.execute("""
-            SELECT id, name, price, category, is_available, quantity, created_at
+            SELECT id, name, price, category, is_available, quantity, image_url, created_at
             FROM menu_items 
             ORDER BY category, name
             LIMIT 1000
