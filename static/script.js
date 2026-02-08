@@ -494,13 +494,24 @@ function renderCart() {
         try {
           const price = Number(it.price) || 0;
           const qty = Number(it.qty) || 1;
+          
+          // Handle image URL
+          let imageUrl = '/static/images/menu_items/default.jpg';
+          if (it.image_url) {
+            const url = String(it.image_url).trim();
+            imageUrl = url.startsWith('/') ? url : `/${url}`;
+          }
+          
           return `
-            <div class="cart-item" style="animation: fadeIn 0.3s ease-out;">
-              <div>
+            <div class="cart-item" style="animation: fadeIn 0.3s ease-out; display: flex; gap: 12px; align-items: flex-start;">
+              <div style="width: 70px; height: 70px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #f0f0f0;">
+                <img src="${imageUrl}" alt="${it.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+              </div>
+              <div style="flex: 1;">
                 <strong>${it.name || 'Unknown Item'}</strong><br>
                 <span class="muted">₱${price.toFixed(2)} × ${qty}</span>
               </div>
-              <div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                 <button class="btn small" onclick="promptEditQty('${it.id}', ${qty})" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Edit</button>
                 <button class="btn small ghost" onclick="removeCartItem('${it.id}')" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Delete</button>
               </div>
@@ -1594,7 +1605,24 @@ function orderCardHtmlForUser(o) {
         </div>
         <div>${statusBadge}</div>
       </div>
-      <div style="margin-top:8px">${itemsText}</div>
+      <div style="margin-top:12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 12px;">
+        ${items.map(i => {
+          let imageUrl = '/static/images/menu_items/default.jpg';
+          if (i.image_url) {
+            const url = String(i.image_url).trim();
+            imageUrl = url.startsWith('/') ? url : `/${url}`;
+          }
+          return `
+            <div style="text-align: center;">
+              <div style="width: 70px; height: 70px; margin: 0 auto 6px; border-radius: 6px; overflow: hidden; background: #f0f0f0;">
+                <img src="${imageUrl}" alt="${i.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+              </div>
+              <div style="font-size: 0.75rem; color: #666;">${i.name}</div>
+              <div style="font-size: 0.7rem; color: #999;">×${i.qty}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
