@@ -10,9 +10,27 @@ from psycopg2 import errors as psycopg2_errors
 from decimal import Decimal
 from datetime import datetime, date
 import os
-from mock_gcash import mock_gcash
+from mock_gcash import mock_gcash 
+import httpx
 
 app = FastAPI()
+
+# Global variable to track recent payment attempts (prevent spam)
+RECENT_PAYMENT_ATTEMPTS = {}
+
+def check_rate_limit(transaction_id):
+    """Check if a transaction is being processed too frequently"""
+    import time
+    current_time = time.time()
+    
+    if transaction_id in RECENT_PAYMENT_ATTEMPTS:
+        last_time = RECENT_PAYMENT_ATTEMPTS[transaction_id]
+        # Prevent processing same transaction more than once per 2 seconds
+        if current_time - last_time < 2:
+            return False
+    
+    RECENT_PAYMENT_ATTEMPTS[transaction_id] = current_time
+    return True
 
 # Security and Performance Headers Middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -3811,6 +3829,390 @@ async def check_mock_gcash_status(transaction_id: str):
 
 @app.get("/api/mock-gcash/pay/{transaction_id}")
 async def mock_gcash_payment_page(transaction_id: str):
+    """Mock GCash payment page for simulation - NO AUTO-SUBMIT"""
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock GCash Payment</title>
+    <style>
+        body {{ 
+            font-family: Arial, sans-serif; 
+            max-width: 500px; 
+            margin: 50px auto; 
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }}
+        .container {{ 
+            background: white; 
+            border-radius: 15px; 
+            padding: 30px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }}
+        .container::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #4CAF50, #2196F3);
+        }}
+        .success {{ 
+            background-color: #d4edda; 
+            color: #155724; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-top: 20px;
+            border: 1px solid #c3e6cb;
+        }}
+        .failed {{ 
+            background-color: #f8d7da; 
+            color: #721c24; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-top: 20px;
+            border: 1px solid #f5c6cb;
+        }}
+        button {{ 
+            padding: 14px 28px; 
+            margin: 10px 5px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }}
+        .pay-btn {{ 
+            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+            color: white; 
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }}
+        .pay-btn:hover {{ 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }}
+        .cancel-btn {{ 
+            background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+        }}
+        .cancel-btn:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+        }}
+        .status-btn {{
+            background: #2196F3;
+            color: white;
+            margin-top: 10px;
+        }}
+        .loading {{
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .loader {{
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }}
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        .transaction-info {{
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }}
+        .warning {{
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border: 1px solid #ffeaa7;
+            font-size: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 48px; margin-bottom: 10px;">📱</div>
+            <h2 style="margin: 0; color: #333;">Mock GCash Payment</h2>
+            <p style="color: #666; margin-top: 5px;">This is a simulation page for testing purposes</p>
+        </div>
+        
+        <div class="transaction-info">
+            <p><strong>Transaction ID:</strong> <code style="background: #eee; padding: 2px 6px; border-radius: 4px;">{transaction_id}</code></p>
+            <p><strong>Status:</strong> <span id="currentStatus" style="color: #ff9800; font-weight: bold;">PENDING</span></p>
+        </div>
+        
+        <div class="warning">
+            ⚠️ <strong>Important:</strong> Please manually click a button below to simulate payment result.
+            Payment will NOT be processed automatically.
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <button class="pay-btn" onclick="simulatePayment('success', this)">
+                <span>✅</span> Simulate Successful Payment
+            </button>
+            <button class="cancel-btn" onclick="simulatePayment('failed', this)">
+                <span>❌</span> Simulate Failed Payment
+            </button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="loader"></div>
+            <p style="margin-top: 10px;">Processing payment simulation...</p>
+        </div>
+        
+        <div id="result"></div>
+        
+        <script>
+            const transaction_id = "{transaction_id}";
+            let isProcessing = false;
+            
+            async function simulatePayment(result, button) {{
+                if (isProcessing) return;
+                
+                isProcessing = true;
+                const loadingEl = document.getElementById('loading');
+                const resultEl = document.getElementById('result');
+                const statusEl = document.getElementById('currentStatus');
+                
+                // Disable buttons and show loading
+                document.querySelectorAll('button').forEach(btn => btn.disabled = true);
+                if (button) button.style.opacity = '0.7';
+                loadingEl.style.display = 'block';
+                resultEl.innerHTML = '';
+                
+                try {{
+                    console.log('[MOCK] User clicked:', result, 'for transaction:', transaction_id);
+                    
+                    const response = await fetch(`/api/mock-gcash/simulate/${{transaction_id}}/${{result}}`, {{
+                        method: 'POST',
+                        headers: {{ 
+                            'Content-Type': 'application/json',
+                            'X-Request-Source': 'mock-payment-page'
+                        }}
+                    }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! Status: ${{response.status}}`);
+                    }}
+                    
+                    const data = await response.json();
+                    console.log('[MOCK] Response:', data);
+                    
+                    // Hide loading
+                    loadingEl.style.display = 'none';
+                    
+                    if (data.success) {{
+                        // Update status display
+                        statusEl.textContent = result === 'success' ? 'SUCCESS' : 'FAILED';
+                        statusEl.style.color = result === 'success' ? '#4CAF50' : '#f44336';
+                        
+                        // Show result message
+                        resultEl.innerHTML = `
+                            <div class="${{result === 'success' ? 'success' : 'failed'}}">
+                                <h4 style="margin-top: 0;">${{result === 'success' ? '✅ Payment Successful!' : '❌ Payment Failed'}}</h4>
+                                <p>${{result === 'success' ? 
+                                    'Your mock payment has been processed successfully. The order will now be marked as paid.' :
+                                    'The payment simulation failed. Please try again or contact support.'}}</p>
+                                <p><strong>Transaction ID:</strong> ${{transaction_id}}</p>
+                                <p><strong>Status:</strong> ${{result === 'success' ? 'SUCCESS' : 'FAILED'}}</p>
+                                <p>You can safely close this window now.</p>
+                                <button onclick="checkMainWindowStatus()" class="status-btn">
+                                    🔄 Check Status in Main Window
+                                </button>
+                            </div>
+                        `;
+                        
+                        // Notify parent window if it exists
+                        if (window.opener && !window.opener.closed) {{
+                            window.opener.postMessage({{
+                                type: 'mock_payment_complete',
+                                transaction_id: transaction_id,
+                                status: result,
+                                success: true
+                            }}, '*');
+                        }}
+                    }} else {{
+                        resultEl.innerHTML = `
+                            <div class="failed">
+                                <h4>❌ Simulation Error</h4>
+                                <p>Error: ${{data.error || 'Unknown error'}}</p>
+                                <button onclick="simulatePayment(result)" style="background: #ff9800;">Try Again</button>
+                            </div>
+                        `;
+                        // Re-enable buttons
+                        document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                        if (button) button.style.opacity = '1';
+                    }}
+                }} catch (error) {{
+                    console.error('[MOCK] Payment simulation error:', error);
+                    loadingEl.style.display = 'none';
+                    resultEl.innerHTML = `
+                        <div class="failed">
+                            <h4>❌ Network Error</h4>
+                            <p>Error: ${{error.message}}</p>
+                            <button onclick="simulatePayment(result)" style="background: #ff9800;">Try Again</button>
+                        </div>
+                    `;
+                    // Re-enable buttons
+                    document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                    if (button) button.style.opacity = '1';
+                }}
+                
+                isProcessing = false;
+            }}
+            
+            function checkMainWindowStatus() {{
+                if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage({{
+                        type: 'check_payment_status',
+                        transaction_id: transaction_id
+                    }}, '*');
+                }}
+                // Close this window after a delay
+                setTimeout(() => {{
+                    window.close();
+                }}, 1000);
+            }}
+            
+            // Listen for messages from parent window (if needed)
+            window.addEventListener('message', function(event) {{
+                if (event.data && event.data.type === 'trigger_payment') {{
+                    console.log('[MOCK] Received trigger from parent');
+                    // Do NOT auto-trigger - wait for user click
+                }}
+            }});
+            
+            // Log when page loads
+            console.log('[MOCK] Mock payment page loaded. Waiting for user action...');
+            console.log('[MOCK] Transaction ID:', transaction_id);
+            console.log('[MOCK] Page URL:', window.location.href);
+            
+            // Prevent any auto-submit on page load
+            window.onload = function() {{
+                console.log('[MOCK] Page fully loaded. Buttons ready for user interaction.');
+                // Clear any existing form submissions
+                if (window.history.replaceState) {{
+                    window.history.replaceState(null, null, window.location.href);
+                }}
+            }};
+        </script>
+    </div>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html_content)
+async def mock_gcash_payment_page(transaction_id: str):
+    """Mock GCash payment page for simulation"""
+    # Create proper HTML with the transaction_id properly escaped
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock GCash Payment</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }}
+        .container {{ border: 1px solid #ddd; padding: 30px; border-radius: 10px; }}
+        .success {{ background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; }}
+        .failed {{ background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; }}
+        button {{ padding: 12px 24px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; }}
+        .pay-btn {{ background-color: #007bff; color: white; }}
+        .cancel-btn {{ background-color: #6c757d; color: white; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🧾 Mock GCash Payment</h2>
+        <p>Transaction ID: <strong>{transaction_id}</strong></p>
+        <p>This is a simulation page for testing GCash payments.</p>
+        
+        <div style="margin: 20px 0;">
+            <button class="pay-btn" onclick="simulatePayment('success')">
+                ✅ Simulate Successful Payment
+            </button>
+            <button class="cancel-btn" onclick="simulatePayment('failed')">
+                ❌ Simulate Failed Payment
+            </button>
+        </div>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+        
+        <script>
+            const transaction_id = "{transaction_id}";
+            
+            async function simulatePayment(result) {{
+                try {{
+                    console.log('Simulating payment:', result, 'for transaction:', transaction_id);
+                    const response = await fetch(`/api/mock-gcash/simulate/${{transaction_id}}/${{result}}`, {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }}
+                    }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! Status: ${{response.status}}`);
+                    }}
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="${{result === 'success' ? 'success' : 'failed'}}">
+                                Payment ${{result === 'success' ? 'Successful' : 'Failed'}}!
+                                <p>You can close this window now.</p>
+                                <p><button onclick="checkStatus()">Check Payment Status</button></p>
+                            </div>`;
+                    }} else {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="failed">
+                                Error: ${{data.error || 'Unknown error'}}
+                            </div>`;
+                    }}
+                }} catch (error) {{
+                    console.error('Payment simulation error:', error);
+                    document.getElementById('result').innerHTML = 
+                        `<div class="failed">
+                            Error: ${{error.message}}
+                        </div>`;
+                }}
+            }}
+            
+            function checkStatus() {{
+                // This would check the payment status in the main window
+                if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage({{ type: 'payment_status_check', transaction_id: transaction_id }}, '*');
+                }}
+                // Close this window
+                window.close();
+            }}
+            
+            // IMPORTANT: Remove any auto-submit or auto-redirect code
+            // Don't automatically submit payment on page load
+            console.log('Mock GCash payment page loaded. Waiting for user action...');
+        </script>
+    </div>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html_content)
     """Mock GCash payment page for simulation"""
     # Create proper HTML with the transaction_id properly escaped
     html_content = f"""<!DOCTYPE html>
@@ -3954,7 +4356,214 @@ async def mock_gcash_payment_page(transaction_id: str):
     return HTMLResponse(content=html)
 
 @app.post("/api/mock-gcash/simulate/{transaction_id}/{result}")
+async def simulate_payment_action(transaction_id: str, result: str, request: Request):
+    """Endpoint for simulating payment results - REQUIRES MANUAL USER ACTION"""
+    try:
+        # Get headers to verify this is a manual request
+        request_source = request.headers.get('X-Request-Source', '')
+        user_agent = request.headers.get('user-agent', '')
+        referer = request.headers.get('referer', '')
+        
+        print(f"[MOCK] Payment simulation requested: {transaction_id}, result={result}")
+        print(f"[MOCK] Request source: {request_source}, Referer: {referer}")
+
+                # Rate limiting check
+        if not check_rate_limit(transaction_id):
+            print(f"[MOCK RATE LIMIT] Transaction {transaction_id} processed too recently")
+            return {"success": False, "error": "Please wait before trying again"}
+        
+        # Check if this looks like an automatic request (block if it is)
+        if not referer or 'mock-gcash/pay' not in referer:
+            print(f"[MOCK WARNING] Request missing proper referer: {referer}")
+            # Still allow but log warning
+        
+        # Call mock GCash simulation
+        success = result == "success"
+        mock_result = mock_gcash.simulate_payment(transaction_id, success)
+        
+        # Only update database if payment was successful AND we have mock result
+        if success and mock_result.get("success"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                # First, check current status to prevent duplicate updates
+                cur.execute("""
+                    SELECT status FROM gcash_transactions 
+                    WHERE transaction_id = %s
+                """, (transaction_id,))
+                current_trans = cur.fetchone()
+                
+                if current_trans and current_trans.get('status') == 'success':
+                    print(f"[MOCK] Transaction {transaction_id} already marked as success, skipping update")
+                    mock_result["message"] = "Payment already processed"
+                    return mock_result
+                
+                # Update gcash_transactions table
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                trans_result = cur.fetchone()
+                if trans_result:
+                    order_id = trans_result.get("order_id")
+                    
+                    # Update order - ONLY IF IT'S STILL PENDING
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid',
+                            status = 'Pending'
+                        WHERE id = %s AND payment_status = 'pending'
+                        RETURNING id
+                    """, (order_id,))
+                    
+                    updated_order = cur.fetchone()
+                    if updated_order:
+                        conn.commit()
+                        print(f"[MOCK SUCCESS] Order {order_id} marked as paid via user simulation")
+                        mock_result["order_updated"] = True
+                        mock_result["order_id"] = order_id
+                    else:
+                        print(f"[MOCK INFO] Order {order_id} already paid or not found")
+                        conn.rollback()  # Don't commit if already updated
+                        mock_result["order_updated"] = False
+                else:
+                    print(f"[MOCK WARNING] No transaction found for {transaction_id}")
+                    conn.rollback()
+                    
+            except Exception as db_error:
+                print(f"[MOCK ERROR] Database update failed: {db_error}")
+                if conn:
+                    conn.rollback()
+                mock_result["db_error"] = str(db_error)
+            finally:
+                if conn:
+                    conn.close()
+        
+        return mock_result
+        
+    except Exception as e:
+        print(f"[MOCK ERROR] Simulation failed: {e}")
+        return {"success": False, "error": str(e)}
+async def simulate_payment_action(transaction_id: str, result: str, request: Request):
+    """Endpoint for simulating payment results - MANUAL USER ACTION REQUIRED"""
+    try:
+        # Get user agent to check if this is coming from browser
+        user_agent = request.headers.get('user-agent', '')
+        
+        print(f"[MOCK] Payment simulation requested: {transaction_id}, result={result}")
+        
+        # Call mock GCash simulation
+        success = result == "success"
+        mock_result = mock_gcash.simulate_payment(transaction_id, success)
+        
+        # Only update database if payment was successful
+        if success and mock_result.get("success"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                # Update gcash_transactions table
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                trans_result = cur.fetchone()
+                if trans_result:
+                    order_id = trans_result.get("order_id")
+                    
+                    # Update order - ONLY IF IT'S STILL PENDING
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid'
+                        WHERE id = %s AND payment_status = 'pending'
+                        RETURNING id
+                    """, (order_id,))
+                    
+                    updated_order = cur.fetchone()
+                    if updated_order:
+                        conn.commit()
+                        print(f"[MOCK] Order {order_id} marked as paid via simulation (user confirmed)")
+                    else:
+                        print(f"[MOCK] Order {order_id} already has payment status updated")
+                        conn.rollback()  # Don't commit if already updated
+                else:
+                    print(f"[MOCK] No transaction found for {transaction_id}")
+                    conn.rollback()
+                    
+            except Exception as db_error:
+                print(f"[ERROR] Database update failed: {db_error}")
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    conn.close()
+        
+        return mock_result
+        
+    except Exception as e:
+        print(f"[ERROR] Simulation failed: {e}")
+        return {"success": False, "error": str(e)}
 async def simulate_payment_action(transaction_id: str, result: str):
+    """Endpoint for simulating payment results"""
+    try:
+        success = result == "success"
+        mock_result = mock_gcash.simulate_payment(transaction_id, success)
+        
+        # If successful, update the order in database
+        if success and mock_result.get("success"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                # Update gcash_transactions table
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                trans_result = cur.fetchone()
+                if trans_result:
+                    order_id = trans_result.get("order_id")
+                    
+                    # Update order
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid',
+                            status = 'Pending'
+                        WHERE id = %s
+                    """, (order_id,))
+                    
+                    conn.commit()
+                    print(f"[MOCK] Order {order_id} marked as paid via simulation")
+                    
+            except Exception as db_error:
+                print(f"[ERROR] Database update failed: {db_error}")
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    conn.close()
+        
+        return mock_result
+        
+    except Exception as e:
+        print(f"[ERROR] Simulation failed: {e}")
+        return {"success": False, "error": str(e)}
     """Endpoint for simulating payment results"""
     try:
         success = result == "success"
