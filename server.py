@@ -142,6 +142,7 @@ def ensure_menu_table_exists():
                     category TEXT NOT NULL DEFAULT 'foods',
                     is_available BOOLEAN DEFAULT TRUE,
                     quantity INTEGER DEFAULT 0,
+                    image_url TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
@@ -188,6 +189,13 @@ def ensure_menu_table_exists():
                     cur.execute("ALTER TABLE menu_items ADD COLUMN created_at TIMESTAMP DEFAULT NOW();")
                     conn.commit()
                     print("[SUCCESS] created_at column added successfully!")
+                
+                # Check and add image_url column if missing
+                if 'image_url' not in existing_columns:
+                    print("[INFO] Adding image_url column to menu_items table...")
+                    cur.execute("ALTER TABLE menu_items ADD COLUMN image_url TEXT;")
+                    conn.commit()
+                    print("[SUCCESS] image_url column added successfully!")
                 
                 # Create indexes if they don't exist
                 try:

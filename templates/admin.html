@@ -2230,10 +2230,17 @@
       }
 
       try {
+        const itemData = { name, price, category, is_available: true, quantity };
+        
+        // Include image URL if one was uploaded
+        if (window.currentUploadedImageUrl) {
+          itemData.image_url = window.currentUploadedImageUrl;
+        }
+        
         const response = await fetch('/menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, price, category, is_available: true, quantity })
+          body: JSON.stringify(itemData)
         });
 
         // Read response
@@ -2252,6 +2259,7 @@
           document.getElementById('newItemName').value = '';
           document.getElementById('newItemPrice').value = '';
           document.getElementById('newItemQuantity').value = '0';
+          window.currentUploadedImageUrl = null; // Clear uploaded image
           await renderAdminMenuList();
         } else {
           // Try to get error message
@@ -2286,6 +2294,9 @@
       }
     }
 
+    // Global variable to store uploaded image URL
+    window.currentUploadedImageUrl = null;
+    
     async function uploadItemImage() {
       const fileInput = document.getElementById('newItemImage');
       const statusDiv = document.getElementById('imageUploadStatus');
@@ -2322,17 +2333,16 @@
         });
         
         if (!response.ok) {
-          throw new Error(`Upload failed with status ${response.status}`);
+          const errorData = await response.json().catch(() => ({detail: 'Unknown error'}));
+          throw new Error(errorData.detail || `Upload failed with status ${response.status}`);
         }
         
         const result = await response.json();
         
         if (result.image_url) {
-          statusDiv.innerHTML = `<div style="color: #4caf50; font-weight: 600;">✅ Image uploaded successfully! File: ${result.image_url}</div>`;
+          window.currentUploadedImageUrl = result.image_url;
+          statusDiv.innerHTML = `<div style="color: #4caf50; font-weight: 600;">✅ Image uploaded! Ready to add item with this image.</div>`;
           fileInput.value = ''; // Clear file input
-          
-          // Store the image URL in a data attribute for the next item creation
-          document.getElementById('newItemImage').dataset.imageUrl = result.image_url;
           
           // Auto-clear status after 5 seconds
           setTimeout(() => {
@@ -2375,10 +2385,12 @@
       }
 
       try {
+        const updateData = { name: name.trim(), price, category, quantity };
+        
         const response = await fetch(`/menu/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), price, category, quantity })
+          body: JSON.stringify(updateData)
         });
 
         if (response.ok) {
@@ -2388,6 +2400,11 @@
           const errorData = await response.json();
           alert(`Failed to update item: ${errorData.detail || 'Unknown error'}`);
         }
+      } catch(error) {
+        console.error('Error updating menu item:', error);
+        alert(`Failed to update item: ${error.message}`);
+      }
+    }
       } catch(error) {
         console.error('Error updating menu item:', error);
         alert('Failed to update menu item. Please try again.');
