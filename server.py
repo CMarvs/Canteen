@@ -1,6 +1,6 @@
 
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -1955,23 +1955,19 @@ async def add_menu_item(request: Request):
 
 # --- Upload Menu Item Image ---
 @app.post("/upload-menu-image")
-async def upload_menu_image(request: Request):
+async def upload_menu_image(file: UploadFile = File(...)):
     """
     Upload an image for a menu item
     Expects multipart/form-data with 'file' field containing the image
     Returns JSON with image_url path
     """
     try:
-        form = await request.form()
-        file = form.get('file')
-        
         if not file:
-            raise HTTPException(400, "No file provided")
+            raise HTTPException(status_code=400, detail="No file provided")
         
         # Validate file type
-        content_type = file.content_type
-        if content_type not in ['image/jpeg', 'image/png']:
-            raise HTTPException(400, "Only JPG and PNG images are allowed")
+        if file.content_type not in ['image/jpeg', 'image/png']:
+            raise HTTPException(status_code=400, detail="Only JPG and PNG images are allowed")
         
         # Create directory if it doesn't exist
         image_dir = os.path.join(os.path.dirname(__file__), 'static', 'images', 'menu_items')
@@ -1982,7 +1978,7 @@ async def upload_menu_image(request: Request):
         
         # Limit file size (5MB)
         if len(contents) > 5 * 1024 * 1024:
-            raise HTTPException(400, "File size exceeds 5MB limit")
+            raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
         
         # Generate unique filename
         import time
@@ -2025,7 +2021,7 @@ async def upload_menu_image(request: Request):
         print(f"[ERROR] Image upload failed: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(500, f"Failed to upload image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 # --- Menu Items: Update menu item (Admin only) ---
 @app.put("/menu/{item_id}")
