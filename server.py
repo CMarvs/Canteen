@@ -1696,7 +1696,7 @@ def get_menu_items():
         cur = conn.cursor()
         # Optimized query - only select needed columns, limit results for performance
         cur.execute("""
-            SELECT id, name, price, category, is_available, quantity, created_at
+            SELECT id, name, price, category, is_available, quantity, image_url, created_at
             FROM menu_items 
             ORDER BY category, name
             LIMIT 1000
@@ -1792,6 +1792,8 @@ async def add_menu_item(request: Request):
         quantity = data.get("quantity", 0)
         if quantity is None:
             quantity = 0
+        # Optional image_url coming from admin upload flow
+        image_url = data.get("image_url") if data.get("image_url") else None
         
         try:
             quantity = int(quantity)
@@ -1828,6 +1830,18 @@ async def add_menu_item(request: Request):
         
         conn.commit()
         result = cur.fetchone()
+        # If admin provided an image_url, update the newly inserted row to include it
+        if image_url and result:
+            try:
+                item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
+                if item_id:
+                    cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
+                    conn.commit()
+                    cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
+                    result = cur.fetchone()
+            except Exception as upd_err:
+                print(f"[WARNING] Could not update image_url for menu item: {upd_err}")
+
         return {"ok": True, "message": "Menu item added successfully", "item": result}
     except psycopg2_errors.UndefinedTable as e:
         print(f"[ERROR] Table doesn't exist: {e}")
@@ -1852,6 +1866,19 @@ async def add_menu_item(request: Request):
             ))
             conn.commit()
             result = cur.fetchone()
+            # If image_url was provided, update the inserted row
+            retry_image = data.get("image_url") if data.get("image_url") else None
+            if retry_image and result:
+                try:
+                    item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
+                    if item_id:
+                        cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (retry_image, item_id))
+                        conn.commit()
+                        cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
+                        result = cur.fetchone()
+                except Exception as upd_err:
+                    print(f"[WARNING] Could not set image_url on retry insert: {upd_err}")
+
             conn.close()
             return {"ok": True, "message": "Menu item added successfully", "item": result}
         except Exception as retry_error:
@@ -1902,6 +1929,18 @@ async def add_menu_item(request: Request):
                 ))
                 conn.commit()
                 result = cur.fetchone()
+                # If image_url provided, try to update the row after retry
+                if image_url and result:
+                    try:
+                        item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
+                        if item_id:
+                            cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
+                            conn.commit()
+                            cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
+                            result = cur.fetchone()
+                    except Exception as upd_err:
+                        print(f"[WARNING] Could not update image_url after retry: {upd_err}")
+
                 conn.close()
                 return {"ok": True, "message": "Menu item added successfully", "item": result}
             except Exception as retry_error:
@@ -1944,6 +1983,18 @@ async def add_menu_item(request: Request):
                 ))
                 conn.commit()
                 result = cur.fetchone()
+                # If image_url provided, try to set it on the retried insert
+                if image_url and result:
+                    try:
+                        item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
+                        if item_id:
+                            cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
+                            conn.commit()
+                            cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
+                            result = cur.fetchone()
+                    except Exception as upd_err:
+                        print(f"[WARNING] Could not update image_url on final retry: {upd_err}")
+
                 conn.close()
                 return {"ok": True, "message": "Menu item added successfully", "item": result}
             except Exception as retry_error:
@@ -2056,6 +2107,9 @@ async def update_menu_item(item_id: int, request: Request):
         if "quantity" in data:
             updates.append("quantity = %s")
             params.append(data.get("quantity"))
+        if "image_url" in data:
+            updates.append("image_url = %s")
+            params.append(data.get("image_url"))
         
         if not updates:
             raise HTTPException(400, "No fields to update")
