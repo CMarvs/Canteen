@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,6 +10,7 @@ from psycopg2 import errors as psycopg2_errors
 from decimal import Decimal
 from datetime import datetime, date
 import os
+import time
 from mock_gcash import mock_gcash
 
 app = FastAPI()
@@ -1867,6 +1868,54 @@ def get_menu_items():
                 conn.close()
             except:
                 pass
+
+# --- Menu Items: Upload menu item image ---
+@app.post("/upload-menu-image")
+async def upload_menu_image(file: UploadFile = File(...)):
+    """Upload an image for a menu item"""
+    try:
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png']
+        if file.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"Invalid file type. Only JPG and PNG are allowed. Got: {file.content_type}")
+        
+        # Validate file size (max 5MB)
+        max_size = 5 * 1024 * 1024  # 5MB
+        contents = await file.read()
+        if len(contents) > max_size:
+            raise HTTPException(status_code=400, detail=f"File too large. Maximum size is 5MB. Got: {len(contents) / 1024 / 1024:.2f}MB")
+        
+        # Create directory if it doesn't exist
+        image_dir = "static/images/menu_items"
+        os.makedirs(image_dir, exist_ok=True)
+        
+        # Generate unique filename with timestamp
+        file_ext = 'jpg' if file.content_type == 'image/jpeg' else 'png'
+        timestamp_ms = int(time.time() * 1000)
+        filename = f"{os.path.splitext(file.filename)[0]}_{timestamp_ms}.{file_ext}"
+        filepath = os.path.join(image_dir, filename)
+        
+        # Save file
+        with open(filepath, 'wb') as f:
+            f.write(contents)
+        
+        # Return relative path for storage in database
+        image_url = f"static/images/menu_items/{filename}"
+        
+        return {
+            "ok": True,
+            "image_url": image_url,
+            "filename": filename,
+            "content_type": file.content_type
+        }
+    
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        print(f"[ERROR] Image upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
 
 # --- Menu Items: Add new menu item (Admin only) ---
 @app.post("/menu")
