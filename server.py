@@ -1,6 +1,4 @@
-
-
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,6 +10,8 @@ from psycopg2 import errors as psycopg2_errors
 from decimal import Decimal
 from datetime import datetime, date
 import os
+from mock_gcash import mock_gcash 
+import httpx
 
 app = FastAPI()
 
@@ -87,6 +87,7 @@ app.add_middleware(
 # Add compression middleware (compress responses > 1KB for faster loading)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+
 # Add security headers middleware (runs after CORS to ensure headers are set)
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -142,7 +143,6 @@ def ensure_menu_table_exists():
                     category TEXT NOT NULL DEFAULT 'foods',
                     is_available BOOLEAN DEFAULT TRUE,
                     quantity INTEGER DEFAULT 0,
-                    image_url TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 );
             """)
@@ -189,13 +189,6 @@ def ensure_menu_table_exists():
                     cur.execute("ALTER TABLE menu_items ADD COLUMN created_at TIMESTAMP DEFAULT NOW();")
                     conn.commit()
                     print("[SUCCESS] created_at column added successfully!")
-                
-                # Check and add image_url column if missing
-                if 'image_url' not in existing_columns:
-                    print("[INFO] Adding image_url column to menu_items table...")
-                    cur.execute("ALTER TABLE menu_items ADD COLUMN image_url TEXT;")
-                    conn.commit()
-                    print("[SUCCESS] image_url column added successfully!")
                 
                 # Create indexes if they don't exist
                 try:
@@ -458,6 +451,66 @@ def ensure_ratings_table_exists():
         except Exception as close_error:
             print(f"[WARNING] Error closing database connection: {close_error}")
 
+# --- Initialize gcash_transactions table if it doesn't exist ---
+def ensure_gcash_transactions_table_exists():
+    """
+    Ensure gcash_transactions table exists for mock GCash payments
+    Returns True if successful, False if database connection failed
+    """
+    try:
+        conn = get_db_connection()
+    except Exception as conn_error:
+        print(f"[WARNING] Could not connect to database for gcash_transactions table check: {conn_error}")
+        return False
+    try:
+        cur = conn.cursor()
+        # Check if table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'gcash_transactions'
+            ) as exists;
+        """)
+        result = cur.fetchone()
+        table_exists = result.get('exists') if isinstance(result, dict) else (result[0] if result else False)
+        
+        if not table_exists:
+            print("[INFO] Creating gcash_transactions table...")
+            cur.execute("""
+                CREATE TABLE gcash_transactions (
+                    id SERIAL PRIMARY KEY,
+                    order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+                    transaction_id TEXT UNIQUE NOT NULL,
+                    merchant_code TEXT,
+                    reference_number TEXT,
+                    amount NUMERIC(10, 2) NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    checkout_url TEXT,
+                    qr_code_url TEXT,
+                    expires_at TIMESTAMP,
+                    paid_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_gcash_order_id ON gcash_transactions(order_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_gcash_transaction_id ON gcash_transactions(transaction_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_gcash_status ON gcash_transactions(status);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_gcash_created_at ON gcash_transactions(created_at);")
+            conn.commit()
+            print("[SUCCESS] gcash_transactions table created successfully!")
+        else:
+            print("[INFO] gcash_transactions table already exists")
+    except Exception as e:
+        print(f"[ERROR] Error ensuring gcash_transactions table exists: {e}")
+        conn.rollback()
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
+
 # Initialize table on startup (non-blocking)
 # This runs on import, so we need to be very careful not to crash the server
 try:
@@ -468,6 +521,7 @@ try:
         ensure_menu_table_exists()
         ensure_chat_table_exists()
         ensure_ratings_table_exists()
+        ensure_gcash_transactions_table_exists()  # Add this line
     except Exception as db_error:
         # Database connection errors shouldn't crash the server
         print(f"[WARNING] Could not initialize tables on startup: {db_error}")
@@ -1201,6 +1255,8 @@ async def check_payment_status(payment_intent_id: str):
         raise HTTPException(500, f"Failed to check payment status: {str(e)}")
 
 # --- Payment Processing ---
+# Update the existing payment processing endpoint to use mock GCash
+# Replace the entire /payment/process endpoint with this simplified version:
 @app.post("/payment/process")
 async def process_payment(request: Request):
     """Process payment for an order"""
@@ -1213,45 +1269,157 @@ async def process_payment(request: Request):
     if not payment_method or not amount:
         raise HTTPException(400, "Missing required payment information")
     
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Verify order exists (if order_id is provided)
+        if order_id:
+            cur.execute("SELECT id, total, payment_status FROM orders WHERE id = %s", (order_id,))
+            order = cur.fetchone()
+            if not order:
+                raise HTTPException(404, "Order not found")
+            
+            if order.get("payment_status") == "paid":
+                return {"success": True, "message": "Payment already processed", "order_id": order_id}
+        
+        # Process payment based on method
+        if payment_method == "cod":
+            # Cash on Delivery
+            if order_id:
+                cur.execute("""
+                    UPDATE orders 
+                    SET payment_status = 'paid', payment_method = %s
+                    WHERE id = %s
+                """, (payment_method, order_id))
+                conn.commit()
+            
+            return {
+                "success": True,
+                "message": "Cash on Delivery - Payment will be collected on delivery",
+                "order_id": order_id,
+                "payment_method": payment_method,
+                "amount": amount,
+                "status": "paid"
+            }
+            
+        elif payment_method == "gcash":
+            gcash_number = payment_details.get("gcashNumber", "")
+            
+            if not gcash_number or len(gcash_number) != 11:
+                raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
+            
+            # Use mock GCash
+            order_data = {
+                "order_id": order_id or 0,
+                "amount": float(amount),
+                "customer_name": data.get("fullname", ""),
+                "customer_phone": gcash_number,
+                "description": f"Order #{order_id or 'PENDING'}"
+            }
+            
+            payment_result = mock_gcash.create_payment(order_data)
+            
+            if payment_result.get("success"):
+                if order_id:
+                    # Update order with transaction info
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_method = 'gcash',
+                            payment_intent_id = %s,
+                            payment_status = 'pending'
+                        WHERE id = %s
+                    """, (payment_result["transaction_id"], order_id))
+                    
+                    # Save to gcash_transactions table
+                    try:
+                        cur.execute("""
+                            INSERT INTO gcash_transactions 
+                            (order_id, transaction_id, merchant_code, reference_number, amount, 
+                             status, checkout_url, expires_at, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                        """, (
+                            order_id,
+                            payment_result["transaction_id"],
+                            payment_result["merchant_code"],
+                            payment_result["reference_number"],
+                            float(amount),
+                            "pending",
+                            payment_result["checkout_url"],
+                            payment_result["expires_at"]
+                        ))
+                    except Exception as tx_error:
+                        print(f"[WARNING] Failed to save transaction: {tx_error}")
+                        # Continue anyway
+                    
+                    conn.commit()
+                
+                return {
+                    "success": True,
+                    "payment_type": "mock_gcash",
+                    "message": payment_result["message"],
+                    "order_id": order_id,
+                    "payment_method": payment_method,
+                    "amount": amount,
+                    "transaction_id": payment_result["transaction_id"],
+                    "checkout_url": f"http://localhost:8000{payment_result['checkout_url']}",
+                    "reference_number": payment_result["reference_number"],
+                    "status": "pending",
+                    "instructions": "Click the link to complete the mock GCash payment"
+                }
+            else:
+                raise HTTPException(500, "Failed to create mock payment")
+                
+        else:
+            raise HTTPException(400, f"Unsupported payment method: {payment_method}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Payment processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Payment processing failed: {str(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
+    """Process payment for an order - Updated to use mock GCash"""
+    data = await request.json()
+    order_id = data.get("order_id")
+    payment_method = data.get("payment_method")
+    amount = data.get("amount")
+    payment_details = data.get("payment_details", {})
+    
+    if not payment_method or not amount:
+        raise HTTPException(400, "Missing required payment information")
+    
     # For GCash, order_id may be null if order hasn't been created yet
-    # Order will be created after payment proof is uploaded
     if payment_method == "gcash" and not order_id:
-        # Generate payment info without order (for pre-order payment setup)
-        from payment_gateway import generate_gcash_payment_link
-        import random
-        import string
-        
-        # Generate a temporary reference number
-        temp_ref = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
-        reference = f"ORDER_PENDING_{temp_ref}"
-        
+        # For mock GCash, we'll create the order after payment
         admin_gcash = os.getenv("ADMIN_GCASH_NUMBER", "09947784922")
         gcash_number = payment_details.get("gcashNumber", "")
         
         if not gcash_number or len(gcash_number) != 11:
             raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
         
-        # Get static QR code URL
-        qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.jpg")
+        # Generate a temporary reference
+        import random
+        import string
+        temp_ref = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+        reference = f"ORDER_PENDING_{temp_ref}"
         
-        # Generate payment info with static QR code
-        payment_info = generate_gcash_payment_link(
-            amount=float(amount),
-            reference=reference,
-            admin_number=admin_gcash,
-            qr_code_url=qr_code_url
-        )
-        
-        # Return payment info for modal (order will be created later)
         return {
             "success": True,
-            "payment_type": "direct_gcash",
+            "payment_type": "mock_gcash",
             "admin_gcash_number": admin_gcash,
             "amount": amount,
             "reference": reference,
             "payment_intent_id": reference,
-            "qr_code_url": payment_info.get("qr_code_url", qr_code_url),  # Static QR code image URL
-            "instructions": payment_info.get("instructions", "")
+            "instructions": f"Use mock GCash checkout for payment simulation",
+            "checkout_url": f"/api/mock-gcash/checkout?amount={amount}&reference={reference}"
         }
     
     if not order_id:
@@ -1272,135 +1440,102 @@ async def process_payment(request: Request):
         
         # Process payment based on method
         if payment_method == "cod":
-            # Cash on Delivery - payment is done on delivery, mark as paid
+            # Cash on Delivery
             payment_success = True
             payment_message = "Cash on Delivery - Payment will be collected on delivery"
             
         elif payment_method == "gcash":
-            # Process GCash payment via PayMongo or direct GCash API
-            from payment_gateway import process_gcash_payment
-            
             gcash_number = payment_details.get("gcashNumber", "")
             
             if not gcash_number or len(gcash_number) != 11:
                 raise HTTPException(400, "Invalid GCash number. Please enter a valid 11-digit mobile number.")
             
-            # Get order details for payment
-            cur.execute("SELECT fullname, contact FROM orders WHERE id = %s", (order_id,))
-            order_info = cur.fetchone()
-            
-            order_details = {
-                "customer_name": order_info.get("fullname", "") if order_info else "",
-                "customer_contact": order_info.get("contact", "") if order_info else "",
-                "customer_email": "",
-                "return_url": f"{os.getenv('APP_URL', 'https://your-app.onrender.com')}/orders.html",
-                "callback_url": f"{os.getenv('APP_URL', 'https://your-app.onrender.com')}/payment/callback"
-            }
-            
+            # Use Mock GCash API
             try:
-                # QR code URL - use environment variable or default path
-                qr_code_url = os.getenv("GCASH_QR_CODE_URL", "/static/gcash-qr.jpg")
-                
-                # Process GCash payment (direct GCash-to-GCash transfer)
-                payment_result = process_gcash_payment(
-                    order_id=order_id,
-                    amount=float(amount),
-                    gcash_number=gcash_number,
-                    order_details=order_details,
-                    use_direct=True,  # Use direct GCash-to-GCash transfer to admin number
-                    qr_code_url=qr_code_url  # Pass QR code URL
-                )
-                
-                payment_success = payment_result.get("success", False)
-                payment_message = payment_result.get("message", "GCash payment processed")
-                payment_status = payment_result.get("status", "pending")
-                payment_intent_id = payment_result.get("payment_intent_id")
-                
-                # Store payment intent ID if available (for status checking)
-                if payment_intent_id:
-                    cur.execute("""
-                        UPDATE orders 
-                        SET payment_status = %s, payment_method = %s, payment_intent_id = %s
-                        WHERE id = %s
-                    """, (payment_status, payment_method, payment_intent_id, order_id))
-                    conn.commit()
-                else:
-                    # Update status without payment_intent_id
-                    cur.execute("""
-                        UPDATE orders 
-                        SET payment_status = %s, payment_method = %s
-                        WHERE id = %s
-                    """, (payment_status, payment_method, order_id))
-                    conn.commit()
-                
-                # If payment requires action (redirect to GCash)
-                if payment_result.get("requires_action"):
-                    return {
-                        "success": False,
-                        "requires_action": True,
-                        "message": payment_message,
-                        "redirect_url": payment_result.get("redirect_url"),
-                        "payment_intent_id": payment_intent_id,
-                        "order_id": order_id
-                    }
-                
-                # Check if direct GCash transfer
-                payment_type = payment_result.get("payment_type", "")
-                if payment_type == "direct_gcash":
-                    return {
-                        "success": True,
-                        "payment_type": "direct_gcash",
-                        "message": payment_message,
-                        "order_id": order_id,
-                        "payment_method": payment_method,
-                        "amount": amount,
-                        "payment_intent_id": payment_intent_id,
-                        "status": payment_status,
-                        "admin_gcash_number": payment_result.get("admin_gcash_number", "09947784922"),
-                        "reference": payment_result.get("reference", payment_intent_id),
-                        "instructions": payment_result.get("instructions", ""),
-                        "qr_data": payment_result.get("qr_data", ""),
-                        "qr_code_url": payment_result.get("qr_code_url", "/static/gcash-qr.jpg")  # Static QR code image
-                    }
-                
-                # Return success response for GCash
-                return {
-                    "success": payment_success,
-                    "message": payment_message,
+                # Create mock payment request
+                order_data = {
                     "order_id": order_id,
-                    "payment_method": payment_method,
-                    "amount": amount,
-                    "payment_intent_id": payment_intent_id,
-                    "status": payment_status
+                    "amount": float(amount),
+                    "customer_name": data.get("fullname", ""),
+                    "customer_mobile": gcash_number,
+                    "description": f"Order #{order_id}",
+                    "redirect_url": f"{os.getenv('APP_URL', 'http://localhost:8000')}/orders.html",
+                    "webhook_url": f"{os.getenv('APP_URL', 'http://localhost:8000')}/api/mock-gcash/webhook"
                 }
                 
-            except Exception as payment_error:
-                print(f"[ERROR] GCash payment error: {payment_error}")
-                import traceback
-                traceback.print_exc()
+                # Call mock GCash API
+                response = await client.post(
+                    f"{BASE_URL}/api/mock-gcash/create-payment",
+                    json=order_data
+                )
                 
-                # If payment gateway is not configured, use demo mode
-                if "not set" in str(payment_error) or "not configured" in str(payment_error) or "PAYMONGO" in str(payment_error):
-                    # Demo mode - mark as pending
+                if response.status_code == 201:
+                    payment_data = response.json()["data"]
+                    
+                    # Update order with transaction info
                     cur.execute("""
                         UPDATE orders 
-                        SET payment_status = 'pending', payment_method = %s
+                        SET payment_method = 'gcash',
+                            payment_intent_id = %s,
+                            payment_status = 'pending'
                         WHERE id = %s
-                    """, (payment_method, order_id))
+                    """, (payment_data["transaction_id"], order_id))
+                    
+                    # Save to gcash_transactions table
+                    cur.execute("""
+                        INSERT INTO gcash_transactions 
+                        (order_id, transaction_id, merchant_code, reference_number, amount, 
+                         status, checkout_url, expires_at, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        order_id,
+                        payment_data["transaction_id"],
+                        payment_data["merchant_code"],
+                        payment_data["reference_number"],
+                        float(amount),
+                        "pending",
+                        payment_data["checkout_url"],
+                        payment_data["expires_at"]
+                    ))
+                    
                     conn.commit()
                     
                     return {
                         "success": True,
-                        "message": "GCash payment request sent. Please confirm in your GCash app. (Demo mode - configure PayMongo API keys for real payments)",
+                        "payment_type": "mock_gcash",
+                        "message": "Mock GCash payment created",
                         "order_id": order_id,
                         "payment_method": payment_method,
                         "amount": amount,
+                        "transaction_id": payment_data["transaction_id"],
+                        "checkout_url": payment_data["checkout_url"],
+                        "reference_number": payment_data["reference_number"],
                         "status": "pending",
-                        "demo_mode": True
+                        "instructions": "Click the link to complete the mock GCash payment simulation"
                     }
                 else:
-                    raise HTTPException(500, f"GCash payment failed: {str(payment_error)}")
-            
+                    raise Exception("Failed to create mock payment")
+                    
+            except Exception as payment_error:
+                print(f"[ERROR] Mock GCash payment error: {payment_error}")
+                
+                # Fallback: mark as pending
+                cur.execute("""
+                    UPDATE orders 
+                    SET payment_status = 'pending', payment_method = %s
+                    WHERE id = %s
+                """, (payment_method, order_id))
+                conn.commit()
+                
+                return {
+                    "success": True,
+                    "message": "GCash payment request created. Please contact admin for payment details.",
+                    "order_id": order_id,
+                    "payment_method": payment_method,
+                    "amount": amount,
+                    "status": "pending",
+                    "demo_mode": True
+                }
         else:
             raise HTTPException(400, f"Unsupported payment method: {payment_method}")
         
@@ -1696,7 +1831,7 @@ def get_menu_items():
         cur = conn.cursor()
         # Optimized query - only select needed columns, limit results for performance
         cur.execute("""
-            SELECT id, name, price, category, is_available, quantity, image_url, created_at
+            SELECT id, name, price, category, is_available, quantity, created_at
             FROM menu_items 
             ORDER BY category, name
             LIMIT 1000
@@ -1792,8 +1927,6 @@ async def add_menu_item(request: Request):
         quantity = data.get("quantity", 0)
         if quantity is None:
             quantity = 0
-        # Optional image_url coming from admin upload flow
-        image_url = data.get("image_url") if data.get("image_url") else None
         
         try:
             quantity = int(quantity)
@@ -1830,22 +1963,14 @@ async def add_menu_item(request: Request):
         
         conn.commit()
         result = cur.fetchone()
-        # If admin provided an image_url, update the newly inserted row to include it
-        if image_url and result:
-            try:
-                item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
-                if item_id:
-                    cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
-                    conn.commit()
-                    cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
-                    result = cur.fetchone()
-            except Exception as upd_err:
-                print(f"[WARNING] Could not update image_url for menu item: {upd_err}")
-
         return {"ok": True, "message": "Menu item added successfully", "item": result}
     except psycopg2_errors.UndefinedTable as e:
         print(f"[ERROR] Table doesn't exist: {e}")
         if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
             conn.close()
         # Try to create table
         try:
@@ -1866,23 +1991,12 @@ async def add_menu_item(request: Request):
             ))
             conn.commit()
             result = cur.fetchone()
-            # If image_url was provided, update the inserted row
-            retry_image = data.get("image_url") if data.get("image_url") else None
-            if retry_image and result:
-                try:
-                    item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
-                    if item_id:
-                        cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (retry_image, item_id))
-                        conn.commit()
-                        cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
-                        result = cur.fetchone()
-                except Exception as upd_err:
-                    print(f"[WARNING] Could not set image_url on retry insert: {upd_err}")
-
             conn.close()
             return {"ok": True, "message": "Menu item added successfully", "item": result}
         except Exception as retry_error:
             print(f"[ERROR] Retry failed: {retry_error}")
+            import traceback
+            traceback.print_exc()
             raise HTTPException(500, f"Table creation failed. Please run CREATE_MENU_TABLE.sql in your database. Error: {str(retry_error)}")
     except HTTPException:
         # Re-raise HTTP exceptions (validation errors, etc.)
@@ -1929,18 +2043,6 @@ async def add_menu_item(request: Request):
                 ))
                 conn.commit()
                 result = cur.fetchone()
-                # If image_url provided, try to update the row after retry
-                if image_url and result:
-                    try:
-                        item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
-                        if item_id:
-                            cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
-                            conn.commit()
-                            cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
-                            result = cur.fetchone()
-                    except Exception as upd_err:
-                        print(f"[WARNING] Could not update image_url after retry: {upd_err}")
-
                 conn.close()
                 return {"ok": True, "message": "Menu item added successfully", "item": result}
             except Exception as retry_error:
@@ -1983,18 +2085,6 @@ async def add_menu_item(request: Request):
                 ))
                 conn.commit()
                 result = cur.fetchone()
-                # If image_url provided, try to set it on the retried insert
-                if image_url and result:
-                    try:
-                        item_id = result.get('id') if isinstance(result, dict) else (result[0] if result else None)
-                        if item_id:
-                            cur.execute("UPDATE menu_items SET image_url = %s WHERE id = %s", (image_url, item_id))
-                            conn.commit()
-                            cur.execute("SELECT * FROM menu_items WHERE id = %s", (item_id,))
-                            result = cur.fetchone()
-                    except Exception as upd_err:
-                        print(f"[WARNING] Could not update image_url on final retry: {upd_err}")
-
                 conn.close()
                 return {"ok": True, "message": "Menu item added successfully", "item": result}
             except Exception as retry_error:
@@ -2011,76 +2101,6 @@ async def add_menu_item(request: Request):
                 conn.close()
             except:
                 pass
-
-# --- Upload Menu Item Image ---
-@app.post("/upload-menu-image")
-async def upload_menu_image(file: UploadFile = File(...)):
-    """
-    Upload an image for a menu item
-    Expects multipart/form-data with 'file' field containing the image
-    Returns JSON with image_url path
-    """
-    try:
-        if not file:
-            raise HTTPException(status_code=400, detail="No file provided")
-        
-        # Validate file type
-        if file.content_type not in ['image/jpeg', 'image/png']:
-            raise HTTPException(status_code=400, detail="Only JPG and PNG images are allowed")
-        
-        # Create directory if it doesn't exist
-        image_dir = os.path.join(os.path.dirname(__file__), 'static', 'images', 'menu_items')
-        os.makedirs(image_dir, exist_ok=True)
-        
-        # Read file contents
-        contents = await file.read()
-        
-        # Limit file size (5MB)
-        if len(contents) > 5 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
-        
-        # Generate unique filename
-        import time
-        timestamp = int(time.time() * 1000)
-        # Keep original filename but add timestamp to make it unique
-        original_filename = file.filename
-        if original_filename:
-            # Remove any unsafe characters
-            safe_filename = "".join(c if c.isalnum() or c in '.-_' else '_' for c in original_filename)
-        else:
-            safe_filename = f"menu_{timestamp}.jpg"
-        
-        # Add timestamp to ensure uniqueness
-        name_parts = safe_filename.rsplit('.', 1)
-        if len(name_parts) == 2:
-            filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
-        else:
-            filename = f"{safe_filename}_{timestamp}"
-        
-        # Save file
-        filepath = os.path.join(image_dir, filename)
-        with open(filepath, 'wb') as f:
-            f.write(contents)
-        
-        # Return relative path for storage in database
-        relative_path = f"static/images/menu_items/{filename}"
-        
-        print(f"[INFO] Menu image uploaded successfully: {relative_path}")
-        
-        return json_response({
-            "ok": True,
-            "message": "Image uploaded successfully",
-            "image_url": relative_path,
-            "filename": filename
-        })
-        
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        print(f"[ERROR] Image upload failed: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 # --- Menu Items: Update menu item (Admin only) ---
 @app.put("/menu/{item_id}")
@@ -2107,9 +2127,6 @@ async def update_menu_item(item_id: int, request: Request):
         if "quantity" in data:
             updates.append("quantity = %s")
             params.append(data.get("quantity"))
-        if "image_url" in data:
-            updates.append("image_url = %s")
-            params.append(data.get("image_url"))
         
         if not updates:
             raise HTTPException(400, "No fields to update")
@@ -3508,3 +3525,479 @@ async def get_user_details(user_id: int):
                 conn.close()
         except Exception as close_error:
             print(f"[WARNING] Error closing database connection: {close_error}")
+
+# --- Mock GCash API Endpoints (for development) ---
+
+@app.post("/api/mock-gcash/create-payment")
+async def create_mock_gcash_payment(request: Request):
+    """Create a mock GCash payment (for development)"""
+    try:
+        data = await request.json()
+        order_id = data.get("order_id")
+        amount = data.get("amount")
+        customer_phone = data.get("customer_phone", "")
+        
+        if not order_id or not amount:
+            raise HTTPException(400, "Order ID and amount are required")
+        
+        # Get order details
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, fullname, contact, location, items, total 
+                FROM orders WHERE id = %s
+            """, (order_id,))
+            order = cur.fetchone()
+            
+            if not order:
+                raise HTTPException(404, "Order not found")
+            
+            # Prepare order data
+            order_data = {
+                "order_id": order_id,
+                "amount": float(amount),
+                "customer_name": order.get("fullname", ""),
+                "customer_phone": customer_phone or order.get("contact", ""),
+                "description": f"Order #{order_id} - Online Canteen"
+            }
+            
+            # Create mock payment
+            payment_result = mock_gcash.create_payment(order_data)
+            
+            if payment_result.get("success"):
+                # Save to database
+                cur.execute("""
+                    INSERT INTO gcash_transactions 
+                    (order_id, transaction_id, merchant_code, reference_number, amount, 
+                     status, checkout_url, qr_code_url, expires_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    order_id,
+                    payment_result["transaction_id"],
+                    payment_result["merchant_code"],
+                    payment_result["reference_number"],
+                    amount,
+                    "pending",
+                    payment_result["checkout_url"],
+                    payment_result.get("qr_code_url"),
+                    payment_result["expires_at"]
+                ))
+                
+                # Update order
+                cur.execute("""
+                    UPDATE orders 
+                    SET payment_method = 'gcash',
+                        payment_intent_id = %s,
+                        payment_status = 'pending'
+                    WHERE id = %s
+                """, (payment_result["transaction_id"], order_id))
+                
+                conn.commit()
+                
+                return payment_result
+            else:
+                raise HTTPException(500, "Failed to create mock payment")
+                
+        finally:
+            conn.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Mock GCash payment failed: {e}")
+        raise HTTPException(500, f"Payment creation failed: {str(e)}")
+
+@app.post("/api/mock-gcash/webhook")
+async def mock_gcash_webhook(request: Request):
+    """Handle mock GCash webhooks"""
+    try:
+        # Verify signature
+        signature = request.headers.get("X-Gcash-Signature")
+        if not signature:
+            print("[MOCK] Missing webhook signature")
+            return {"status": "ignored"}
+        
+        # Read body
+        raw_body = await request.body()
+        payload = raw_body.decode('utf-8')
+        data = json.loads(payload)
+        
+        event_type = data.get("event")
+        payment_data = data.get("data", {})
+        transaction_id = payment_data.get("id")
+        
+        print(f"[MOCK] Webhook received: {event_type} for {transaction_id}")
+        
+        if transaction_id:
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                if event_type == "payment.success":
+                    # Update transaction
+                    cur.execute("""
+                        UPDATE gcash_transactions 
+                        SET status = 'success',
+                            paid_at = NOW(),
+                            updated_at = NOW()
+                        WHERE transaction_id = %s
+                        RETURNING order_id
+                    """, (transaction_id,))
+                    
+                    result = cur.fetchone()
+                    if result:
+                        order_id = result.get("order_id")
+                        
+                        # Update order
+                        cur.execute("""
+                            UPDATE orders 
+                            SET payment_status = 'paid',
+                                status = 'Processing'
+                            WHERE id = %s
+                        """, (order_id,))
+                        
+                        conn.commit()
+                        print(f"[MOCK] Order {order_id} marked as paid")
+                
+                elif event_type == "payment.failed":
+                    cur.execute("""
+                        UPDATE gcash_transactions 
+                        SET status = 'failed',
+                            updated_at = NOW()
+                        WHERE transaction_id = %s
+                    """, (transaction_id,))
+                    conn.commit()
+                    
+            finally:
+                conn.close()
+        
+        return {"status": "processed"}
+        
+    except Exception as e:
+        print(f"[ERROR] Mock webhook failed: {e}")
+        return {"status": "error"}
+
+@app.get("/api/mock-gcash/status/{transaction_id}")
+async def check_mock_gcash_status(transaction_id: str):
+    """Check mock payment status"""
+    try:
+        # Check from mock API
+        status_result = mock_gcash.check_payment_status(transaction_id)
+        
+        if status_result.get("paid") and status_result.get("success"):
+            # Update database
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                result = cur.fetchone()
+                if result:
+                    order_id = result.get("order_id")
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid'
+                        WHERE id = %s
+                    """, (order_id,))
+                    conn.commit()
+            finally:
+                conn.close()
+        
+        return status_result
+        
+    except Exception as e:
+        print(f"[ERROR] Mock status check failed: {e}")
+        return {"paid": False, "status": "error"}
+
+@app.get("/api/mock-gcash/pay/{transaction_id}")
+async def mock_gcash_payment_page(transaction_id: str):
+    """Mock GCash payment page for simulation"""
+    # Create proper HTML with the transaction_id properly escaped
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock GCash Payment</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }}
+        .container {{ border: 1px solid #ddd; padding: 30px; border-radius: 10px; }}
+        .success {{ background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; }}
+        .failed {{ background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; }}
+        button {{ padding: 12px 24px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; }}
+        .pay-btn {{ background-color: #007bff; color: white; }}
+        .cancel-btn {{ background-color: #6c757d; color: white; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🧾 Mock GCash Payment</h2>
+        <p>Transaction ID: <strong>{transaction_id}</strong></p>
+        <p>This is a simulation page for testing GCash payments.</p>
+        
+        <div style="margin: 20px 0;">
+            <button class="pay-btn" onclick="simulatePayment('success')">
+                ✅ Simulate Successful Payment
+            </button>
+            <button class="cancel-btn" onclick="simulatePayment('failed')">
+                ❌ Simulate Failed Payment
+            </button>
+        </div>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+        
+        <script>
+            const transaction_id = "{transaction_id}";
+            
+            async function simulatePayment(result) {{
+                try {{
+                    console.log('Simulating payment:', result, 'for transaction:', transaction_id);
+                    const response = await fetch(`/api/mock-gcash/simulate/${{transaction_id}}/${{result}}`, {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }}
+                    }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! Status: ${{response.status}}`);
+                    }}
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="${{result === 'success' ? 'success' : 'failed'}}">
+                                Payment ${{result === 'success' ? 'Successful' : 'Failed'}}!
+                                <p>You can close this window now.</p>
+                                <p><button onclick="checkStatus()">Check Payment Status</button></p>
+                            </div>`;
+                    }} else {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="failed">
+                                Error: ${{data.error || 'Unknown error'}}
+                            </div>`;
+                    }}
+                }} catch (error) {{
+                    console.error('Payment simulation error:', error);
+                    document.getElementById('result').innerHTML = 
+                        `<div class="failed">
+                            Error: ${{error.message}}
+                        </div>`;
+                }}
+            }}
+            
+            function checkStatus() {{
+                // This would check the payment status in the main window
+                if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage({{ type: 'payment_status_check', transaction_id: transaction_id }}, '*');
+                }}
+                // Close this window
+                window.close();
+            }}
+        </script>
+    </div>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html_content)
+    """Mock GCash payment page for simulation"""
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Mock GCash Payment</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }}
+            .container {{ border: 1px solid #ddd; padding: 30px; border-radius: 10px; }}
+            .success {{ background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; }}
+            .failed {{ background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; }}
+            button {{ padding: 12px 24px; margin: 10px; border: none; border-radius: 5px; cursor: pointer; }}
+            .pay-btn {{ background-color: #007bff; color: white; }}
+            .cancel-btn {{ background-color: #6c757d; color: white; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>🧾 Mock GCash Payment</h2>
+            <p>Transaction ID: <strong>{transaction_id}</strong></p>
+            <p>This is a simulation page for testing GCash payments.</p>
+            
+            <div style="margin: 20px 0;">
+                <button class="pay-btn" onclick="simulatePayment('success')">
+                    ✅ Simulate Successful Payment
+                </button>
+                <button class="cancel-btn" onclick="simulatePayment('failed')">
+                    ❌ Simulate Failed Payment
+                </button>
+            </div>
+            
+            <div id="result" style="margin-top: 20px;"></div>
+            
+            <script>
+                async function simulatePayment(result) {{
+                    const response = await fetch(`/api/mock-gcash/simulate/${{transaction_id}}/${{result}}`, {{
+                        method: 'POST'
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {{
+                        document.getElementById('result').innerHTML = 
+                            `<div class="${{result === 'success' ? 'success' : 'failed'}}">
+                                Payment ${{result === 'success' ? 'Successful' : 'Failed'}}!
+                                <p>You can close this window now.</p>
+                            </div>`;
+                    }}
+                }}
+            </script>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
+
+@app.post("/api/mock-gcash/simulate/{transaction_id}/{result}")
+async def simulate_payment_action(transaction_id: str, result: str):
+    """Endpoint for simulating payment results"""
+    try:
+        success = result == "success"
+        mock_result = mock_gcash.simulate_payment(transaction_id, success)
+        
+        # If successful, update the order in database
+        if success and mock_result.get("success"):
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                
+                # Update gcash_transactions table
+                cur.execute("""
+                    UPDATE gcash_transactions 
+                    SET status = 'success',
+                        paid_at = NOW(),
+                        updated_at = NOW()
+                    WHERE transaction_id = %s
+                    RETURNING order_id
+                """, (transaction_id,))
+                
+                trans_result = cur.fetchone()
+                if trans_result:
+                    order_id = trans_result.get("order_id")
+                    
+                    # Update order
+                    cur.execute("""
+                        UPDATE orders 
+                        SET payment_status = 'paid',
+                            status = 'Pending'
+                        WHERE id = %s
+                    """, (order_id,))
+                    
+                    conn.commit()
+                    print(f"[MOCK] Order {order_id} marked as paid via simulation")
+                    
+            except Exception as db_error:
+                print(f"[ERROR] Database update failed: {db_error}")
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    conn.close()
+        
+        return mock_result
+        
+    except Exception as e:
+        print(f"[ERROR] Simulation failed: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/mock-gcash/admin")
+async def mock_gcash_admin():
+    """Admin panel for managing mock payments"""
+    payments = mock_gcash.get_all_payments()
+    
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Mock GCash Admin</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .pending { color: orange; }
+            .success { color: green; }
+            .failed { color: red; }
+            button { margin: 5px; padding: 5px 10px; }
+        </style>
+    </head>
+    <body>
+        <h1>Mock GCash Payment Manager</h1>
+        <button onclick="location.reload()">Refresh</button>
+        <button onclick="resetAll()">Reset All Payments</button>
+        
+        <h2>Active Payments</h2>
+        <table>
+            <tr>
+                <th>Transaction ID</th>
+                <th>Order ID</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+    """
+    
+    for txn_id, payment in payments.items():
+        html += f"""
+            <tr>
+                <td>{txn_id}</td>
+                <td>{payment['order_id']}</td>
+                <td>₱{payment['amount']:.2f}</td>
+                <td class="{payment['status'].lower()}">{payment['status']}</td>
+                <td>{payment['created_at'].strftime('%Y-%m-%d %H:%M')}</td>
+                <td>
+                    <button onclick="simulate('{txn_id}', 'success')">✅ Mark Paid</button>
+                    <button onclick="simulate('{txn_id}', 'failed')">❌ Mark Failed</button>
+                </td>
+            </tr>
+        """
+    
+    html += """
+        </table>
+        
+        <script>
+            async function simulate(txnId, result) {
+                await fetch(`/api/mock-gcash/simulate/${txnId}/${result}`, {
+                    method: 'POST'
+                });
+                location.reload();
+            }
+            
+            async function resetAll() {
+                await fetch('/api/mock-gcash/reset', { method: 'POST' });
+                location.reload();
+            }
+        </script>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html)
+
+@app.post("/api/mock-gcash/reset")
+async def reset_mock_payments():
+    """Reset all mock payments"""
+    result = mock_gcash.reset_payments()
+    return result
+
+@app.get("/debug/mock-gcash")
+async def debug_mock_gcash():
+    """Debug endpoint to check mock GCash status"""
+    return {
+        "mock_gcash_payments": len(mock_gcash.payments),
+        "payments": list(mock_gcash.payments.keys())
+    }
