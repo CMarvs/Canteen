@@ -813,8 +813,20 @@
                 // Ensure values are safe
                 const safeQty = Math.max(1, Math.min(1000, itemQty));
                 const safePrice = Math.max(0, Math.min(100000, itemPrice));
-                return `• ${itemName} × ${safeQty} (₱${(safePrice * safeQty).toFixed(2)})`;
-              }).filter(html => html !== '').join('<br>') : 'No items'}
+                let imageUrl = '/static/images/menu_items/default.jpg';
+                if (it.image_url) {
+                  const url = String(it.image_url).trim();
+                  imageUrl = url.startsWith('/') ? url : `/${url}`;
+                }
+                return `<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px;">
+                  <img src="${imageUrl}" alt="${itemName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; color: #333;">${itemName}</div>
+                    <div style="font-size: 0.9rem; color: #666;">×${safeQty}</div>
+                    <div style="font-size: 0.85rem; color: #8B4513; font-weight: 600;">₱${(safePrice * safeQty).toFixed(2)}</div>
+                  </div>
+                </div>`;
+              }).filter(html => html !== '').join('') : 'No items'}
             </div>
 
             <div class="order-total">

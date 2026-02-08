@@ -405,7 +405,8 @@ async function addToCartById(id, qty = 1){
       id: item.id, 
       name: item.name, 
       price: item.price, 
-      qty 
+      qty,
+      image_url: item.image_url
     });
   }
   
@@ -494,13 +495,19 @@ function renderCart(){
         try {
           const price = Number(it.price) || 0;
           const qty = Number(it.qty) || 1;
+          let imageUrl = '/static/images/menu_items/default.jpg';
+          if (it.image_url) {
+            const url = String(it.image_url).trim();
+            imageUrl = url.startsWith('/') ? url : `/${url}`;
+          }
           return `
-            <div class="cart-item" style="animation: fadeIn 0.3s ease-out;">
-              <div>
+            <div class="cart-item" style="animation: fadeIn 0.3s ease-out; display: flex; align-items: center; gap: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; margin-bottom: 12px;">
+              <img src="${imageUrl}" alt="${it.name}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
+              <div style="flex: 1;">
                 <strong>${it.name || 'Unknown Item'}</strong><br>
-                <span class="muted">₱${price.toFixed(2)} × ${qty}</span>
+                <span class="muted">₱${price.toFixed(2)} × ${qty} = ₱${(price * qty).toFixed(2)}</span>
               </div>
-              <div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                 <button class="btn small" onclick="promptEditQty('${it.id}', ${qty})" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Edit</button>
                 <button class="btn small ghost" onclick="removeCartItem('${it.id}')" style="transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)';" onmouseout="this.style.transform='scale(1)';">Delete</button>
               </div>
@@ -1616,7 +1623,23 @@ function orderCardHtmlForUser(o){
   
   const statusBadge = statusBadgeHtml(o.status);
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
-  const itemsText = items.map(i => `${i.name} ×${i.qty}`).join('<br>');
+  const itemsHtml = items.map(i => {
+    let imageUrl = '/static/images/menu_items/default.jpg';
+    if (i.image_url) {
+      const url = String(i.image_url).trim();
+      imageUrl = url.startsWith('/') ? url : `/${url}`;
+    }
+    return `
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px;">
+        <img src="${imageUrl}" alt="${i.name}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
+        <div style="flex: 1;">
+          <div style="font-weight: 600; color: #333;">${i.name}</div>
+          <div style="font-size: 0.9rem; color: #666;">×${i.qty}</div>
+          <div style="font-size: 0.85rem; color: #8B4513; font-weight: 600;">₱${(Number(i.price) || 0).toFixed(2)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
   const canCancel = o.status === 'Pending';
   const isRefunded = o.refund_status === 'refunded';
   
@@ -1637,7 +1660,7 @@ function orderCardHtmlForUser(o){
         </div>
         <div>${statusBadge}</div>
       </div>
-      <div style="margin-top:8px">${itemsText}</div>
+      <div style="margin-top:12px; border-top: 1px solid #eee; padding-top: 12px;">${itemsHtml}</div>
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>
