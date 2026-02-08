@@ -721,6 +721,8 @@ async function placeOrder(name, contact, address, paymentMethod) {
 
     // ── GCash ─────────────────────────────────────────────
     // In your placeOrder function, update the GCash section:
+    // ── GCash ─────────────────────────────────────────────
+    // In the GCash section of placeOrder function:
     if (paymentMethod === 'gcash') {
       orderData.payment_status = 'pending';
 
@@ -739,29 +741,26 @@ async function placeOrder(name, contact, address, paymentMethod) {
       const orderResult = await orderResponse.json();
       const orderId = orderResult.order?.id || orderResult.id;
 
-      // 2. Process GCash payment (mock)
+      // 2. Process GCash payment (mock) 
       console.log('Processing mock GCash payment for order:', orderId);
       const paymentResult = await processMockGCashPayment(orderId, total, gcashNumber);
 
       if (!paymentResult) {
-        // If payment setup failed, we should still create the order but mark it as pending
+        // Payment setup failed
         console.log('GCash payment setup failed, but order created with ID:', orderId);
+        alert('⚠️ Payment window could not open. Please check pop-up blocker.\n\nYour order #' + orderId + ' was created with pending payment.');
 
-        // Show alternative payment instructions
-        const adminNumber = '09947784922'; // Your admin GCash number
-        showGCashPaymentModal({
-          admin_gcash_number: adminNumber,
-          amount: total,
-          reference: `ORDER_${orderId}`,
-          order_id: orderId,
-          qr_code_url: '/static/gcash-qr.jpg'
-        });
-
-        return; // Exit early since we showed the modal
+        // DON'T automatically redirect - let user decide
+        const shouldRedirect = confirm('Do you want to go to your orders page now?');
+        if (shouldRedirect) {
+          setTimeout(() => {
+            location.href = 'orders.html?t=' + Date.now();
+          }, 500);
+        }
+        return;
       }
 
-      // If payment was successful, show success message
-      await finalizeOrderSuccess(orderResult, 'GCash');
+      // If paymentResult exists, the modal will handle the redirect
       return;
     }
 
@@ -809,7 +808,7 @@ async function finalizeOrderSuccess(orderResult, method = 'cod') {
 }
 
 // Show GCash payment modal with beautiful UI
-function showGCashPaymentModal(paymentData) {
+/*function showGCashPaymentModal(paymentData) {
   // Create modal with smooth animation
   const modal = document.createElement('div');
   modal.id = 'gcashPaymentModal';
@@ -1475,7 +1474,7 @@ function showGCashPaymentModal(paymentData) {
       }
     }
   };
-}
+} //
 
 /* ---------- User Orders (API) ---------- */
 // Store user orders globally for sequential numbering
@@ -3242,7 +3241,7 @@ async function processGCashPayment(orderId, amount, gcashNumber) {
 
 async function processMockGCashPayment(orderId, amount, gcashNumber) {
   try {
-    console.log('Loading: Creating mock GCash payment...');
+    console.log('Creating mock GCash payment for order:', orderId);
 
     const response = await fetch(`/api/mock-gcash/create-payment`, {
       method: 'POST',
@@ -3260,21 +3259,47 @@ async function processMockGCashPayment(orderId, amount, gcashNumber) {
     const result = await response.json();
     console.log('Mock GCash response:', result);
 
-    // FIX: Check if the response structure is correct
     if (result.success) {
-      // Get the checkout_url - it might be directly in result or in result.data
       const checkoutUrl = result.checkout_url || (result.data && result.data.checkout_url);
+      const transactionId = result.transaction_id || (result.data && result.data.transaction_id);
 
-      if (!checkoutUrl) {
-        throw new Error('No checkout URL in response');
+      if (!checkoutUrl || !transactionId) {
+        throw new Error('No checkout URL or transaction ID in response');
       }
 
       // Open mock checkout page in new tab
-      window.open(checkoutUrl, '_blank', 'width=500,height=700');
+      const paymentWindow = window.open(checkoutUrl, '_blank', 'width=550,height=700,scrollbars=yes');
 
-      // Show status checking modal
-      const transactionId = result.transaction_id || (result.data && result.data.transaction_id);
-      showMockPaymentStatusModal(transactionId, amount, orderId);
+      if (!paymentWindow) {
+        alert('⚠️ Popup blocked! Please allow pop-ups for this site to complete payment.\n\nYou can also manually visit: ' + checkoutUrl);
+        showManualPaymentInstructions(transactionId, amount, orderId);
+        return result.data || result;
+      }
+
+      // Listen for payment completion from the popup
+      window.addEventListener('message', function handlePaymentMessage(event) {
+        if (event.data && event.data.type === 'mock_payment_complete') {
+          console.log('Received payment completion:', event.data);
+
+          if (event.data.success && event.data.status === 'success') {
+            // Payment successful
+            setTimeout(() => {
+              alert('✅ Payment confirmed! Your order is now being processed.');
+              window.location.href = 'orders.html?t=' + Date.now();
+            }, 500);
+          }
+
+          // Remove the event listener
+          window.removeEventListener('message', handlePaymentMessage);
+        }
+      });
+
+      // Show waiting message
+      setTimeout(() => {
+        if (!paymentWindow.closed) {
+          showPaymentWaitingModal(transactionId, amount, orderId, paymentWindow);
+        }
+      }, 1000);
 
       return result.data || result;
     } else {
@@ -3282,11 +3307,296 @@ async function processMockGCashPayment(orderId, amount, gcashNumber) {
     }
   } catch (error) {
     console.error('Mock GCash error:', error);
-    // More detailed error message
-    showError(`Payment setup failed: ${error.message}`);
+    alert(`❌ Payment setup failed: ${error.message}\n\nYour order was created but payment setup failed. Please contact support.`);
     return null;
   }
 }
+
+function showPaymentWaitingModal(transactionId, amount, orderId, paymentWindow) {
+  const modalHTML = `
+    <div id="paymentWaitingModal" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    ">
+      <div style="
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      ">
+        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+        <h3 style="color: #0066cc; margin-bottom: 20px;">Waiting for Payment Completion</h3>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: left;">
+          <p><strong>Instructions:</strong></p>
+          <ol style="margin: 10px 0 0 20px;">
+            <li>A payment window opened</li>
+            <li>Click <strong>"✅ Simulate Successful Payment"</strong> in that window</li>
+            <li>Return here after completion</li>
+          </ol>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+          <button onclick="window.open('/api/mock-gcash/pay/${transactionId}', '_blank')" 
+                  style="
+                    background: #0066cc;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            📄 Open Payment Page Again
+          </button>
+          
+          <button onclick="checkPaymentStatusManually('${transactionId}', ${amount}, ${orderId})" 
+                  style="
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            🔄 Check Payment Status
+          </button>
+          
+          <button onclick="closePaymentWaitingModal()" 
+                  style="
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            I'll Complete Later
+          </button>
+        </div>
+        
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">
+          ⚠️ Payment must be completed for your order to be processed
+        </p>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closePaymentWaitingModal() {
+  const modal = document.getElementById('paymentWaitingModal');
+  if (modal) modal.remove();
+}
+
+async function checkPaymentStatusManually(transactionId, amount, orderId) {
+  try {
+    const response = await fetch(`/api/mock-gcash/status/${transactionId}`);
+    const result = await response.json();
+
+    if (result.paid) {
+      alert('✅ Payment confirmed! Your order is now being processed.');
+      closePaymentWaitingModal();
+      setTimeout(() => {
+        window.location.href = 'orders.html?t=' + Date.now();
+      }, 1000);
+    } else {
+      alert('⏳ Payment still pending. Please complete the payment simulation in the other window.');
+    }
+  } catch (error) {
+    console.error('Status check error:', error);
+    alert('❌ Failed to check payment status. Please try again.');
+  }
+}
+
+function showMockPaymentInstructions(transactionId, amount, orderId) {
+  // Show a modal with instructions
+  const modalHTML = `
+    <div id="paymentInstructionsModal" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    ">
+      <div style="
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      ">
+        <h3 style="color: #0066cc; margin-bottom: 20px;">📱 Mock GCash Payment Instructions</h3>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: left;">
+          <p><strong>Steps to complete payment:</strong></p>
+          <ol style="margin: 10px 0 0 20px;">
+            <li>A new tab opened with the mock GCash payment page</li>
+            <li>On that page, click <strong>"✅ Simulate Successful Payment"</strong></li>
+            <li>Wait for confirmation message on that page</li>
+            <li>Return here and click the button below to check status</li>
+          </ol>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button onclick="checkPaymentStatus('${transactionId}', ${amount}, ${orderId})" 
+                  style="
+                    background: #0066cc;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            🔄 Check Payment Status
+          </button>
+          <button onclick="document.getElementById('paymentInstructionsModal').remove()" 
+                  style="
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+async function checkPaymentStatus(transactionId, amount, orderId) {
+  try {
+    const response = await fetch(`/api/mock-gcash/status/${transactionId}`);
+    const result = await response.json();
+
+    if (result.paid) {
+      alert('✅ Payment confirmed! Your order is now being processed.');
+      document.getElementById('manualPaymentModal')?.remove();
+      document.getElementById('paymentInstructionsModal')?.remove();
+      // Redirect to orders page
+      setTimeout(() => {
+        window.location.href = 'orders.html?t=' + Date.now();
+      }, 1000);
+    } else {
+      alert('⏳ Payment still pending. Please complete the payment simulation in the other tab.');
+    }
+  } catch (error) {
+    console.error('Status check error:', error);
+    alert('❌ Failed to check payment status. Please try again.');
+  }
+}
+
+function showManualPaymentInstructions(transactionId, amount, orderId) {
+  const modalHTML = `
+    <div id="manualPaymentModal" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    ">
+      <div style="
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      ">
+        <h3 style="color: #0066cc; margin-bottom: 20px;">📱 Manual Mock GCash Payment</h3>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: left;">
+          <p><strong>Popup blocked? Here's how to complete payment:</strong></p>
+          <ol style="margin: 10px 0 0 20px;">
+            <li>Copy this URL: <code style="background: #eee; padding: 4px; border-radius: 4px;">${window.location.origin}/api/mock-gcash/pay/${transactionId}</code></li>
+            <li>Open it in a new tab</li>
+            <li>Click <strong>"✅ Simulate Successful Payment"</strong></li>
+            <li>Return here and check status</li>
+          </ol>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button onclick="window.open('/api/mock-gcash/pay/${transactionId}', '_blank')" 
+                  style="
+                    background: #0066cc;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            📄 Open Payment Page
+          </button>
+          <button onclick="checkPaymentStatus('${transactionId}', ${amount}, ${orderId})" 
+                  style="
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            🔄 Check Status
+          </button>
+          <button onclick="document.getElementById('manualPaymentModal').remove()" 
+                  style="
+                    background: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                  ">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
 
 function showMockPaymentModal(transactionId, amount) {
   const modalHTML = `
@@ -3506,4 +3816,30 @@ function showError(message) {
 
 function showSuccess(message) {
   alert('✅ ' + message);
+}
+
+async function testMockPayment() {
+  // Create a test order first
+  const testOrder = {
+    user_id: getCurrent()?.id || 1,
+    fullname: "Test User",
+    contact: "09123456789",
+    location: "Test Location",
+    items: [{ id: 1, name: "Test Item", price: 100, qty: 1 }],
+    total: 110,
+    payment_method: "gcash",
+    payment_status: "pending"
+  };
+
+  const orderResponse = await fetch(`${API_BASE}/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(testOrder)
+  });
+
+  const orderResult = await orderResponse.json();
+  const orderId = orderResult.order?.id || orderResult.id;
+
+  // Now test the mock payment
+  await processMockGCashPayment(orderId, 110, "09123456789");
 }
