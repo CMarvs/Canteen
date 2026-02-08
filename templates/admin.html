@@ -2407,7 +2407,7 @@
           const previewImg = document.getElementById(`editImagePreviewImg_${id}`);
           
           if (file) {
-            // Show preview immediately
+            // Show preview immediately with local file reader
             const reader = new FileReader();
             reader.onload = (event) => {
               previewImg.src = event.target.result;
@@ -2419,21 +2419,41 @@
             try {
               const formData = new FormData();
               formData.append('file', file);
+              console.log('Auto-uploading file:', file.name);
+              
               const uploadResp = await fetch('/upload-menu-image', {
                 method: 'POST',
                 body: formData
               });
               
+              console.log('Auto-upload response status:', uploadResp.status);
+              
               if (uploadResp.ok) {
                 const uploadResult = await uploadResp.json();
+                console.log('Auto-upload successful, image_url:', uploadResult.image_url);
                 // Auto-populate the image URL field with uploaded path
                 document.getElementById(`editImageUrl_${id}`).value = uploadResult.image_url;
-                console.log('Image auto-uploaded:', uploadResult.image_url);
+                // Add visual confirmation
+                setTimeout(() => {
+                  const urlField = document.getElementById(`editImageUrl_${id}`);
+                  if (urlField) {
+                    urlField.style.borderColor = '#4caf50';
+                    urlField.style.backgroundColor = '#e8f5e9';
+                  }
+                }, 100);
               } else {
-                console.error('Auto-upload failed');
+                console.error('Auto-upload failed with status:', uploadResp.status);
+                const urlField = document.getElementById(`editImageUrl_${id}`);
+                if (urlField) {
+                  urlField.style.borderColor = '#f44336';
+                }
               }
             } catch(error) {
               console.error('Auto-upload error:', error);
+              const urlField = document.getElementById(`editImageUrl_${id}`);
+              if (urlField) {
+                urlField.style.borderColor = '#f44336';
+              }
             }
           } else {
             previewDiv.style.display = 'none';
@@ -2460,8 +2480,8 @@
       }
 
       try {
-        // If user selected a new image file, upload it first
-        if (imageFile) {
+        // If user selected a new image file but it wasn't auto-uploaded yet, upload it now
+        if (imageFile && !imageUrl) {
           console.log('Uploading image file:', imageFile.name);
           const formData = new FormData();
           formData.append('file', imageFile);
@@ -2475,7 +2495,6 @@
             const uploadResult = await uploadResp.json();
             console.log('Upload result:', uploadResult);
             imageUrl = uploadResult.image_url;
-            alert(`✅ Image uploaded: ${uploadResult.filename}`);
           } else {
             const errorText = await uploadResp.text();
             console.error('Upload error response:', errorText);
@@ -2483,10 +2502,11 @@
           }
         }
 
-        console.log('Saving menu item with imageUrl:', imageUrl);
+        console.log('Saving menu item ID', id, 'with data:', { name, price, category, quantity, imageUrl });
         const updateData = { name, price, category, quantity };
         if (imageUrl) {
           updateData.image_url = imageUrl;
+          console.log('Including image_url in update:', imageUrl);
         }
 
         const response = await fetch(`/menu/${id}`, {
@@ -2495,12 +2515,17 @@
           body: JSON.stringify(updateData)
         });
 
+        console.log('PUT response status:', response.status);
+        
         if (response.ok) {
+          const result = await response.json();
+          console.log('Update successful, result:', result);
           alert('✅ Menu item updated successfully!');
-          document.getElementById(`editModal_${id}`).remove();
+          document.getElementById(`editModal_${id}`)?.remove();
           await renderAdminMenuList();
         } else {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Update failed:', errorData);
           alert(`Failed to update item: ${errorData.detail || 'Unknown error'}`);
         }
       } catch(error) {
