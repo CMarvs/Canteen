@@ -8,80 +8,6 @@
 // API Base URL
 const API_BASE = '';  // Same origin
 
-/* ---------- Custom centered dialogs (replace native alert with centered modal) ---------- */
-(function(){
-  function createDialogDOM(){
-    if(document.querySelector('.custom-dialog-overlay')) return;
-    const container = document.createElement('div');
-    container.className = 'custom-dialog-overlay';
-    container.innerHTML = `
-      <div class="custom-dialog" role="dialog" aria-modal="true">
-        <div class="dialog-message" id="__dialog_message"></div>
-        <div class="dialog-actions" id="__dialog_actions"></div>
-      </div>`;
-    document.body.appendChild(container);
-  }
-
-  function showDialog(message, opts){
-    opts = Object.assign({ buttons: ['OK'] }, opts || {});
-    return new Promise(resolve => {
-      if(!document.body) return resolve(null);
-      createDialogDOM();
-      const overlay = document.querySelector('.custom-dialog-overlay');
-      const msgEl = overlay.querySelector('#__dialog_message');
-      const actions = overlay.querySelector('#__dialog_actions');
-      msgEl.textContent = String(message ?? '');
-      actions.innerHTML = '';
-
-      const cleanUp = () => {
-        overlay.classList.remove('show');
-        document.removeEventListener('keydown', keyHandler);
-      };
-
-      const keyHandler = (e) => {
-        if(e.key === 'Escape'){
-          cleanUp();
-          resolve(null);
-        }
-      };
-
-      opts.buttons.forEach((b, idx) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'dialog-btn ' + (b.toLowerCase().includes('ok') ? 'ok' : 'cancel');
-        btn.textContent = b;
-        btn.addEventListener('click', () => {
-          cleanUp();
-          resolve(b);
-        });
-        actions.appendChild(btn);
-      });
-
-      // show
-      overlay.classList.add('show');
-      setTimeout(()=>{
-        const firstBtn = actions.querySelector('button');
-        if(firstBtn) firstBtn.focus();
-      }, 30);
-      document.addEventListener('keydown', keyHandler);
-    });
-  }
-
-  // Expose utilities
-  window.showDialog = showDialog;
-
-  // Replace native alert with centered modal (non-blocking replacement)
-  window.alert = function(message){
-    try { showDialog(message, { buttons: ['OK'] }); } catch(e) { /* ignore */ }
-    return undefined; // keep same return signature as native alert
-  };
-
-  // Optional async confirm helper (use when you can await): returns Promise<boolean>
-  window.confirmAsync = function(message){
-    return showDialog(message, { buttons: ['OK','Cancel'] }).then(res => res === 'OK');
-  };
-})();
-
 // Global orders cache for sequential numbering (all orders from database)
 let globalAllOrders = [];
 
@@ -520,8 +446,8 @@ async function updateCartQty(id, newQty){
   renderCart();
 }
 
-async function removeCartItem(id){
-  if(!(await confirmAsync('Remove item from cart?'))) return;
+function removeCartItem(id){
+  if(!confirm('Remove item from cart?')) return;
   // Convert id to string for consistent comparison (handles both number and string IDs)
   const idStr = String(id);
   const cart = getCart().filter(x => {
@@ -893,7 +819,7 @@ async function placeOrder(name, contact, address, paymentMethod){
       // Handle payment that requires action (GCash redirect)
       if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
         // Show message and redirect to GCash payment page
-        if(await confirmAsync(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
+        if(confirm(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
           window.location.href = paymentData.redirect_url;
         }
         return;
@@ -1593,10 +1519,10 @@ function showGCashPaymentModal(paymentData) {
   };
   
   // Handle cancel
-  document.getElementById('cancelPaymentBtn').onclick = async () => {
+  document.getElementById('cancelPaymentBtn').onclick = () => {
     // If order hasn't been created yet, show warning
     if (pendingOrderData && !orderId) {
-      if (await confirmAsync('⚠️ Cancel Payment?\n\nYour order has not been created yet. If you cancel now, you will need to start over.\n\nAre you sure you want to cancel?')) {
+      if (confirm('⚠️ Cancel Payment?\n\nYour order has not been created yet. If you cancel now, you will need to start over.\n\nAre you sure you want to cancel?')) {
         document.body.removeChild(modal);
       }
     } else {
@@ -1605,11 +1531,11 @@ function showGCashPaymentModal(paymentData) {
   };
   
   // Close on outside click
-  modal.onclick = async (e) => {
+  modal.onclick = (e) => {
     if(e.target === modal) {
       // If order hasn't been created yet, show warning
       if (pendingOrderData && !orderId) {
-        if (await confirmAsync('⚠️ Close Payment Modal?\n\nYour order has not been created yet. If you close now, you will need to start over.\n\nAre you sure you want to close?')) {
+        if (confirm('⚠️ Close Payment Modal?\n\nYour order has not been created yet. If you close now, you will need to start over.\n\nAre you sure you want to close?')) {
           document.body.removeChild(modal);
         }
       } else {
@@ -2086,7 +2012,7 @@ async function cancelUserOrder(orderId) {
     return;
   }
 
-  if (!(await confirmAsync(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`))) {
+  if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`)) {
     return;
   }
 
@@ -2237,7 +2163,7 @@ async function saveProfile(){
 /* ---------- Service Rating Modal ---------- */
 let ratingModalSelectedRating = 0;
 
-async function openRatingModal() {
+function openRatingModal() {
   const cur = getCurrent();
   if (!cur) {
     alert('Please login first');
@@ -2246,18 +2172,17 @@ async function openRatingModal() {
   }
 
   // Check if user already has a rating
-  try {
-    const hasRating = await loadUserRatingForModal(cur.id);
+  loadUserRatingForModal(cur.id).then(hasRating => {
     if (hasRating) {
-      if (await confirmAsync('You already have a rating. Would you like to update it?')) {
+      if (confirm('You already have a rating. Would you like to update it?')) {
         showRatingModal(true);
       }
     } else {
       showRatingModal(false);
     }
-  } catch (e) {
+  }).catch(() => {
     showRatingModal(false);
-  }
+  });
 }
 
 async function loadUserRatingForModal(userId) {

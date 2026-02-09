@@ -115,8 +115,8 @@
     }
 
     // --- Restore all items ---
-    async function resetAllSoldOut(){
-      if(await confirmAsync('Restore all menu items to available?')){
+    function resetAllSoldOut(){
+      if(confirm('Restore all menu items to available?')){
         saveSoldOutItems([]);
         renderAdminMenuList();
         alert('✅ All items are now available!');
@@ -162,7 +162,7 @@
   
     // IDAGDAG DIN PARA SA DELETE FUNCTION
     async function deleteMenuItem(itemId) {
-      if (await confirmAsync('Are you sure you want to delete this item?')) {
+      if (confirm('Are you sure you want to delete this item?')) {
         const response = await fetch(`/delete-menu-item/${itemId}`, { method: 'POST' });
         const result = await response.json();
         alert(result.message);
