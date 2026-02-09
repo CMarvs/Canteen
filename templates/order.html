@@ -463,7 +463,7 @@
       });
     }
 
-    function showConfirmBox(){
+    async function showConfirmBox(){
       const name = document.getElementById('delName')?.value.trim() || '';
       const contact = document.getElementById('delContact')?.value.trim() || '';
       const address = document.getElementById('delAddress')?.value.trim() || '';
@@ -547,8 +547,8 @@
       
       const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'GCash';
       const paymentNote = paymentMethod === 'cod' ? '\n💵 Payment will be collected upon delivery.' : '\n📱 You will receive payment instructions after placing your order.';
-      if(!confirm(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}${paymentNote}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`)) return;
-      
+      if(!(await confirmAsync(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}${paymentNote}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`))) return;
+
       placeOrder(name, validContact, address, paymentMethod);
     }
   </script>

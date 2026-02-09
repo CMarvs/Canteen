@@ -421,7 +421,7 @@
 
     // Fix corrupted orders by cleaning their items data
     async function fixCorruptedOrders() {
-      if (!confirm('This will clean corrupted item data from all orders. Continue?')) {
+      if (!(await confirmAsync('This will clean corrupted item data from all orders. Continue?'))) {
         return;
       }
       
@@ -949,7 +949,7 @@
 
     /* -------- Mark Payment as Paid (GCash) with Optimistic Update -------- */
     async function markPaymentAsPaid(orderId) {
-      if (!confirm(`Mark payment as received for Order #${orderId}?\n\nPlease verify the payment in your GCash app before confirming.`)) {
+      if (!(await confirmAsync(`Mark payment as received for Order #${orderId}?\n\nPlease verify the payment in your GCash app before confirming.`))) {
         return;
       }
       
@@ -1154,7 +1154,7 @@
       const orderNumberMap = getOrderNumberMap();
       const sequentialNumber = orderNumberMap[orderId] || orderId;
       
-      if (!confirm(`💰 Process Refund for Order #${sequentialNumber}?\n\nRefund Amount: ₱${orderTotal}\n\nThis will:\n- Mark the order as refunded\n- Cancel the order\n- Notify the customer\n\nContinue?`)) {
+      if (!(await confirmAsync(`💰 Process Refund for Order #${sequentialNumber}?\n\nRefund Amount: ₱${orderTotal}\n\nThis will:\n- Mark the order as refunded\n- Cancel the order\n- Notify the customer\n\nContinue?`))) {
         return;
       }
       
@@ -1268,7 +1268,7 @@
       // Get sequential order number for confirmation
       const orderNumberMap = getOrderNumberMap();
       const sequentialNumber = orderNumberMap[orderId] || orderId;
-      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${sequentialNumber}?\n\nThis will permanently delete the order from the database.\n\nThis action cannot be undone.`)) return;
+      if (!(await confirmAsync(`⚠️ Are you sure you want to DELETE Order #${sequentialNumber}?\n\nThis will permanently delete the order from the database.\n\nThis action cannot be undone.`))) return;
       
       try {
         console.log(`[INFO] Deleting order ${orderId} from database...`);
@@ -1329,7 +1329,7 @@
       const orderStatus = order.status === 'Cancelled' ? 'cancelled' : 'refunded';
       const orderNumber = order.id;
       
-      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${orderNumber}?\n\nThis order is ${orderStatus} and will be permanently deleted from the database.\n\nThis action cannot be undone.`)) return;
+      if (!(await confirmAsync(`⚠️ Are you sure you want to DELETE Order #${orderNumber}?\n\nThis order is ${orderStatus} and will be permanently deleted from the database.\n\nThis action cannot be undone.`))) return;
       
       try {
         console.log(`[INFO] Deleting ${orderStatus} order ${orderId} from database...`);
@@ -2583,7 +2583,7 @@
     }
 
     async function deleteMenuItem(id) {
-      if (!confirm(`Delete menu item "${id}"?`)) return;
+      if (!(await confirmAsync(`Delete menu item "${id}"?`))) return;
       
       try {
         const response = await fetch(`/menu/${id}`, {
@@ -3042,7 +3042,7 @@
       
       const action = isApproved ? 'approve' : 'reject';
       const roleText = selectedRole === 'admin' ? ' as Admin' : ' as User';
-      if (!confirm(`Are you sure you want to ${action} this user${roleText}?`)) return;
+      if (!(await confirmAsync(`Are you sure you want to ${action} this user${roleText}?`))) return;
 
       try {
         const response = await fetch(`/users/${userId}/approve`, {
@@ -3070,7 +3070,7 @@
 
     async function approveUser(userId, isApproved) {
       const action = isApproved ? 'approve' : 'reject';
-      if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+      if (!(await confirmAsync(`Are you sure you want to ${action} this user?`))) return;
 
       try {
         const response = await fetch(`/users/${userId}/approve`, {

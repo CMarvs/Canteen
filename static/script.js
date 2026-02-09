@@ -520,8 +520,8 @@ async function updateCartQty(id, newQty){
   renderCart();
 }
 
-function removeCartItem(id){
-  if(!confirm('Remove item from cart?')) return;
+async function removeCartItem(id){
+  if(!(await confirmAsync('Remove item from cart?'))) return;
   // Convert id to string for consistent comparison (handles both number and string IDs)
   const idStr = String(id);
   const cart = getCart().filter(x => {
@@ -893,7 +893,7 @@ async function placeOrder(name, contact, address, paymentMethod){
       // Handle payment that requires action (GCash redirect)
       if(paymentResponse.ok && paymentData.requires_action && paymentData.redirect_url) {
         // Show message and redirect to GCash payment page
-        if(confirm(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
+        if(await confirmAsync(`📱 Redirecting to GCash payment...\n\nYou will be redirected to complete your payment. After payment, you'll be redirected back.\n\nClick OK to proceed.`)) {
           window.location.href = paymentData.redirect_url;
         }
         return;
@@ -1593,10 +1593,10 @@ function showGCashPaymentModal(paymentData) {
   };
   
   // Handle cancel
-  document.getElementById('cancelPaymentBtn').onclick = () => {
+  document.getElementById('cancelPaymentBtn').onclick = async () => {
     // If order hasn't been created yet, show warning
     if (pendingOrderData && !orderId) {
-      if (confirm('⚠️ Cancel Payment?\n\nYour order has not been created yet. If you cancel now, you will need to start over.\n\nAre you sure you want to cancel?')) {
+      if (await confirmAsync('⚠️ Cancel Payment?\n\nYour order has not been created yet. If you cancel now, you will need to start over.\n\nAre you sure you want to cancel?')) {
         document.body.removeChild(modal);
       }
     } else {
@@ -1605,11 +1605,11 @@ function showGCashPaymentModal(paymentData) {
   };
   
   // Close on outside click
-  modal.onclick = (e) => {
+  modal.onclick = async (e) => {
     if(e.target === modal) {
       // If order hasn't been created yet, show warning
       if (pendingOrderData && !orderId) {
-        if (confirm('⚠️ Close Payment Modal?\n\nYour order has not been created yet. If you close now, you will need to start over.\n\nAre you sure you want to close?')) {
+        if (await confirmAsync('⚠️ Close Payment Modal?\n\nYour order has not been created yet. If you close now, you will need to start over.\n\nAre you sure you want to close?')) {
           document.body.removeChild(modal);
         }
       } else {
@@ -2086,7 +2086,7 @@ async function cancelUserOrder(orderId) {
     return;
   }
 
-  if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`)) {
+  if (!(await confirmAsync(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`))) {
     return;
   }
 
@@ -2237,7 +2237,7 @@ async function saveProfile(){
 /* ---------- Service Rating Modal ---------- */
 let ratingModalSelectedRating = 0;
 
-function openRatingModal() {
+async function openRatingModal() {
   const cur = getCurrent();
   if (!cur) {
     alert('Please login first');
@@ -2246,17 +2246,18 @@ function openRatingModal() {
   }
 
   // Check if user already has a rating
-  loadUserRatingForModal(cur.id).then(hasRating => {
+  try {
+    const hasRating = await loadUserRatingForModal(cur.id);
     if (hasRating) {
-      if (confirm('You already have a rating. Would you like to update it?')) {
+      if (await confirmAsync('You already have a rating. Would you like to update it?')) {
         showRatingModal(true);
       }
     } else {
       showRatingModal(false);
     }
-  }).catch(() => {
+  } catch (e) {
     showRatingModal(false);
-  });
+  }
 }
 
 async function loadUserRatingForModal(userId) {
