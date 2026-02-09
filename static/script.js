@@ -8,6 +8,80 @@
 // API Base URL
 const API_BASE = '';  // Same origin
 
+/* ---------- Custom centered dialogs (replace native alert with centered modal) ---------- */
+(function(){
+  function createDialogDOM(){
+    if(document.querySelector('.custom-dialog-overlay')) return;
+    const container = document.createElement('div');
+    container.className = 'custom-dialog-overlay';
+    container.innerHTML = `
+      <div class="custom-dialog" role="dialog" aria-modal="true">
+        <div class="dialog-message" id="__dialog_message"></div>
+        <div class="dialog-actions" id="__dialog_actions"></div>
+      </div>`;
+    document.body.appendChild(container);
+  }
+
+  function showDialog(message, opts){
+    opts = Object.assign({ buttons: ['OK'] }, opts || {});
+    return new Promise(resolve => {
+      if(!document.body) return resolve(null);
+      createDialogDOM();
+      const overlay = document.querySelector('.custom-dialog-overlay');
+      const msgEl = overlay.querySelector('#__dialog_message');
+      const actions = overlay.querySelector('#__dialog_actions');
+      msgEl.textContent = String(message ?? '');
+      actions.innerHTML = '';
+
+      const cleanUp = () => {
+        overlay.classList.remove('show');
+        document.removeEventListener('keydown', keyHandler);
+      };
+
+      const keyHandler = (e) => {
+        if(e.key === 'Escape'){
+          cleanUp();
+          resolve(null);
+        }
+      };
+
+      opts.buttons.forEach((b, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dialog-btn ' + (b.toLowerCase().includes('ok') ? 'ok' : 'cancel');
+        btn.textContent = b;
+        btn.addEventListener('click', () => {
+          cleanUp();
+          resolve(b);
+        });
+        actions.appendChild(btn);
+      });
+
+      // show
+      overlay.classList.add('show');
+      setTimeout(()=>{
+        const firstBtn = actions.querySelector('button');
+        if(firstBtn) firstBtn.focus();
+      }, 30);
+      document.addEventListener('keydown', keyHandler);
+    });
+  }
+
+  // Expose utilities
+  window.showDialog = showDialog;
+
+  // Replace native alert with centered modal (non-blocking replacement)
+  window.alert = function(message){
+    try { showDialog(message, { buttons: ['OK'] }); } catch(e) { /* ignore */ }
+    return undefined; // keep same return signature as native alert
+  };
+
+  // Optional async confirm helper (use when you can await): returns Promise<boolean>
+  window.confirmAsync = function(message){
+    return showDialog(message, { buttons: ['OK','Cancel'] }).then(res => res === 'OK');
+  };
+})();
+
 // Global orders cache for sequential numbering (all orders from database)
 let globalAllOrders = [];
 
