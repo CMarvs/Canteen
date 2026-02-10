@@ -839,10 +839,7 @@
                 <option value="Out for Delivery" ${o.status === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
                 <option value="Delivered" ${o.status === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
               </select>
-              ${o.status === 'Pending' ? `
-                <button class="btn delete small" onclick="cancelOrder(${o.id})">❌ Cancel</button>
-              ` : ''}
-              <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
+                <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
               <button class="btn small" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat</button>
               ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
               ${isRefunded ? `
@@ -2186,13 +2183,23 @@
         return alert('Please enter a valid name and price.');
       }
 
-      try {
-        const itemData = { name, price, category, is_available: true, quantity };
-        
-        // Include image URL if one was uploaded
-        if (window.currentUploadedImageUrl) {
-          itemData.image_url = window.currentUploadedImageUrl;
-        }
+        try {
+          const itemData = { name, price, category, is_available: true, quantity };
+          
+          // If a file is selected, upload it now (one-step add flow)
+          const fileInput = document.getElementById('newItemImage');
+          const hasSelectedFile = fileInput && fileInput.files && fileInput.files.length > 0;
+          if (hasSelectedFile && !window.currentUploadedImageUrl) {
+            const uploadedUrl = await uploadMenuImageFile(fileInput.files[0]);
+            if (uploadedUrl) {
+              window.currentUploadedImageUrl = uploadedUrl;
+            }
+          }
+          
+          // Include image URL if one was uploaded
+          if (window.currentUploadedImageUrl) {
+            itemData.image_url = window.currentUploadedImageUrl;
+          }
         
         const response = await fetch('/menu', {
           method: 'POST',
@@ -2216,8 +2223,8 @@
           document.getElementById('newItemName').value = '';
           document.getElementById('newItemPrice').value = '';
           document.getElementById('newItemQuantity').value = '0';
-          document.getElementById('newItemImage').value = '';
-          document.getElementById('imageUploadStatus').innerHTML = '';
+          if (document.getElementById('newItemImage')) document.getElementById('newItemImage').value = '';
+          if (document.getElementById('imageUploadStatus')) document.getElementById('imageUploadStatus').innerHTML = '';
           window.currentUploadedImageUrl = null; // Clear uploaded image
           await renderAdminMenuList();
         } else {
@@ -2256,54 +2263,27 @@
     // Global variable to store uploaded image URL
     window.currentUploadedImageUrl = null;
     
-    async function uploadItemImage() {
-      const fileInput = document.getElementById('newItemImage');
-      const statusDiv = document.getElementById('imageUploadStatus');
-      
-      if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select an image file first.</div>';
-        return;
-      }
-      
-      const file = fileInput.files[0];
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select a valid image file (JPG or PNG).</div>';
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      const maxSize = 5 * 1024 * 1024;
-      if (file.size > maxSize) {
-        statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Image file is too large (max 5MB).</div>';
-        return;
-      }
-      
-      try {
-        statusDiv.innerHTML = '<div style="color: #2196F3; font-weight: 600;">⏳ Uploading image...</div>';
+      async function uploadItemImage() {
+        const fileInput = document.getElementById('newItemImage');
+        const statusDiv = document.getElementById('imageUploadStatus');
         
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const response = await fetch('/upload-menu-image', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({detail: 'Unknown error'}));
-          throw new Error(errorData.detail || `Upload failed with status ${response.status}`);
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+          statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select an image file first.</div>';
+          return;
         }
         
-        const result = await response.json();
-        
-        if (result.image_url) {
-          window.currentUploadedImageUrl = result.image_url;
+        const file = fileInput.files[0];
+        try {
+          statusDiv.innerHTML = '<div style="color: #2196F3; font-weight: 600;">⏳ Uploading image...</div>';
+          const imageUrl = await uploadMenuImageFile(file);
+          if (!imageUrl) {
+            throw new Error('No image URL returned from server');
+          }
+          window.currentUploadedImageUrl = imageUrl;
           // Show image preview immediately
           const previewHtml = `
             <div style="display: flex; align-items: center; gap: 15px; padding: 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 8px;">
-              <img src="/${result.image_url}" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;">
+              <img src="/${imageUrl}" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;">
               <div>
                 <div style="color: #2e7d32; font-weight: 600;">✅ Image uploaded!</div>
                 <div style="color: #555; font-size: 0.9rem; margin-top: 4px;">Ready to add item with this image. It will appear immediately after you click "Add Item".</div>
@@ -2312,14 +2292,35 @@
           `;
           statusDiv.innerHTML = previewHtml;
           fileInput.value = ''; // Clear file input
-        } else {
-          throw new Error('No image URL returned from server');
+        } catch(error) {
+          console.error('Image upload error:', error);
+          statusDiv.innerHTML = `<div style="color: #e74c3c; font-weight: 600;">❌ Upload failed: ${error.message}</div>`;
         }
-      } catch(error) {
-        console.error('Image upload error:', error);
-        statusDiv.innerHTML = `<div style="color: #e74c3c; font-weight: 600;">❌ Upload failed: ${error.message}</div>`;
       }
-    }
+
+      async function uploadMenuImageFile(file) {
+        // Validate file type
+        if (!file || !file.type || !file.type.startsWith('image/')) {
+          throw new Error('Please select a valid image file (JPG or PNG).');
+        }
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024;
+        if (file.size > maxSize) {
+          throw new Error('Image file is too large (max 5MB).');
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch('/upload-menu-image', {
+          method: 'POST',
+          body: formData
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({detail: 'Unknown error'}));
+          throw new Error(errorData.detail || `Upload failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        return result.image_url || null;
+      }
 
     async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity, currentImageUrl) {
       // Create a modal for editing
