@@ -1539,12 +1539,13 @@
           const qty = parseInt(qtyInput.value) || 0;
           if (qty > 0) {
             const item = window.editOrderData.items[i];
-            items.push({
-              id: item.id,
-              name: item.name,
-              price: Number(item.price),
-              qty: qty
-            });
+              items.push({
+                id: item.id,
+                name: item.name,
+                price: Number(item.price),
+                qty: qty,
+                image_url: item.image_url
+              });
             total += Number(item.price) * qty;
           }
         }
@@ -1646,11 +1647,12 @@
         }
         
         window.editOrderData.items.push({
-          id: selectedItem.id,
-          name: selectedItem.name,
-          price: selectedItem.price,
-          qty: qty
-        });
+            id: selectedItem.id,
+            name: selectedItem.name,
+            price: selectedItem.price,
+            qty: qty,
+            image_url: selectedItem.image_url
+          });
         
         // Refresh the modal
         document.getElementById('editOrderModal').remove();

@@ -1557,6 +1557,10 @@ async def get_orders():
                                 'qty': max(1, min(1000, int(item.get('qty', 1)))),  # Clamp qty between 1-1000
                                 'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
                             }
+                            # Preserve image_url if present (limit length to avoid bloat)
+                            image_url = item.get('image_url')
+                            if image_url:
+                                cleaned_item['image_url'] = str(image_url).strip()[:300]
                             
                             # Validate cleaned item size
                             item_str = json.dumps(cleaned_item)
@@ -1636,6 +1640,10 @@ async def fix_corrupted_orders(request: Request):
                         'qty': max(1, min(1000, int(item.get('qty', 1)))),  # Clamp qty between 1-1000
                         'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
                     }
+                    # Preserve image_url if present (limit length to avoid bloat)
+                    image_url = item.get('image_url')
+                    if image_url:
+                        cleaned_item['image_url'] = str(image_url).strip()[:300]
                     
                     # Validate cleaned item size
                     item_str = json.dumps(cleaned_item)
