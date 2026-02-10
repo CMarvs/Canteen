@@ -1875,12 +1875,13 @@ async function saveUserOrderEdit(event, orderId) {
       const qty = parseInt(qtyInput.value) || 0;
       if (qty > 0) {
         const item = window.editUserOrderData.items[i];
-        items.push({
-          id: item.id,
-          name: item.name,
-          price: Number(item.price),
-          qty: qty
-        });
+          items.push({
+            id: item.id,
+            name: item.name,
+            price: Number(item.price),
+            qty: qty,
+            image_url: item.image_url
+          });
         total += Number(item.price) * qty;
       }
     }
@@ -1987,12 +1988,13 @@ async function addUserEditItem() {
       return;
     }
     
-    window.editUserOrderData.items.push({
-      id: selectedItem.id,
-      name: selectedItem.name,
-      price: selectedItem.price,
-      qty: qty
-    });
+      window.editUserOrderData.items.push({
+        id: selectedItem.id,
+        name: selectedItem.name,
+        price: selectedItem.price,
+        qty: qty,
+        image_url: selectedItem.image_url
+      });
     
     // Refresh the modal
     document.getElementById('editUserOrderModal').remove();

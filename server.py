@@ -1482,7 +1482,24 @@ async def get_orders():
         orders = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
-        orders_list = []
+          # Preload menu item images to enrich order items (for consistent display)
+          menu_image_map = {}
+          try:
+              cur.execute("SELECT id, image_url FROM menu_items")
+              menu_rows = cur.fetchall()
+              for row in menu_rows:
+                  if isinstance(row, dict):
+                      mid = row.get('id')
+                      img = row.get('image_url')
+                  else:
+                      mid = row[0] if len(row) > 0 else None
+                      img = row[1] if len(row) > 1 else None
+                  if mid is not None and img:
+                      menu_image_map[int(mid)] = str(img).strip()
+          except Exception as menu_img_error:
+              print(f"[WARNING] Could not preload menu images: {menu_img_error}")
+          
+          orders_list = []
         if orders:
             for order in orders:
                 # RealDictCursor returns dict-like objects, convert to plain dict
@@ -1558,9 +1575,11 @@ async def get_orders():
                                 'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
                             }
                             # Preserve image_url if present (limit length to avoid bloat)
-                            image_url = item.get('image_url')
-                            if image_url:
-                                cleaned_item['image_url'] = str(image_url).strip()[:300]
+                              image_url = item.get('image_url')
+                              if not image_url and item.get('id') in menu_image_map:
+                                  image_url = menu_image_map.get(item.get('id'))
+                              if image_url:
+                                  cleaned_item['image_url'] = str(image_url).strip()[:300]
                             
                             # Validate cleaned item size
                             item_str = json.dumps(cleaned_item)
