@@ -644,6 +644,8 @@
               case "Delivered": badgeClass = "status-delivered"; break;
               default: badgeClass = "status-pending";
             }
+            const isRefunded = o.refund_status === 'refunded';
+            const canDelete = o.status === 'Pending' || o.status === 'Cancelled' || isRefunded;
 
         // Get sequential order number (only for active orders, not delivered or cancelled)
         const isActive = o.status !== 'Delivered' && o.status !== 'Cancelled';
@@ -843,16 +845,16 @@
               <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
               <button class="btn small" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat</button>
               ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
-              ${o.refund_status === 'refunded' ? `
+              ${isRefunded ? `
                 <span style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block;">✅ Refunded</span>
                 <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
               ` : o.status === 'Cancelled' ? `
                 <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
               ` : (o.status !== 'Delivered' && o.status !== 'Cancelled') ? `
                 <button class="btn small" onclick="processRefund(${o.id})" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💰 Refund</button>
-                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
+                ${o.status === 'Pending' ? `<button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>` : ''}
               ` : o.status === 'Delivered' ? `
-                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
+                ${canDelete ? `<button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>` : ''}
               ` : ''}
             </div>
           </div>
@@ -1318,16 +1320,23 @@
     }
 
     /* -------- Delete Order (for Cancelled or Refunded orders) -------- */
-    async function deleteOrder(orderId) {
-      // Get order details for confirmation
-      const order = allOrders.find(o => o.id === orderId);
-      if (!order) {
-        alert('Order not found');
-        return;
-      }
+      async function deleteOrder(orderId) {
+        // Get order details for confirmation
+        const order = allOrders.find(o => o.id === orderId);
+        if (!order) {
+          alert('Order not found');
+          return;
+        }
 
-      const orderStatus = order.status === 'Cancelled' ? 'cancelled' : 'refunded';
-      const orderNumber = order.id;
+        const isRefunded = order.refund_status === 'refunded';
+        const canDelete = order.status === 'Pending' || order.status === 'Cancelled' || isRefunded;
+        if (!canDelete) {
+          alert(`❌ Cannot delete order #${orderId}.\n\nOnly orders with "Pending" or "Cancelled" status, or refunded orders can be deleted.\nCurrent status: ${order.status || 'Unknown'}\nRefund status: ${order.refund_status || 'None'}`);
+          return;
+        }
+
+        const orderStatus = order.status === 'Pending' ? 'pending' : (order.status === 'Cancelled' ? 'cancelled' : 'refunded');
+        const orderNumber = order.id;
       
       if (!confirm(`⚠️ Are you sure you want to DELETE Order #${orderNumber}?\n\nThis order is ${orderStatus} and will be permanently deleted from the database.\n\nThis action cannot be undone.`)) return;
       
