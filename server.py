@@ -1574,7 +1574,7 @@ async def get_orders():
                                 'qty': max(1, min(1000, int(item.get('qty', 1)))),  # Clamp qty between 1-1000
                                 'price': max(0, min(100000, float(item.get('price', 0))))  # Clamp price between 0-100000
                             }
-                            # Preserve image_url if present (limit length to avoid bloat)
+                              # Preserve image_url if present (limit length to avoid bloat)
                               image_url = item.get('image_url')
                               if not image_url and item.get('id') in menu_image_map:
                                   image_url = menu_image_map.get(item.get('id'))
