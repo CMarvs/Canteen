@@ -2325,7 +2325,10 @@
       }
 
     async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity, currentImageUrl) {
-      // Create a modal for editing
+        const safeName = typeof escapeHtml === 'function' ? escapeHtml(currentName || '') : (currentName || '');
+        const safeImageUrl = typeof escapeHtml === 'function' ? escapeHtml(currentImageUrl || '') : (currentImageUrl || '');
+        const safeCategory = typeof escapeHtml === 'function' ? escapeHtml(currentCategory || '') : (currentCategory || '');
+        // Create a modal for editing
       const editModal = document.createElement('div');
       editModal.id = `editModal_${id}`;
       editModal.style.cssText = `
@@ -2340,7 +2343,7 @@
           
           <div style="margin-bottom: 20px;">
             <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Item Name</label>
-            <input type="text" id="editName_${id}" value="${currentName}" placeholder="e.g., Chicken Adobo" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+            <input type="text" id="editName_${id}" value="${safeName}" placeholder="e.g., Chicken Adobo" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
           </div>
           
           <div style="margin-bottom: 20px;">
@@ -2351,9 +2354,9 @@
           <div style="margin-bottom: 20px;">
             <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Category</label>
             <select id="editCategory_${id}" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
-              <option value="budget" ${currentCategory === 'budget' ? 'selected' : ''}>Budget Meals</option>
-              <option value="foods" ${currentCategory === 'foods' ? 'selected' : ''}>Foods</option>
-              <option value="drinks" ${currentCategory === 'drinks' ? 'selected' : ''}>Drinks</option>
+                <option value="budget" ${currentCategory === 'budget' || currentCategory === 'Budget Meals' ? 'selected' : ''}>Budget Meals</option>
+                <option value="foods" ${currentCategory === 'foods' || currentCategory === 'Foods' ? 'selected' : ''}>Foods</option>
+                <option value="drinks" ${currentCategory === 'drinks' || currentCategory === 'Drinks' ? 'selected' : ''}>Drinks</option>
             </select>
           </div>
           
@@ -2369,16 +2372,16 @@
               <img id="editImagePreviewImg_${id}" src="" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8B4513;">
             </div>
             <div style="text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 12px;">— OR —</div>
-            <input type="text" id="editImageUrl_${id}" value="${currentImageUrl || ''}" placeholder="e.g., static/images/menu_items/pizza.jpg" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+            <input type="text" id="editImageUrl_${id}" value="${safeImageUrl}" placeholder="e.g., static/images/menu_items/pizza.jpg" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
             <p style="font-size: 0.8rem; color: #999; margin: 8px 0 0 0;">Upload a new image or enter URL directly</p>
           </div>
 
           <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0 0 12px 0; color: #333; font-size: 0.95rem;">📋 Summary of Changes</h3>
             <div style="font-size: 0.9rem; color: #555;">
-              <div style="margin-bottom: 8px;"><strong>Name:</strong> <span id="summary_name_${id}">${currentName}</span></div>
+                <div style="margin-bottom: 8px;"><strong>Name:</strong> <span id="summary_name_${id}">${safeName}</span></div>
               <div style="margin-bottom: 8px;"><strong>Price:</strong> ₱<span id="summary_price_${id}">${currentPrice}</span></div>
-              <div style="margin-bottom: 8px;"><strong>Category:</strong> <span id="summary_cat_${id}">${currentCategory}</span></div>
+                <div style="margin-bottom: 8px;"><strong>Category:</strong> <span id="summary_cat_${id}">${safeCategory}</span></div>
               <div><strong>Stock:</strong> <span id="summary_qty_${id}">${currentQuantity || 0}</span></div>
             </div>
           </div>
@@ -4060,6 +4063,7 @@
     window.viewUserProfile = viewUserProfile;
     window.addMenuItem = addMenuItem;
     window.editMenuItem = editMenuItem;
+    window.saveEditMenuItem = saveEditMenuItem;
     window.deleteMenuItem = deleteMenuItem;
     window.toggleMenuItemAvailability = toggleMenuItemAvailability;
     window.updateStockQuantity = updateStockQuantity;
