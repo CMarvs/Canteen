@@ -239,7 +239,7 @@ def create_initial_accounts(conn):
     print("\n[SUCCESS] Account setup complete!\n")
 
 def main():
-"""Main setup function"""
+    """Main setup function"""
     print("=" * 60)
     print("Online Canteen Database Setup")
     print("=" * 60)
