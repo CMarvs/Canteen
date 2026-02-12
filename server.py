@@ -1482,24 +1482,24 @@ async def get_orders():
         orders = cur.fetchall()
         
         # Convert RealDictRow to plain dict for JSON serialization
-          # Preload menu item images to enrich order items (for consistent display)
-          menu_image_map = {}
-          try:
-              cur.execute("SELECT id, image_url FROM menu_items")
-              menu_rows = cur.fetchall()
-              for row in menu_rows:
-                  if isinstance(row, dict):
-                      mid = row.get('id')
-                      img = row.get('image_url')
-                  else:
-                      mid = row[0] if len(row) > 0 else None
-                      img = row[1] if len(row) > 1 else None
-                  if mid is not None and img:
-                      menu_image_map[int(mid)] = str(img).strip()
-          except Exception as menu_img_error:
-              print(f"[WARNING] Could not preload menu images: {menu_img_error}")
-          
-          orders_list = []
+        # Preload menu item images to enrich order items (for consistent display)
+        menu_image_map = {}
+        try:
+            cur.execute("SELECT id, image_url FROM menu_items")
+            menu_rows = cur.fetchall()
+            for row in menu_rows:
+                if isinstance(row, dict):
+                    mid = row.get('id')
+                    img = row.get('image_url')
+                else:
+                    mid = row[0] if len(row) > 0 else None
+                    img = row[1] if len(row) > 1 else None
+                if mid is not None and img:
+                    menu_image_map[int(mid)] = str(img).strip()
+        except Exception as menu_img_error:
+            print(f"[WARNING] Could not preload menu images: {menu_img_error}")
+        
+        orders_list = []
         if orders:
             for order in orders:
                 # RealDictCursor returns dict-like objects, convert to plain dict
