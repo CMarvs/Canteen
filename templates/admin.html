@@ -2115,8 +2115,7 @@
                       <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1; min-width: 120px;">
                         ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
                       </button>
-                      <button class="btn small" onclick="editMenuItem(${item.id}, ${JSON.stringify(item.name)}, ${item.price}, ${JSON.stringify(item.category)}, ${quantity}, ${JSON.stringify(item.image_url || '')})">Edit</button>
-                      <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
+                        <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
                     </div>
                   </div>
                 </div>
@@ -2573,16 +2572,31 @@
       const input = document.getElementById(`stock_${id}`);
       if (!input) return;
       
-      const newQuantity = parseInt(input.value) || 0;
+      const rawValue = String(input.value || '').trim();
+      if (rawValue === '') {
+        return alert('Please enter a stock quantity.');
+      }
+      const newQuantity = parseInt(rawValue, 10);
+      if (Number.isNaN(newQuantity)) {
+        return alert('Stock quantity must be a valid number.');
+      }
       if (newQuantity < 0) {
         return alert('Stock quantity cannot be negative.');
       }
 
       try {
+        input.disabled = true;
+        const updateBtn = input.parentElement?.querySelector('button');
+        const originalText = updateBtn ? updateBtn.textContent : null;
+        if (updateBtn) updateBtn.textContent = 'Updating...';
+
         const response = await fetch(`/menu/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quantity: newQuantity })
+          body: JSON.stringify({ 
+            quantity: newQuantity,
+            is_available: newQuantity > 0
+          })
         });
 
         if (response.ok) {
@@ -2594,6 +2608,12 @@
       } catch(error) {
         console.error('Error updating stock:', error);
         alert('Failed to update stock. Please try again.');
+      } finally {
+        input.disabled = false;
+        const updateBtn = input.parentElement?.querySelector('button');
+        if (updateBtn && updateBtn.textContent === 'Updating...') {
+          updateBtn.textContent = 'Update Stock';
+        }
       }
     }
 
