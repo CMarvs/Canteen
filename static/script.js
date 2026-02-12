@@ -1549,9 +1549,9 @@ function showGCashPaymentModal(paymentData) {
 // Store user orders globally for sequential numbering
 let userAllOrders = [];
 
-async function renderUserOrders(){
-  const cur = getCurrent();
-  if(!cur){ location.href='index.html'; return; }
+  async function renderUserOrders(){
+    const cur = getCurrent();
+    if(!cur){ location.href='index.html'; return; }
   
   const list = document.getElementById('ordersList');
   const no = document.getElementById('noOrders');
@@ -1574,7 +1574,12 @@ async function renderUserOrders(){
       return;
     }
     
-    const allOrders = await response.json();
+      const allOrders = await response.json();
+      
+      // Ensure menu cache is available for image fallbacks
+      if (!MENU_CACHE) {
+        await fetchMenuItems();
+      }
     
     if (!Array.isArray(allOrders)) {
       console.error('Invalid response format:', allOrders);
@@ -1631,15 +1636,20 @@ function orderCardHtmlForUser(o){
     '<span style="background: #d7a24e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">⏳ Pending</span>';
   
   const statusBadge = statusBadgeHtml(o.status);
-  const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
-  const itemsHtml = items.map(i => {
-    let imageUrl = '/static/images/menu_items/default.jpg';
-    if (i.image_url) {
-      const url = String(i.image_url).trim();
-      imageUrl = url.startsWith('/') ? url : `/${url}`;
-    }
-    return `
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px;">
+    const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+    const itemsHtml = items.map(i => {
+      let imageUrl = '/static/images/menu_items/default.jpg';
+      let rawUrl = i.image_url;
+      if (!rawUrl && MENU_CACHE) {
+        const menuItem = getMenuById(i.id);
+        rawUrl = menuItem ? menuItem.image_url : null;
+      }
+      if (rawUrl) {
+        const url = String(rawUrl).trim();
+        imageUrl = url.startsWith('/') ? url : `/${url}`;
+      }
+      return `
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px;">
         <img src="${imageUrl}" alt="${i.name}" style="width: 70px; height: 70px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
         <div style="flex: 1;">
           <div style="font-weight: 600; color: #333;">${i.name}</div>

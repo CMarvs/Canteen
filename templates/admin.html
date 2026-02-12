@@ -777,11 +777,15 @@
                 // Ensure values are safe
                 const safeQty = Math.max(1, Math.min(1000, itemQty));
                 const safePrice = Math.max(0, Math.min(100000, itemPrice));
-                let imageUrl = '/static/images/menu_items/default.jpg';
-                if (it.image_url) {
-                  const url = String(it.image_url).trim();
-                  imageUrl = url.startsWith('/') ? url : `/${url}`;
-                }
+                  let imageUrl = '/static/images/menu_items/default.jpg';
+                  let rawUrl = it.image_url;
+                  if (!rawUrl && window.adminMenuImageMap) {
+                    rawUrl = window.adminMenuImageMap[String(it.id)];
+                  }
+                  if (rawUrl) {
+                    const url = String(rawUrl).trim();
+                    imageUrl = url.startsWith('/') ? url : `/${url}`;
+                  }
                 return `<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px;">
                   <img src="${imageUrl}" alt="${itemName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
                   <div style="flex: 1;">
@@ -2002,12 +2006,12 @@
     /* -------- Menu Management Functions -------- */
     let isRenderingMenu = false;
     let menuController = null;
-    async function renderAdminMenuList() {
-      // Prevent multiple simultaneous requests
-      if (isRenderingMenu) {
-        console.log('[MENU] Already rendering, skipping duplicate call');
-        return;
-      }
+      async function renderAdminMenuList() {
+        // Prevent multiple simultaneous requests
+        if (isRenderingMenu) {
+          console.log('[MENU] Already rendering, skipping duplicate call');
+          return;
+        }
       
       // Abort any previous request
       if (menuController) {
@@ -2040,7 +2044,21 @@
           }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        const menuItems = await response.json();
+          const menuItems = await response.json();
+          // Build image map for orders display fallback
+          try {
+            const map = {};
+            if (Array.isArray(menuItems)) {
+              menuItems.forEach(item => {
+                if (item && item.id && item.image_url) {
+                  map[String(item.id)] = String(item.image_url).trim();
+                }
+              });
+            }
+            window.adminMenuImageMap = map;
+          } catch (e) {
+            console.warn('[MENU] Failed to build image map:', e);
+          }
         
         // Ensure menuItems is an array
         if (!Array.isArray(menuItems)) {
