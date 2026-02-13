@@ -271,12 +271,11 @@ async function loginUser(){
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Redirect based on role
-      console.log('[LOGIN] Redirecting to:', data.role === 'admin' ? 'admin.html' : 'order.html');
-      if(data.role === 'admin') {
-        window.location.href = 'admin.html';
-      } else {
-        window.location.href = 'order.html';
-      }
+      let redirectUrl = 'order.html';
+      if (data.role === 'admin') redirectUrl = 'admin.html';
+      if (data.role === 'delivery') redirectUrl = 'delivery.html';
+      console.log('[LOGIN] Redirecting to:', redirectUrl);
+      window.location.href = redirectUrl;
     } else {
       // Handle error response
       let errorMsg = data.detail || data.message || 'Invalid credentials';
@@ -2529,7 +2528,13 @@ function ensureLoggedIn(requiredRole){
   }
   if(requiredRole && cur.role !== requiredRole) {
     alert('Access denied.');
-    location.href = cur.role === 'admin' ? 'admin.html' : 'order.html';
+    if (cur.role === 'admin') {
+      location.href = 'admin.html';
+    } else if (cur.role === 'delivery') {
+      location.href = 'delivery.html';
+    } else {
+      location.href = 'order.html';
+    }
   }
   
   // Check and show approval notification for regular users

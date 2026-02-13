@@ -1,0 +1,4193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delivery Dashboard — Online Canteen</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🚚 Online Canteen Delivery</div>
+    <nav class="nav">
+      <a href="#" onclick="handleLogout(event)">🚪 Logout</a>
+    </nav>
+  </header>
+
+  <!-- Notification Container -->
+  <div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 10000; max-width: 400px;"></div>
+
+  <main>
+    <!-- Statistics Dashboard -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="content-card">
+      <div class="tab-buttons">
+        <button id="tabOrders" class="active" onclick="switchTab('orders')">
+          📦 Orders <span class="tab-badge" id="ordersBadge">0</span>
+        </button>
+        <button id="tabChats" onclick="switchTab('chats')">
+          💬 Chats <span class="tab-badge" id="chatsBadge">0</span>
+        </button>
+        <!-- Delivery view: Orders + Chats only -->
+      </div>
+
+      <!-- ORDER STATUS UPDATE TAB -->
+      <section id="ordersSection" class="tab-content active">
+        <h2>📦 Order Management</h2>
+        
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <label for="searchInput" class="sr-only">Search orders</label>
+          <input 
+            type="text" 
+            class="search-input" 
+            id="searchInput" 
+            name="searchInput"
+            placeholder="🔍 Search by name, contact, or order ID..." 
+            oninput="filterOrders()"
+          >
+        </div>
+
+        <div id="ordersList"></div>
+      </section>
+
+
+      <!-- CHAT MANAGEMENT TAB -->
+      <section id="chatsSection" class="tab-content">
+        <h2>💬 Customer Chats</h2>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          View and respond to customer messages about their orders.
+        </p>
+        
+        <div id="chatsList"></div>
+      </section>
+
+      <!-- Delivery view: Users/Ratings removed -->
+
+    </div>
+  </main>
+
+  <script src="/static/script.js?v=2.2" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js'); window.scriptJsLoaded = false;"></script>
+  <script>
+    // Wait for script.js to fully load before using its functions
+    // Fallback for openChatBox if script.js fails to load
+    if (typeof openChatBox === 'undefined') {
+      window.openChatBox = function(orderId, userType) {
+        console.warn('openChatBox: script.js not loaded, redirecting to chats tab');
+        // Switch to chats tab and scroll to order
+        if (typeof switchTab === 'function') {
+          switchTab('chats');
+          setTimeout(() => {
+            const chatElement = document.querySelector(`[data-order-id="${orderId}"]`);
+            if (chatElement) {
+              chatElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              chatElement.click();
+            }
+          }, 300);
+        } else {
+          alert('Chat feature is loading. Please try again in a moment.');
+        }
+      };
+    }
+    // Global state for filtering
+    let allOrders = [];
+    let filteredOrders = [];
+
+    /* -------- Statistics Dashboard -------- */
+    async function renderStats() {
+      const statsGrid = document.getElementById('statsGrid');
+      if (!statsGrid) return;
+      
+      // Always render stats, even if there are no orders (show 0 values)
+      const orders = allOrders || [];
+      const stats = {
+        total: orders.length,
+        pending: orders.filter(o => o.status === 'Pending').length,
+        preparing: orders.filter(o => o.status === 'Preparing').length,
+        delivery: orders.filter(o => o.status === 'Out for Delivery').length,
+        delivered: orders.filter(o => o.status === 'Delivered').length,
+        revenue: orders.reduce((sum, o) => sum + Number(o.total || 0), 0),
+        unreadMessages: window.unreadMessageCount || 0
+      };
+
+      statsGrid.innerHTML = `
+        <div class="stat-card total">
+          <div class="stat-label">📊 Total Orders</div>
+          <div class="stat-number">${stats.total}</div>
+        </div>
+        <div class="stat-card pending">
+          <div class="stat-label">⏳ Pending</div>
+          <div class="stat-number">${stats.pending}</div>
+        </div>
+        <div class="stat-card preparing">
+          <div class="stat-label">👨‍🍳 Preparing</div>
+          <div class="stat-number">${stats.preparing}</div>
+        </div>
+        <div class="stat-card delivery">
+          <div class="stat-label">🚚 Out for Delivery</div>
+          <div class="stat-number">${stats.delivery}</div>
+        </div>
+        <div class="stat-card delivered">
+          <div class="stat-label">✅ Delivered</div>
+          <div class="stat-number">${stats.delivered}</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
+          <div class="stat-label">💬 Unread Messages</div>
+          <div class="stat-number">${stats.unreadMessages}</div>
+        </div>
+        <div class="stat-card total">
+          <div class="stat-label">💰 Total Revenue</div>
+          <div class="stat-number">₱${stats.revenue.toFixed(2)}</div>
+        </div>
+      `;
+
+      // Update badge
+      const badge = document.getElementById('ordersBadge');
+      if (badge) badge.textContent = stats.total;
+    }
+
+    /* -------- Tab Switching -------- */
+    function switchTab(tab) {
+      console.log('[DEBUG] switchTab called with:', tab);
+      
+      try {
+        if (window.isDeliveryUser && (tab === 'menu' || tab === 'users' || tab === 'ratings')) {
+          showNotification('Access restricted for delivery accounts.', 'error');
+          return;
+        }
+        // Remove active from all sections and buttons
+        document.querySelectorAll('.tab-content').forEach(section => {
+          section.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-buttons button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // Show selected section and mark tab active
+        if (tab === 'orders') {
+          document.getElementById('tabOrders')?.classList.add('active');
+          document.getElementById('ordersSection')?.classList.add('active');
+          renderAdminOrders();
+        } else if (tab === 'chats') {
+          document.getElementById('tabChats')?.classList.add('active');
+          document.getElementById('chatsSection')?.classList.add('active');
+          renderAdminChats();
+          } else if (tab === 'menu') {
+            document.getElementById('tabMenu')?.classList.add('active');
+            document.getElementById('menuSection')?.classList.add('active');
+            console.log('[DEBUG] About to call renderAdminMenuList');
+            if (typeof renderAdminMenuList === 'function') {
+              renderAdminMenuList().catch(err => {
+                console.error('[ERROR] renderAdminMenuList failed:', err);
+              });
+            } else {
+              console.error('[ERROR] renderAdminMenuList is not a function');
+            }
+          } else if (tab === 'users') {
+            document.getElementById('tabUsers')?.classList.add('active');
+            document.getElementById('usersSection')?.classList.add('active');
+            renderAdminUsers();
+          } else if (tab === 'ratings') {
+            document.getElementById('tabRatings')?.classList.add('active');
+            document.getElementById('ratingsSection')?.classList.add('active');
+            renderAdminRatings();
+            startRatingsPolling();
+          }
+        } catch(err) {
+          console.error('[ERROR] in switchTab:', err);
+        }
+      }
+
+    /* -------- Render Orders (API) -------- */
+    // Request deduplication for orders
+    let ordersRequestInProgress = false;
+    let ordersRequestController = null;
+    
+    async function renderAdminOrders() {
+      // Prevent duplicate requests
+      if (ordersRequestInProgress) {
+        console.log('[ORDERS] Request already in progress, skipping duplicate call');
+        return;
+      }
+      
+      const startTime = performance.now();
+      // Show loading state
+      const ordersList = document.getElementById('ordersList');
+      if (ordersList) {
+        ordersList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading orders...</div></div>';
+      }
+      
+      ordersRequestInProgress = true;
+      ordersRequestController = new AbortController();
+      
+      try {
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
+        const timeoutId = setTimeout(() => ordersRequestController.abort(), 20000); // 20 second timeout
+        
+        const response = await fetch(`/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: ordersRequestController.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let errorText = '';
+          try {
+            const errorData = await response.json();
+            errorText = errorData.detail || errorData.message || JSON.stringify(errorData);
+          } catch {
+            errorText = await response.text();
+          }
+          console.error('Failed to load orders:', response.status, errorText);
+          throw new Error(`Failed to load orders: ${response.status} - ${errorText}`);
+        }
+        
+        const orders = await response.json();
+        
+        if (!Array.isArray(orders)) {
+          console.error('Invalid orders response format:', orders);
+          throw new Error('Invalid response format: expected array, got ' + typeof orders);
+        }
+        
+        console.log(`[ORDERS] Loaded ${orders.length} orders successfully`);
+        console.log('[ORDERS] Sample order:', orders.length > 0 ? orders[0] : 'No orders');
+        
+        if (orders.length === 0) {
+          console.log('[ORDERS] No orders found in database');
+          const ordersList = document.getElementById('ordersList');
+          if (ordersList) {
+            ordersList.innerHTML = `
+              <div class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-text">No orders yet</div>
+              </div>
+            `;
+          }
+          return;
+        }
+        
+        // Ensure orders is an array
+        if (!Array.isArray(orders)) {
+          console.error('[ORDERS] Orders is not an array:', typeof orders, orders);
+          throw new Error('Orders response is not an array');
+        }
+        
+        // Reverse to show newest first (already ordered DESC in SQL, but reverse for display)
+        allOrders = [...orders]; // Keep original order from backend (newest first)
+        filteredOrders = [...allOrders];
+        
+        console.log(`[ORDERS] Processed ${allOrders.length} orders, filteredOrders: ${filteredOrders.length}`);
+        if (allOrders.length > 0) {
+          console.log(`[ORDERS] First order details:`, {
+            id: allOrders[0].id,
+            user_id: allOrders[0].user_id,
+            fullname: allOrders[0].fullname,
+            status: allOrders[0].status,
+            itemsCount: Array.isArray(allOrders[0].items) ? allOrders[0].items.length : 'N/A',
+            total: allOrders[0].total
+          });
+        }
+        
+        // Update global orders cache for sequential numbering (if function exists)
+        if (typeof updateGlobalOrdersCache === 'function') {
+          updateGlobalOrdersCache(orders);
+        }
+        
+        renderStats();
+        displayOrders();
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`[ORDERS] Loaded in ${loadTime.toFixed(2)}ms`);
+        
+        // Update orders badge
+        const pendingCount = allOrders.filter(o => o.status === 'Pending').length;
+        const badge = document.getElementById('ordersBadge');
+        if (badge) {
+          badge.textContent = pendingCount;
+        }
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[ORDERS] Request timeout - this may happen on slow connections or cold starts');
+          const ordersList = document.getElementById('ordersList');
+          if (ordersList) {
+            ordersList.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminOrders()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle other errors
+        console.error('Error loading orders:', error);
+        const ordersList = document.getElementById('ordersList');
+        if (ordersList) {
+          ordersList.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load orders</div>
+              <button onclick="renderAdminOrders()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+        showNotification('Failed to load orders. Please try again.', 'error');
+      } finally {
+        // Reset request flag
+        ordersRequestInProgress = false;
+        ordersRequestController = null;
+      }
+    }
+
+    // Fix corrupted orders by cleaning their items data
+    async function fixCorruptedOrders() {
+      if (!confirm('This will clean corrupted item data from all orders. Continue?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/orders/fix-corrupted', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          alert('✅ Corrupted orders have been fixed! The page will reload.');
+          location.reload();
+        } else {
+          alert('❌ Error fixing orders: ' + (result.detail || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error fixing corrupted orders:', error);
+        alert('❌ Error fixing orders. Please try again.');
+      }
+    }
+    
+    // Make function globally accessible
+    window.fixCorruptedOrders = fixCorruptedOrders;
+
+    // Calculate sequential order numbers (only for active orders, not delivered or cancelled)
+    // Uses global function from script.js for consistency
+    function getOrderNumberMap() {
+      // Use global function if available, otherwise fallback to local calculation
+      if (typeof getGlobalOrderNumberMap === 'function') {
+        return getGlobalOrderNumberMap();
+      }
+      
+      // Fallback: Get all active orders (not delivered, not cancelled), sorted by creation time (oldest first)
+      const activeOrders = allOrders
+        .filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled')
+        .sort((a, b) => {
+          const dateA = new Date(a.created_at || 0);
+          const dateB = new Date(b.created_at || 0);
+          return dateA - dateB; // Oldest first
+        });
+      
+      // Create a map: orderId -> sequential number
+      const orderNumberMap = {};
+      activeOrders.forEach((order, index) => {
+        orderNumberMap[order.id] = index + 1; // Start from 1
+      });
+      
+      return orderNumberMap;
+    }
+    
+    // Get sequential order number for a specific order ID
+    function getOrderNumber(orderId) {
+      // Use global function from script.js if available, otherwise use local calculation
+      if (typeof window.getOrderNumber === 'function' && window.getOrderNumber !== getOrderNumber) {
+        return window.getOrderNumber(orderId);
+      }
+      const orderNumberMap = getOrderNumberMap();
+      return orderNumberMap[orderId] || orderId;
+    }
+
+    function displayOrders() {
+      const container = document.getElementById('ordersList');
+      if (!container) {
+        console.error('[ORDERS] Container not found!');
+        return;
+      }
+
+      console.log(`[ORDERS] displayOrders called with ${filteredOrders.length} filtered orders, allOrders: ${allOrders.length}`);
+
+      // Get sequential order numbers
+      const orderNumberMap = getOrderNumberMap();
+
+      if (filteredOrders.length === 0) {
+        console.log('[ORDERS] No filtered orders to display');
+        const hasFilters = document.getElementById('searchInput')?.value || 
+                          document.getElementById('statusFilter')?.value !== 'all';
+        if (hasFilters) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🔍</div>
+              <div class="empty-state-text">No orders match your search criteria</div>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📦</div>
+              <div class="empty-state-text">No orders yet</div>
+            </div>
+          `;
+        }
+        return;
+      }
+      
+      console.log(`[ORDERS] Rendering ${filteredOrders.length} orders`);
+
+      // Safety check: prevent rendering too many orders at once
+      if (filteredOrders.length > 1000) {
+        console.error(`[ORDERS] Too many orders to render (${filteredOrders.length}). Limiting to first 1000.`);
+        filteredOrders = filteredOrders.slice(0, 1000);
+      }
+
+      // Generate HTML for all orders
+      let ordersHTML = '';
+      try {
+        // Debug: Log order data sizes to detect issues and fix corrupted data BEFORE rendering
+        filteredOrders.forEach((o, idx) => {
+          try {
+            // Pre-validate items data before rendering - VERY AGGRESSIVE CLEANING
+            let itemsStr = '';
+            try {
+              itemsStr = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+            } catch (e) {
+              console.warn(`[ORDERS] Order ${o.id} items cannot be stringified. Resetting items but keeping order.`);
+              o.items = [];
+              // Continue processing - don't return
+            }
+            
+            // If items string is too large, reset items but continue processing
+            if (itemsStr.length > 10000) { // Very strict limit: 10KB
+              console.warn(`[ORDERS] Order ${o.id} has large items data (${itemsStr.length} chars). Resetting items but keeping order.`);
+              o.items = [];
+              // Continue processing - don't return, just reset items
+            }
+            
+            // Parse and clean items
+            let items = [];
+            try {
+              items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            } catch (e) {
+              console.warn(`[ORDERS] Order ${o.id} items cannot be parsed. Resetting items but keeping order.`);
+              o.items = [];
+              items = [];
+              // Continue processing - don't return
+            }
+            
+            // Ensure items is an array
+            if (!Array.isArray(items)) {
+              console.warn(`[ORDERS] Order ${o.id} items is not an array. Resetting items but keeping order.`);
+              o.items = [];
+              items = [];
+              // Continue processing - don't return
+            }
+            
+            // AGGRESSIVE CLEANING: Check each item individually and clean it
+            const cleanedItems = [];
+            for (let itemIdx = 0; itemIdx < Math.min(items.length, 100); itemIdx++) {
+              const item = items[itemIdx];
+              try {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                  continue; // Skip invalid items
+                }
+                
+                // Extract only safe properties with strict limits
+                const cleanedItem = {
+                  id: item.id || itemIdx + 1,
+                  name: String(item.name || 'Unknown Item').substring(0, 50), // Max 50 chars
+                  qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
+                  price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
+                };
+                
+                // Validate cleaned item size
+                const itemStr = JSON.stringify(cleanedItem);
+                if (itemStr.length <= 200) { // Each item must be < 200 chars
+                  cleanedItems.push(cleanedItem);
+                } else {
+                  console.error(`[ORDERS] Order ${o.id} item ${itemIdx} is still too large after cleaning (${itemStr.length} chars). Skipping.`);
+                }
+              } catch (itemError) {
+                console.error(`[ORDERS] Order ${o.id} item ${itemIdx} cleaning error:`, itemError);
+                continue; // Skip this item
+              }
+            }
+            
+            // Limit to max 50 items
+            o.items = cleanedItems.slice(0, 50);
+            
+            // Final validation: check if cleaned items are still too large
+            const finalStr = JSON.stringify(o.items);
+            if (finalStr.length > 5000) { // Max 5KB for all items
+              console.warn(`[ORDERS] Order ${o.id} cleaned items still too large (${finalStr.length} chars). Resetting items but keeping order.`);
+              o.items = [];
+            }
+          } catch (e) {
+            console.warn(`[ORDERS] Error checking order ${o.id} items:`, e);
+            o.items = []; // Reset items but keep the order
+          }
+        });
+        
+        ordersHTML = filteredOrders.map((o, displayIdx) => {
+          try {
+            // CRITICAL: Check items size BEFORE generating any HTML
+            let itemsCheck = '';
+            let itemsCheckLength = 0;
+            try {
+              itemsCheck = typeof o.items === 'string' ? o.items : JSON.stringify(o.items || []);
+              itemsCheckLength = itemsCheck.length;
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items cannot be stringified for size check:`, e);
+              // Reset items but still try to render the order
+              o.items = [];
+              itemsCheckLength = 0;
+            }
+            
+            // If items string is still too large after pre-validation, show order with warning
+            if (itemsCheckLength > 10000) {
+              console.error(`[ORDERS] Order ${o.id} items still too large after pre-validation (${itemsCheckLength} chars). Showing order with warning.`);
+              // Still render the order, but with empty items and a warning
+              o.items = [];
+            }
+            
+            const actualIdx = allOrders.indexOf(o);
+            let badgeClass = "";
+            switch (o.status) {
+              case "Pending": badgeClass = "status-pending"; break;
+              case "Preparing": badgeClass = "status-preparing"; break;
+              case "Out for Delivery": badgeClass = "status-delivery"; break;
+              case "Delivered": badgeClass = "status-delivered"; break;
+              default: badgeClass = "status-pending";
+            }
+            const isRefunded = o.refund_status === 'refunded';
+            const canDelete = o.status === 'Pending' || o.status === 'Cancelled' || isRefunded;
+
+        // Get sequential order number (only for active orders, not delivered or cancelled)
+        const isActive = o.status !== 'Delivered' && o.status !== 'Cancelled';
+        const sequentialNumber = orderNumberMap[o.id];
+        const displayOrderNumber = isActive && sequentialNumber ? sequentialNumber : o.id;
+        const orderNumberLabel = isActive && sequentialNumber ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+
+        const buyerName = o.fullname || o.name || "N/A";
+        const buyerContact = o.contact || o.number || "N/A";
+        const buyerAddress = o.location || o.address || "N/A";
+        const orderDate = new Date(o.created_at || Date.now()).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        // Parse items if it's a string (from database) - items should already be cleaned by pre-validation
+        let items = [];
+        try {
+          // Items should already be cleaned by the pre-validation loop above
+          // But we do a final safety check here
+          if (Array.isArray(o.items)) {
+            items = o.items;
+          } else if (typeof o.items === 'string') {
+            try {
+              items = JSON.parse(o.items);
+              if (!Array.isArray(items)) {
+                items = [];
+              }
+            } catch (e) {
+              console.error(`[ORDERS] Order ${o.id} items string cannot be parsed:`, e);
+              items = [];
+            }
+          } else {
+            items = [];
+          }
+          
+          // CRITICAL: Final safety check - if items array is still suspicious, reset it
+          const itemsStrCheck = JSON.stringify(items);
+          if (itemsStrCheck.length > 5000) {
+            console.error(`[ORDERS] Order ${o.id} items still too large in final check (${itemsStrCheck.length} chars). Resetting.`);
+            items = [];
+            o.items = []; // Also update the order object
+          }
+          
+          // Final safety: ensure items array is reasonable
+          if (items.length > 50) {
+            items = items.slice(0, 50);
+          }
+          
+          // Double-check each item one more time
+          items = items.map((item, idx) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+              return null;
+            }
+            
+            // Extract only safe properties with strict limits
+            const cleanItem = {
+              id: item.id || idx + 1,
+              name: String(item.name || 'Unknown Item').substring(0, 50), // Max 50 chars
+              qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
+              price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
+            };
+            
+            // Final size check
+            const itemStr = JSON.stringify(cleanItem);
+            if (itemStr.length > 200) {
+              return null; // Skip oversized items
+            }
+            
+            return cleanItem;
+          }).filter(item => item !== null);
+          
+          // Final validation: total items size
+          const itemsStr = JSON.stringify(items);
+          if (itemsStr.length > 5000) { // Max 5KB
+            console.error(`[ORDERS] Order ${o.id} items still too large after final cleaning (${itemsStr.length} chars). Resetting.`);
+            items = [];
+          }
+        } catch (e) {
+          console.error(`[ORDERS] Error parsing items for order ${o.id}:`, e);
+          items = [];
+        }
+
+        // Get payment information
+        const paymentMethod = o.payment_method || 'cash';
+        const paymentStatus = o.payment_status || 'pending';
+        const paymentMethodIcon = paymentMethod === 'cod' ? '💵' : paymentMethod === 'gcash' ? '📱' : '💵';
+        const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery' : paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+        const paymentStatusBadge = paymentStatus === 'paid' ? 
+          '<span style="background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">✅ Paid</span>' :
+          paymentStatus === 'failed' ?
+          '<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">❌ Failed</span>' :
+          '<span style="background: #d7a24e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;">⏳ Pending</span>';
+
+        // Highlight pending GCash payments
+        const isPendingGCash = paymentMethod === 'gcash' && paymentStatus === 'pending';
+        const cardStyle = isPendingGCash ? 'border: 2px solid #ffc107; background: #fffbf0;' : '';
+        
+        return `
+          <div class="order-card" data-order-id="${o.id}" data-sequential-number="${sequentialNumber || ''}" style="${cardStyle}">
+            <div class="order-header">
+              <div>
+                <div class="order-id">${orderNumberLabel}</div>
+                <div class="order-date">${orderDate}</div>
+                <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
+                  ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}
+                </div>
+              </div>
+              <span class="status-badge ${badgeClass}">${o.status}</span>
+            </div>
+
+            <div class="buyer-info">
+              <p><strong>👤 Customer:</strong> ${buyerName}</p>
+              <p><strong>📞 Contact:</strong> ${buyerContact}</p>
+              <p><strong>📍 Address:</strong> ${buyerAddress}</p>
+            </div>
+
+            <div class="order-items">
+              <strong>📋 Items:</strong><br>
+              ${items.length > 0 ? items.slice(0, 50).map(it => {
+                // Triple-check item is valid before rendering
+                if (!it || typeof it !== 'object' || Array.isArray(it)) return '';
+                const itemName = escapeHtml(String(it.name || 'Unknown Item').substring(0, 50));
+                const itemQty = parseInt(it.qty) || 1;
+                const itemPrice = parseFloat(it.price) || 0;
+                // Ensure values are safe
+                const safeQty = Math.max(1, Math.min(1000, itemQty));
+                const safePrice = Math.max(0, Math.min(100000, itemPrice));
+                  let imageUrl = '/static/images/menu_items/default.jpg';
+                  let rawUrl = it.image_url;
+                  if (!rawUrl && window.adminMenuImageMap) {
+                    rawUrl = window.adminMenuImageMap[String(it.id)];
+                  }
+                  if (rawUrl) {
+                    const url = String(rawUrl).trim();
+                    imageUrl = url.startsWith('/') ? url : `/${url}`;
+                  }
+                return `<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px;">
+                  <img src="${imageUrl}" alt="${itemName}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 5px; flex-shrink: 0;" onerror="this.src='/static/images/menu_items/default.jpg';">
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; color: #333;">${itemName}</div>
+                    <div style="font-size: 0.9rem; color: #666;">×${safeQty}</div>
+                    <div style="font-size: 0.85rem; color: #8B4513; font-weight: 600;">₱${(safePrice * safeQty).toFixed(2)}</div>
+                  </div>
+                </div>`;
+              }).filter(html => html !== '').join('') : 'No items'}
+            </div>
+
+            <div class="order-total">
+              💰 Total: ₱${Number(o.total).toFixed(2)}
+            </div>
+
+            ${paymentMethod === 'gcash' && paymentStatus === 'pending' ? `
+            <div style="background: #fff3cd; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #ffc107;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="flex: 1;">
+                  <strong style="color: #856404;">⏳ GCash Payment Pending</strong><br>
+                  <span style="font-size: 0.85rem; color: #856404;">Reference: <code style="background: white; padding: 2px 6px; border-radius: 4px;">${o.payment_intent_id || 'N/A'}</code></span>
+                </div>
+                <button class="btn" onclick="markPaymentAsPaid(${o.id})" style="
+                  background: #28a745;
+                  color: white;
+                  border: none;
+                  padding: 8px 16px;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  font-weight: bold;
+                  white-space: nowrap;
+                ">✅ Mark as Paid</button>
+              </div>
+              ${o.payment_proof ? `
+              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ffc107;">
+                <strong style="color: #856404; font-size: 0.9rem;">📸 Payment Proof Screenshot:</strong>
+                <div style="margin-top: 8px; text-align: center;">
+                  <img src="${o.payment_proof}" 
+                       alt="Payment Proof" 
+                       onclick="showPaymentProofModal('${o.payment_proof}')"
+                       style="max-width: 100%; max-height: 300px; border-radius: 8px; border: 2px solid #ffc107; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
+                       onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)';"
+                       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)';"
+                       loading="lazy">
+                  <p style="font-size: 0.75rem; color: #856404; margin-top: 4px;">Click to view full size</p>
+                </div>
+              </div>
+              ` : ''}
+            </div>
+            ` : ''}
+            <div class="status-buttons">
+              <select class="status-select" name="orderStatus_${o.id}" id="orderStatus_${o.id}" onchange="updateOrderStatus(${o.id}, this.value)" value="${o.status || 'Pending'}">
+                <option value="Pending" ${(!o.status || o.status === 'Pending') ? 'selected' : ''}>⏳ Pending</option>
+                <option value="Preparing" ${o.status === 'Preparing' ? 'selected' : ''}>👨‍🍳 Preparing</option>
+                <option value="Out for Delivery" ${o.status === 'Out for Delivery' ? 'selected' : ''}>🚚 Out for Delivery</option>
+                <option value="Delivered" ${o.status === 'Delivered' ? 'selected' : ''}>✅ Delivered</option>
+              </select>
+                <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
+              <button class="btn small" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat</button>
+              ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
+              ${isRefunded ? `
+                <span style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block;">✅ Refunded</span>
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
+              ` : o.status === 'Cancelled' ? `
+                <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>
+              ` : (o.status !== 'Delivered' && o.status !== 'Cancelled') ? `
+                <button class="btn small" onclick="processRefund(${o.id})" style="background: #ff9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💰 Refund</button>
+                ${o.status === 'Pending' ? `<button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>` : ''}
+              ` : o.status === 'Delivered' ? `
+                ${canDelete ? `<button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">🗑️ Delete</button>` : ''}
+              ` : ''}
+            </div>
+          </div>
+        `;
+          } catch (orderError) {
+            console.error(`[ORDERS] Error rendering order ${o.id}:`, orderError, o);
+            return `<div class="order-card" style="border: 2px solid red; padding: 10px; margin: 10px 0;">
+              <p style="color: red;">Error rendering order #${o.id}: ${orderError.message}</p>
+            </div>`;
+          }
+        }).join('');
+      } catch (mapError) {
+        console.error('[ORDERS] Error mapping orders:', mapError);
+        ordersHTML = `<div style="text-align: center; padding: 40px; color: #e74c3c;">
+          <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+          <div>Error generating order HTML: ${mapError.message}</div>
+        </div>`;
+      }
+      
+      // Update container with generated HTML
+      try {
+        if (!ordersHTML || ordersHTML.trim() === '') {
+          console.warn('[ORDERS] Generated HTML is empty!');
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📦</div>
+              <div class="empty-state-text">No orders to display</div>
+            </div>
+          `;
+        } else {
+          // Safety check: if HTML is too large, truncate but still show orders
+          if (ordersHTML.length > 2000000) { // 2MB limit - very generous
+            console.warn(`[ORDERS] Generated HTML is large (${ordersHTML.length} chars = ${(ordersHTML.length / 1024 / 1024).toFixed(2)} MB). Truncating but still displaying.`);
+            // Log warning but continue - don't block display
+          }
+          // Use requestAnimationFrame for smooth rendering (only if content changed)
+          const currentHTML = container.innerHTML;
+          if (currentHTML !== ordersHTML) {
+            container.style.opacity = '0';
+            container.style.transition = 'opacity 0.15s ease-out';
+            requestAnimationFrame(() => {
+              container.innerHTML = ordersHTML;
+              requestAnimationFrame(() => {
+                container.style.transition = 'opacity 0.2s ease-in';
+                container.style.opacity = '1';
+              });
+            });
+          } else {
+            // Content unchanged, just ensure it's visible
+            container.style.opacity = '1';
+          }
+          console.log(`[ORDERS] Successfully rendered ${filteredOrders.length} orders to DOM. HTML length: ${ordersHTML.length} chars (${(ordersHTML.length / 1024).toFixed(2)} KB)`);
+        }
+      } catch (error) {
+        console.error('[ORDERS] Error setting container innerHTML:', error);
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px; color: #e74c3c;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+            <div>Error rendering orders: ${error.message}</div>
+            <button onclick="renderAdminOrders()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+          </div>
+        `;
+      }
+    }
+
+    /* -------- Filter Orders (with debouncing) -------- */
+    let filterTimeout = null;
+    function filterOrders() {
+      // Clear previous timeout
+      if (filterTimeout) {
+        clearTimeout(filterTimeout);
+      }
+      
+      // Debounce search - wait 500ms after user stops typing (optimized for performance)
+      filterTimeout = setTimeout(() => {
+        const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+
+        filteredOrders = allOrders.filter(o => {
+          const buyerName = (o.fullname || o.name || '').toLowerCase();
+          const buyerContact = (o.contact || o.number || '').toLowerCase();
+          const orderId = String(o.id || '').toLowerCase();
+          
+          const matchesSearch = !searchTerm || 
+            buyerName.includes(searchTerm) || 
+            buyerContact.includes(searchTerm) ||
+            orderId.includes(searchTerm);
+          
+          return matchesSearch;
+        });
+
+        displayOrders();
+      }, 300);
+    }
+
+    /* -------- Mark Payment as Paid (GCash) with Optimistic Update -------- */
+    async function markPaymentAsPaid(orderId) {
+      if (!confirm(`Mark payment as received for Order #${orderId}?\n\nPlease verify the payment in your GCash app before confirming.`)) {
+        return;
+      }
+      
+      // OPTIMISTIC UPDATE: Update UI immediately
+      const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+      if (orderCard) {
+        // Hide payment pending section immediately
+        const pendingSection = orderCard.querySelector('[style*="background: #fff3cd"]');
+        if (pendingSection) {
+          pendingSection.style.display = 'none';
+        }
+        
+        // Update order in local cache
+        const order = allOrders.find(o => o.id === orderId);
+        if (order) {
+          order.payment_status = 'paid';
+        }
+      }
+      
+      try {
+        // Use AbortController for timeout (10 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`/orders/${orderId}/payment`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: 'paid' }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          // Success - UI already updated optimistically, just sync stats
+          // Don't refresh entire orders list - just update stats for instant feedback
+          requestAnimationFrame(() => {
+            renderStats(); // Update stats immediately
+            // Only refresh if payment section still visible
+            const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+            if (orderCard && orderCard.querySelector('[style*="background: #fff3cd"]')) {
+              // Payment section still visible - refresh to hide it
+              renderAdminOrders();
+            }
+          });
+        } else {
+          // Revert optimistic update on error
+          if (orderCard && pendingSection) {
+            pendingSection.style.display = '';
+          }
+          if (order) {
+            order.payment_status = 'pending';
+          }
+          
+          const error = await response.json();
+          alert(`❌ Failed to update payment status: ${error.detail || 'Unknown error'}`);
+          await renderAdminOrders();
+        }
+      } catch(error) {
+        // Revert optimistic update on error
+        if (orderCard && pendingSection) {
+          pendingSection.style.display = '';
+        }
+        if (order) {
+          order.payment_status = 'pending';
+        }
+        
+        console.error('Error marking payment as paid:', error);
+        if (error.name === 'AbortError') {
+          alert('❌ Request timeout. Please try again.');
+        } else {
+          alert('❌ Failed to update payment status. Please try again.');
+        }
+        await renderAdminOrders();
+      }
+    }
+
+    /* -------- Update Status (API) with Optimistic Updates -------- */
+    async function updateOrderStatus(orderId, status) {
+      if (!status) {
+        // Invalid selection, reset
+        await renderAdminOrders();
+        return;
+      }
+      
+      // OPTIMISTIC UPDATE: Update UI immediately for instant feedback
+      const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+      if (orderCard) {
+        // Update status badge immediately
+        const statusBadge = orderCard.querySelector('.status-badge');
+        if (statusBadge) {
+          const oldStatus = statusBadge.textContent.trim();
+          statusBadge.textContent = status;
+          // Update badge class for visual feedback
+          statusBadge.className = 'status-badge';
+          switch(status) {
+            case 'Pending': statusBadge.classList.add('status-pending'); break;
+            case 'Preparing': statusBadge.classList.add('status-preparing'); break;
+            case 'Out for Delivery': statusBadge.classList.add('status-delivery'); break;
+            case 'Delivered': statusBadge.classList.add('status-delivered'); break;
+          }
+        }
+        
+        // Update order in local cache immediately
+        const order = allOrders.find(o => o.id === orderId);
+        if (order) {
+          order.status = status;
+        }
+        
+        // Update stats immediately
+        renderStats();
+      }
+      
+      // Get sequential order number before update
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      
+      let response;
+      try {
+        // Use AbortController for timeout (10 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        response = await fetch(`/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: status }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+      } catch(networkError) {
+        // Network/connection error - revert optimistic update
+        if (networkError.name === 'AbortError') {
+          alert('Request timeout. The status may have been updated. Refreshing...');
+        } else {
+          console.error('Network error updating order:', networkError);
+          alert('Failed to update order status. Please check your connection and try again.');
+        }
+        // Revert by refreshing
+        await renderAdminOrders();
+        return;
+      }
+
+      // Check if response is successful
+      if (!response.ok) {
+        // Revert optimistic update on error
+        if (orderCard && statusBadge) {
+          const order = allOrders.find(o => o.id === orderId);
+          if (order) {
+            statusBadge.textContent = order.status || 'Pending';
+            renderStats();
+          }
+        }
+        
+        // Handle error response
+        let errorMessage = `Server returned ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch(e) {
+          // If we can't parse error, use status text
+          console.log('Could not parse error response:', e);
+        }
+        alert(`Failed to update order status: ${errorMessage}`);
+        await renderAdminOrders();
+        return;
+      }
+
+      // Success - consume response body (ignore parsing errors)
+      try {
+        await response.json();
+      } catch(e) {
+        // Response parsing failed, but status was OK - that's fine
+        console.log('Response body note (update succeeded):', e);
+      }
+
+      // Success - UI already updated optimistically, just sync stats
+      // Don't refresh entire list - just update stats for instant feedback
+      requestAnimationFrame(() => {
+        renderStats(); // Update stats immediately
+        // Only refresh if status badge wasn't updated properly
+        const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+        const statusBadge = orderCard?.querySelector('.status-badge');
+        if (!statusBadge || statusBadge.textContent.trim() !== status) {
+          // Status didn't update - refresh
+          renderAdminOrders();
+        }
+      });
+    }
+
+    /* -------- Process Refund with Optimistic Update -------- */
+    async function processRefund(orderId) {
+      // Get order details for confirmation
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+      
+      const orderTotal = Number(order.total || 0).toFixed(2);
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      
+      if (!confirm(`💰 Process Refund for Order #${sequentialNumber}?\n\nRefund Amount: ₱${orderTotal}\n\nThis will:\n- Mark the order as refunded\n- Cancel the order\n- Notify the customer\n\nContinue?`)) {
+        return;
+      }
+      
+      // OPTIMISTIC UPDATE: Update UI immediately
+      const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+      if (orderCard) {
+        // Update status badge immediately
+        const statusBadge = orderCard.querySelector('.status-badge');
+        if (statusBadge) {
+          statusBadge.textContent = 'Cancelled';
+          statusBadge.className = 'status-badge status-pending';
+        }
+        
+        // Add refunded badge immediately
+        const statusButtons = orderCard.querySelector('.status-buttons');
+        if (statusButtons && !statusButtons.querySelector('[style*="background: #4CAF50"]')) {
+          const refundedBadge = document.createElement('span');
+          refundedBadge.style.cssText = 'background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block; margin-left: 8px;';
+          refundedBadge.textContent = '✅ Refunded';
+          statusButtons.insertBefore(refundedBadge, statusButtons.firstChild);
+        }
+        
+        // Update order in local cache
+        order.refund_status = 'refunded';
+        order.status = 'Cancelled';
+      }
+      
+      // Update stats immediately
+      renderStats();
+      
+      try {
+        // Use AbortController for timeout (15 seconds - refunds may take longer)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        const response = await fetch(`/orders/${orderId}/refund`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const result = await response.json();
+          showNotification(`✅ Refund processed successfully! Amount: ₱${result.refund_amount.toFixed(2)}`, 'success');
+          
+          // UI already updated optimistically, just sync stats
+          // Don't refresh entire orders list - just update stats for instant feedback
+          requestAnimationFrame(() => {
+            renderStats(); // Update stats immediately
+            // Only refresh if refund badge wasn't added properly
+            const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+            if (!orderCard || !orderCard.querySelector('[style*="background: #4CAF50"]')) {
+              // Refund badge not visible - refresh to show it
+              renderAdminOrders();
+            }
+          });
+        } else {
+          // Revert optimistic update on error
+          if (orderCard) {
+            const statusBadge = orderCard.querySelector('.status-badge');
+            if (statusBadge && order) {
+              statusBadge.textContent = order.status || 'Pending';
+            }
+            const refundedBadge = orderCard.querySelector('[style*="background: #4CAF50"]');
+            if (refundedBadge) {
+              refundedBadge.remove();
+            }
+          }
+          if (order) {
+            order.refund_status = null;
+            order.status = order.status || 'Pending';
+          }
+          renderStats();
+          
+          const error = await response.json();
+          showNotification(`❌ Failed to process refund: ${error.detail || 'Unknown error'}`, 'error');
+          await renderAdminOrders();
+        }
+      } catch (error) {
+        // Revert optimistic update on error
+        if (orderCard) {
+          const statusBadge = orderCard.querySelector('.status-badge');
+          if (statusBadge && order) {
+            statusBadge.textContent = order.status || 'Pending';
+          }
+          const refundedBadge = orderCard.querySelector('[style*="background: #4CAF50"]');
+          if (refundedBadge) {
+            refundedBadge.remove();
+          }
+        }
+        if (order) {
+          order.refund_status = null;
+          order.status = order.status || 'Pending';
+        }
+        renderStats();
+        
+        console.error('Error processing refund:', error);
+        if (error.name === 'AbortError') {
+          showNotification('❌ Request timeout. The refund may have been processed. Refreshing...', 'error');
+        } else {
+          showNotification('❌ Failed to process refund. Please try again.', 'error');
+        }
+        await renderAdminOrders();
+      }
+    }
+
+    /* -------- Cancel/Delete Order (only for Pending orders) -------- */
+    async function cancelOrder(orderId) {
+      // Get sequential order number for confirmation
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${sequentialNumber}?\n\nThis will permanently delete the order from the database.\n\nThis action cannot be undone.`)) return;
+      
+      try {
+        console.log(`[INFO] Deleting order ${orderId} from database...`);
+        
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        // Read response once
+        let responseData = null;
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            responseData = JSON.parse(responseText);
+          }
+        } catch(parseError) {
+          // If parsing fails, that's okay - we'll check status code
+          console.log('Response parse note:', parseError);
+        }
+
+        if (!response.ok) {
+          // Handle error response
+          const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
+          alert(`❌ Failed to delete order: ${errorMessage}`);
+          console.error('Order deletion failed:', errorMessage);
+          return;
+        }
+
+        // Success - show message and refresh
+        console.log(`[SUCCESS] Order ${orderId} deleted from database`);
+        alert('✅ Order deleted successfully from database!');
+        
+        // Refresh orders list immediately
+        try {
+          await renderAdminOrders();
+          filterOrders();
+        } catch(refreshError) {
+          console.error('Error refreshing orders after delete:', refreshError);
+          // Still show success - order was deleted from database
+          alert('✅ Order deleted from database. Please refresh the page to see updated list.');
+        }
+      } catch(error) {
+        console.error('Error deleting order:', error);
+        alert('❌ Failed to delete order. Please check your connection and try again.');
+      }
+    }
+
+    /* -------- Delete Order (for Cancelled or Refunded orders) -------- */
+      async function deleteOrder(orderId) {
+        // Get order details for confirmation
+        const order = allOrders.find(o => o.id === orderId);
+        if (!order) {
+          alert('Order not found');
+          return;
+        }
+
+        const isRefunded = order.refund_status === 'refunded';
+        const canDelete = order.status === 'Pending' || order.status === 'Cancelled' || isRefunded;
+        if (!canDelete) {
+          alert(`❌ Cannot delete order #${orderId}.\n\nOnly orders with "Pending" or "Cancelled" status, or refunded orders can be deleted.\nCurrent status: ${order.status || 'Unknown'}\nRefund status: ${order.refund_status || 'None'}`);
+          return;
+        }
+
+        const orderStatus = order.status === 'Pending' ? 'pending' : (order.status === 'Cancelled' ? 'cancelled' : 'refunded');
+        const orderNumber = order.id;
+      
+      if (!confirm(`⚠️ Are you sure you want to DELETE Order #${orderNumber}?\n\nThis order is ${orderStatus} and will be permanently deleted from the database.\n\nThis action cannot be undone.`)) return;
+      
+      try {
+        console.log(`[INFO] Deleting ${orderStatus} order ${orderId} from database...`);
+        
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        // Read response once
+        let responseData = null;
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            responseData = JSON.parse(responseText);
+          }
+        } catch(parseError) {
+          // If parsing fails, that's okay - we'll check status code
+          console.log('Response parse note:', parseError);
+        }
+
+        if (!response.ok) {
+          // Handle error response
+          const errorMessage = responseData?.detail || `Server returned ${response.status}: ${response.statusText}`;
+          alert(`❌ Failed to delete order: ${errorMessage}`);
+          console.error('Order deletion failed:', errorMessage);
+          return;
+        }
+
+        // Success - show message and refresh
+        console.log(`[SUCCESS] Order ${orderId} deleted from database`);
+        alert('✅ Order deleted successfully from database!');
+        
+        // Refresh orders list immediately
+        try {
+          await renderAdminOrders();
+          filterOrders();
+        } catch(refreshError) {
+          console.error('Error refreshing orders after delete:', refreshError);
+          // Still show success - order was deleted from database
+          alert('✅ Order deleted from database. Please refresh the page to see updated list.');
+        }
+      } catch(error) {
+        console.error('Error deleting order:', error);
+        alert('❌ Failed to delete order. Please check your connection and try again.');
+      }
+    }
+
+    /* -------- Edit Order (only for Pending orders) -------- */
+    async function editOrder(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found');
+        return;
+      }
+
+      if (order.status !== 'Pending') {
+        alert('Only orders with "Pending" status can be edited.');
+        return;
+      }
+
+      // Parse items if it's a string
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      
+      // Create edit modal
+      const modal = document.createElement('div');
+      modal.id = 'editOrderModal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        overflow-y: auto;
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;">
+          <button onclick="document.getElementById('editOrderModal').remove()" 
+                  style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+          
+          <h2 style="margin: 0 0 20px 0; color: #8b4513;">✏️ Edit Order #${orderId}</h2>
+          
+          <form id="editOrderForm" onsubmit="saveOrderEdit(event, ${orderId})">
+            <div style="margin-bottom: 16px;">
+              <label class="input-label" for="editFullname">Customer Name (First Middle Last)</label>
+              <input type="text" id="editFullname" name="editFullname" value="${(order.fullname || order.name || '').replace(/"/g, '&quot;')}" 
+                     placeholder="First Name Middle Name Last Name"
+                     required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label" for="editContact">Contact Number (11 digits)</label>
+              <input type="tel" id="editContact" name="editContact" value="${(order.contact || order.number || '').replace(/"/g, '&quot;')}" 
+                     placeholder="09XXXXXXXXX" maxlength="11" pattern="[0-9]{11}"
+                     oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)"
+                     required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label" for="editLocation">Address / Location</label>
+              <textarea id="editLocation" name="editLocation" required 
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; min-height: 80px;">${(order.location || order.address || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label class="input-label">Order Items</label>
+              <div id="editItemsList" style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;">
+                ${items.map((item, idx) => {
+                  const safeName = (item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                  return `
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 8px; background: white; border-radius: 6px;">
+                    <div style="flex: 1;">
+                      <strong>${safeName}</strong><br>
+                      <span style="color: var(--muted); font-size: 0.9rem;">₱${Number(item.price).toFixed(2)} × 
+                      <input type="number" id="editQty_${idx}" value="${item.qty}" min="1" 
+                             style="width: 60px; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: center;"
+                             onchange="updateEditTotal()">
+                      </span>
+                    </div>
+                    <button type="button" class="btn delete small" onclick="removeEditItem(${idx})">Remove</button>
+                  </div>
+                `;
+                }).join('')}
+              </div>
+              <div style="margin-top: 12px;">
+                <button type="button" class="btn small ghost" onclick="addEditItem()">+ Add Item</button>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 20px; padding: 12px; background: #fff8f1; border-radius: 8px; border: 1px solid #8b4513;">
+              <strong>💰 Total: ₱<span id="editTotal">${Number(order.total).toFixed(2)}</span></strong>
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+              <button type="button" class="btn ghost" onclick="document.getElementById('editOrderModal').remove()">Cancel</button>
+              <button type="submit" class="btn">💾 Save Changes</button>
+            </div>
+          </form>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Store original items for calculations
+      window.editOrderData = {
+        items: items.map(item => ({...item})),
+        orderId: orderId
+      };
+      
+      // Close on background click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+    }
+
+    async function saveOrderEdit(event, orderId) {
+      event.preventDefault();
+      
+      const fullname = document.getElementById('editFullname').value.trim();
+      const contact = document.getElementById('editContact').value.trim();
+      const location = document.getElementById('editLocation').value.trim();
+      
+      if (!fullname || !contact || !location) {
+        alert('Please fill in all required fields.');
+        return;
+      }
+      
+      // Validate full name: must have at least 3 words (First, Middle, Last)
+      const nameWords = fullname.split(/\s+/).filter(word => word.length > 0);
+      if(nameWords.length < 3) {
+        alert('Please enter full name: First Name, Middle Name, and Last Name (at least 3 words).');
+        document.getElementById('editFullname').focus();
+        return;
+      }
+      
+      // Validate contact number: must be exactly 11 digits
+      const contactDigits = contact.replace(/\D/g, ''); // Remove non-digits
+      if(contactDigits.length !== 11) {
+        alert('Contact number must be exactly 11 digits (e.g., 09123456789).');
+        document.getElementById('editContact').focus();
+        return;
+      }
+      
+      // Collect items with quantities
+      const items = [];
+      let total = 0;
+      const DELIVERY_FEE = 10;
+      
+      for (let i = 0; i < window.editOrderData.items.length; i++) {
+        const qtyInput = document.getElementById(`editQty_${i}`);
+        if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+          const qty = parseInt(qtyInput.value) || 0;
+          if (qty > 0) {
+            const item = window.editOrderData.items[i];
+              items.push({
+                id: item.id,
+                name: item.name,
+                price: Number(item.price),
+                qty: qty,
+                image_url: item.image_url
+              });
+            total += Number(item.price) * qty;
+          }
+        }
+      }
+      
+      if (items.length === 0) {
+        alert('Order must have at least one item.');
+        return;
+      }
+      
+      total += DELIVERY_FEE;
+      
+      try {
+        const response = await fetch(`/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullname: fullname.trim(),
+            contact: contactDigits, // Use validated digits-only contact
+            location: location.trim(),
+            items: items,
+            total: total
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          alert(`Failed to update order: ${errorData.detail || 'Unknown error'}`);
+          return;
+        }
+        
+        alert('✅ Order updated successfully!');
+        document.getElementById('editOrderModal').remove();
+        await renderAdminOrders();
+        filterOrders();
+      } catch(error) {
+        console.error('Error updating order:', error);
+        alert('Failed to update order. Please try again.');
+      }
+    }
+
+    function updateEditTotal() {
+      const DELIVERY_FEE = 10;
+      let total = 0;
+      
+      for (let i = 0; i < window.editOrderData.items.length; i++) {
+        const qtyInput = document.getElementById(`editQty_${i}`);
+        if (qtyInput && qtyInput.parentElement.parentElement.parentElement) {
+          const qty = parseInt(qtyInput.value) || 0;
+          const item = window.editOrderData.items[i];
+          total += Number(item.price) * qty;
+        }
+      }
+      
+      total += DELIVERY_FEE;
+      document.getElementById('editTotal').textContent = total.toFixed(2);
+    }
+
+    function removeEditItem(idx) {
+      window.editOrderData.items.splice(idx, 1);
+      document.getElementById('editOrderModal').remove();
+      editOrder(window.editOrderData.orderId);
+    }
+
+    async function addEditItem() {
+      // Fetch menu items
+      try {
+        const response = await fetch('/menu');
+        const menuItems = await response.json();
+        
+        if (menuItems.length === 0) {
+          alert('No menu items available.');
+          return;
+        }
+        
+        // Create a simple selection dialog
+        const itemNames = menuItems.map(item => item.name).join('\n');
+        const selectedName = prompt(`Enter item name to add:\n\nAvailable items:\n${itemNames}`);
+        if (!selectedName) return;
+        
+        const selectedItem = menuItems.find(item => 
+          item.name.toLowerCase() === selectedName.toLowerCase()
+        );
+        
+        if (!selectedItem) {
+          alert('Item not found. Please enter the exact item name.');
+          return;
+        }
+        
+        if (selectedItem.is_available === false || (selectedItem.quantity || 0) === 0) {
+          alert('This item is currently out of stock.');
+          return;
+        }
+        
+        const qty = parseInt(prompt(`Enter quantity for ${selectedItem.name}:`, '1')) || 1;
+        if (qty <= 0) {
+          alert('Quantity must be greater than 0.');
+          return;
+        }
+        
+        window.editOrderData.items.push({
+            id: selectedItem.id,
+            name: selectedItem.name,
+            price: selectedItem.price,
+            qty: qty,
+            image_url: selectedItem.image_url
+          });
+        
+        // Refresh the modal
+        document.getElementById('editOrderModal').remove();
+        editOrder(window.editOrderData.orderId);
+      } catch(error) {
+        console.error('Error adding item:', error);
+        alert('Failed to load menu items.');
+      }
+    }
+
+    /* -------- Print Functions -------- */
+    function printOrders() {
+      if (filteredOrders.length === 0) {
+        alert('No orders to print');
+        return;
+      }
+      window.print();
+    }
+
+    function showPaymentProofModal(imageSrc) {
+      const modal = document.createElement('div');
+      modal.id = 'paymentProofModal';
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.9);
+        z-index: 20000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      `;
+      
+      modal.innerHTML = `
+        <div style="position: relative; max-width: 90%; max-height: 90%;">
+          <img src="${imageSrc}" 
+               alt="Payment Proof" 
+               style="max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+          <button onclick="document.getElementById('paymentProofModal').remove()" 
+                  style="position: absolute; top: -40px; right: 0; background: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1.2rem;">
+            ✕ Close
+          </button>
+        </div>
+      `;
+      
+      modal.onclick = (e) => {
+        if(e.target === modal) {
+          modal.remove();
+        }
+      };
+      
+      document.body.appendChild(modal);
+    }
+    
+    function printSingleOrder(orderId) {
+      // Get sequential order number
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[orderId] || orderId;
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) return;
+      
+      const buyerName = order.fullname || order.name || "N/A";
+      const buyerContact = order.contact || order.number || "N/A";
+      const buyerAddress = order.location || order.address || "N/A";
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Order Receipt</title>
+          <title>Order #${sequentialNumber} - Online Canteen</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #8B4513; }
+            .info { margin: 10px 0; }
+            .items { margin: 20px 0; border-top: 2px solid #ccc; padding-top: 10px; }
+            .total { font-size: 1.2em; font-weight: bold; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <h1>🍽️ Online Canteen - Order Receipt</h1>
+          <div class="info"><strong>Order #:</strong> ${sequentialNumber}</div>
+          <div class="info"><strong>Date:</strong> ${new Date(order.created_at || Date.now()).toLocaleString()}</div>
+          <div class="info"><strong>Status:</strong> ${order.status}</div>
+          <hr>
+          <h3>Customer Information</h3>
+          <div class="info"><strong>Name:</strong> ${buyerName}</div>
+          <div class="info"><strong>Contact:</strong> ${buyerContact}</div>
+          <div class="info"><strong>Address:</strong> ${buyerAddress}</div>
+          <div class="items">
+            <h3>Order Items</h3>
+            ${items.map(it => `<div>• ${it.name} × ${it.qty} - ₱${(Number(it.price) * Number(it.qty)).toFixed(2)}</div>`).join('')}
+          </div>
+          <div class="total">Total Amount: ₱${Number(order.total).toFixed(2)}</div>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+
+    /* -------- View User Profile -------- */
+    async function viewUserProfile(userId) {
+      if (!userId) {
+        showNotification('User ID is missing. Cannot load profile.', 'error');
+        return;
+      }
+      
+      // Show loading state
+      const loadingOverlay = document.createElement('div');
+      loadingOverlay.className = 'loading-overlay';
+      loadingOverlay.id = 'profileLoadingOverlay';
+      loadingOverlay.innerHTML = `
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <div>Loading user profile...</div>
+        </div>
+      `;
+      document.body.appendChild(loadingOverlay);
+      
+      try {
+        const response = await fetch(`/users/${userId}/details?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(errorData.detail || `Failed to fetch user details: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data || !data.user) {
+          throw new Error('Invalid response format: user data not found');
+        }
+        
+        // Remove loading overlay
+        loadingOverlay.remove();
+        
+        const user = data.user;
+        const orders = data.orders || [];
+        const totalOrders = data.total_orders || 0;
+        const totalSpent = data.total_spent || 0;
+
+        // Format registration date
+        const regDate = user.created_at ? new Date(user.created_at).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : 'N/A';
+
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+          <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #8B4513; padding-bottom: 15px;">
+              <h2 style="margin: 0; color: #8B4513;">👤 User Profile</h2>
+              <button id="closeUserProfileModal" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">&times;</button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+              <div class="card" style="padding: 20px; background: #fff8f1;">
+                <h3 style="margin-top: 0; color: #8B4513;">📋 Profile Information</h3>
+                <p><strong>Name:</strong> ${escapeHtml(user.name || 'N/A')}</p>
+                <p><strong>Email:</strong> ${escapeHtml(user.email || 'N/A')}</p>
+                <p><strong>Role:</strong> <span style="background: ${user.role === 'admin' ? '#8B4513' : '#4CAF50'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">${user.role === 'admin' ? '👑 Admin' : '👤 User'}</span></p>
+                <p><strong>Status:</strong> <span style="background: ${user.is_approved ? '#4CAF50' : '#ffc107'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">${user.is_approved ? '✅ Approved' : '⏳ Pending'}</span></p>
+                <p><strong>Registered:</strong> ${regDate}</p>
+                <p><strong>Total Orders:</strong> ${totalOrders}</p>
+                <p><strong>Total Spent:</strong> ₱${Number(totalSpent).toFixed(2)}</p>
+              </div>
+
+              <div class="card" style="padding: 20px; background: #fff8f1;">
+                <h3 style="margin-top: 0; color: #8B4513;">📸 Registration Proof</h3>
+                ${user.id_proof ? `
+                  <div style="margin-bottom: 20px;">
+                    <p style="font-weight: 600; margin-bottom: 8px;">🆔 ID Proof</p>
+                    <img src="${user.id_proof}" alt="ID Proof" 
+                         onclick="showImageModal('${user.id_proof}', 'ID Proof')"
+                         style="width: 100%; max-height: 200px; object-fit: contain; border: 2px solid #8B4513; border-radius: 8px; cursor: pointer; background: #f5f5f5;"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <p style="display: none; color: #e74c3c; font-size: 0.9rem;">Failed to load image</p>
+                    <p style="font-size: 0.75rem; color: #666; margin-top: 4px; text-align: center;">Click to view full size</p>
+                  </div>
+                ` : '<p style="color: #999; font-style: italic;">No ID proof uploaded</p>'}
+                
+                ${user.selfie_proof ? `
+                  <div>
+                    <p style="font-weight: 600; margin-bottom: 8px;">🤳 Selfie Proof</p>
+                    <img src="${user.selfie_proof}" alt="Selfie Proof" 
+                         onclick="showImageModal('${user.selfie_proof}', 'Selfie Proof')"
+                         style="width: 100%; max-height: 200px; object-fit: contain; border: 2px solid #8B4513; border-radius: 8px; cursor: pointer; background: #f5f5f5;"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <p style="display: none; color: #e74c3c; font-size: 0.9rem;">Failed to load image</p>
+                    <p style="font-size: 0.75rem; color: #666; margin-top: 4px; text-align: center;">Click to view full size</p>
+                  </div>
+                ` : '<p style="color: #999; font-style: italic;">No selfie proof uploaded</p>'}
+              </div>
+            </div>
+
+            ${orders.length > 0 ? `
+              <div class="card" style="padding: 20px; background: #fff8f1;">
+                <h3 style="margin-top: 0; color: #8B4513;">📦 Order History (${orders.length})</h3>
+                <div style="max-height: 300px; overflow-y: auto;">
+                  ${orders.slice(0, 10).map(order => {
+                    const orderDate = new Date(order.created_at || Date.now()).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+                    return `
+                      <div style="border-bottom: 1px solid #ddd; padding: 12px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <div>
+                            <strong>Order #${order.id}</strong>
+                            <span style="background: ${order.status === 'Delivered' ? '#4CAF50' : order.status === 'Pending' ? '#ffc107' : '#2196F3'}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-left: 8px;">${order.status}</span>
+                          </div>
+                          <div style="text-align: right;">
+                            <div style="font-weight: 600; color: #8B4513;">₱${Number(order.total || 0).toFixed(2)}</div>
+                            <div style="font-size: 0.85rem; color: #666;">${orderDate}</div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                  ${orders.length > 10 ? `<p style="text-align: center; color: #666; margin-top: 10px; font-style: italic;">... and ${orders.length - 10} more orders</p>` : ''}
+                </div>
+              </div>
+            ` : '<p style="color: #999; font-style: italic; text-align: center; padding: 20px;">No orders yet</p>'}
+          </div>
+        `;
+
+        // Add modal styles if not already present
+        if (!document.getElementById('userProfileModalStyles')) {
+          const style = document.createElement('style');
+          style.id = 'userProfileModalStyles';
+          style.textContent = `
+            .modal {
+              display: none;
+              position: fixed;
+              z-index: 10000;
+              left: 0;
+              top: 0;
+              width: 100%;
+              height: 100%;
+              background-color: rgba(0, 0, 0, 0.5);
+              justify-content: center;
+              align-items: center;
+            }
+            .modal-content {
+              background-color: white;
+              padding: 30px;
+              border-radius: 12px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+              position: relative;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.remove();
+          }
+        });
+
+        // Close button functionality
+        const closeBtn = modal.querySelector('#closeUserProfileModal');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            modal.remove();
+          });
+        }
+
+        document.body.appendChild(modal);
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          userId: userId
+        });
+        loadingOverlay.remove();
+        showNotification(`Failed to load user profile: ${error.message}`, 'error');
+        console.error('Error loading user profile:', error);
+      }
+    }
+
+    /* -------- Show Image Modal (for proof images) -------- */
+    function showImageModal(imageSrc, title) {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.style.display = 'flex';
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; text-align: center;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #8B4513;">${title}</h3>
+            <button id="closeImageModal" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">&times;</button>
+          </div>
+          <img src="${imageSrc}" alt="${title}" style="max-width: 100%; max-height: 80vh; border: 2px solid #8B4513; border-radius: 8px;">
+        </div>
+      `;
+      
+      // Close modal when clicking outside
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+      
+      // Close button functionality
+      const closeBtn = modal.querySelector('#closeImageModal');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          modal.remove();
+        });
+      }
+      
+      document.body.appendChild(modal);
+    }
+
+    /* -------- Escape HTML (for security) -------- */
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    /* -------- Menu Management Functions -------- */
+    let isRenderingMenu = false;
+    let menuController = null;
+      async function renderAdminMenuList() {
+        // Prevent multiple simultaneous requests
+        if (isRenderingMenu) {
+          console.log('[MENU] Already rendering, skipping duplicate call');
+          return;
+        }
+      
+      // Abort any previous request
+      if (menuController) {
+        menuController.abort();
+      }
+      
+      isRenderingMenu = true;
+      const startTime = performance.now();
+      try {
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
+        menuController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          if (menuController) {
+            menuController.abort();
+          }
+        }, 20000); // 20 second timeout
+        
+        const response = await fetch(`/menu?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: menuController.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          // Handle 502 Bad Gateway errors
+          if (response.status === 502) {
+            throw new Error('Server temporarily unavailable. Please try again in a moment.');
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+          const menuItems = await response.json();
+          // Build image map for orders display fallback
+          try {
+            const map = {};
+            if (Array.isArray(menuItems)) {
+              menuItems.forEach(item => {
+                if (item && item.id && item.image_url) {
+                  map[String(item.id)] = String(item.image_url).trim();
+                }
+              });
+            }
+            window.adminMenuImageMap = map;
+          } catch (e) {
+            console.warn('[MENU] Failed to build image map:', e);
+          }
+        
+        // Ensure menuItems is an array
+        if (!Array.isArray(menuItems)) {
+          console.error('Menu items is not an array:', menuItems);
+          document.getElementById('adminMenuList').innerHTML = '<p class="muted">No menu items available. Add your first item below.</p>';
+          return;
+        }
+        
+        const menuArea = document.getElementById('adminMenuList');
+        if (!menuArea) return;
+
+        // Group by category
+        const grouped = {
+          budget: [],
+          foods: [],
+          drinks: []
+        };
+        
+        menuItems.forEach(item => {
+          const category = item.category || 'foods';
+          if (grouped[category]) {
+            grouped[category].push(item);
+          }
+        });
+
+        const loadTime = performance.now() - startTime;
+        console.log(`[MENU] Loaded in ${loadTime.toFixed(2)}ms`);
+        
+        menuArea.innerHTML = Object.keys(grouped).map(category => {
+          const items = grouped[category];
+          if (items.length === 0) return '';
+          
+          const categoryName = {
+            budget: '🍛 Budget Meals',
+            foods: '🍔 Foods',
+            drinks: '🥤 Drinks'
+          }[category] || category;
+          
+          const itemsHtml = items.map(item => {
+            const isAvailable = item.is_available !== false;
+            const quantity = item.quantity || 0;
+            const stockStatus = quantity > 0 ? `📦 ${quantity} in stock` : '⚠️ Out of Stock';
+            const stockColor = quantity > 0 ? (quantity < 10 ? '#ff9800' : '#4caf50') : '#f44336';
+            const stockBadgeStyle = `display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; background: ${stockColor}15; color: ${stockColor}; border: 1px solid ${stockColor}40; margin-top: 6px;`;
+            
+            let imageUrl = '/static/images/menu_items/default.jpg';
+            if (item.image_url) {
+              const url = String(item.image_url).trim();
+              imageUrl = url.startsWith('/') ? url : `/${url}`;
+            }
+            
+            return `
+              <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: ${isAvailable ? '#fff' : '#f5f5f5'}; display: flex; gap: 16px;">
+                <div style="width: 140px; height: 140px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #f0f0f0;">
+                  <img src="${imageUrl}" alt="${escapeHtml(item.name)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/images/menu_items/default.jpg';">
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                  <div>
+                    <strong style="font-size: 1.1rem;">${escapeHtml(item.name || 'N/A')}</strong>
+                    <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">₱${Number(item.price).toFixed(2)}</div>
+                    <div style="${stockBadgeStyle}">${stockStatus}</div>
+                  </div>
+                  <div style="margin-top: auto;">
+                    <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+                      <label for="stock_${item.id}" class="sr-only">Stock quantity</label>
+                      <input type="number" id="stock_${item.id}" value="${quantity}" min="0" 
+                             style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: center; font-size: 0.9rem;"
+                             onkeypress="if(event.key==='Enter') updateStockQuantity(${item.id})">
+                      <button class="btn small" onclick="updateStockQuantity(${item.id})">Update Stock</button>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <button class="btn small ${isAvailable ? 'ghost' : ''}" onclick="toggleMenuItemAvailability(${item.id}, ${!isAvailable})" style="flex: 1; min-width: 120px;">
+                        ${isAvailable ? 'Mark Sold Out' : 'Mark Available'}
+                      </button>
+                        <button class="btn delete small" onclick="deleteMenuItem(${item.id})">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+          
+          return `
+            <div class="card" style="margin-bottom: 24px;">
+              <h3 style="margin: 0 0 16px 0;">${categoryName}</h3>
+              ${itemsHtml}
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[MENU] Request timeout - this may happen on slow connections or cold starts');
+          const menuArea = document.getElementById('adminMenuList');
+          // Only show timeout message if content hasn't been loaded yet
+          if (menuArea && (!menuArea.innerHTML || menuArea.innerHTML.includes('Loading') || menuArea.innerHTML.includes('timeout'))) {
+            menuArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminMenuList()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && (error.message.includes('502') || error.message.includes('unavailable'))) {
+          console.error('[MENU] Server error (502):', error);
+          const menuArea = document.getElementById('adminMenuList');
+          if (menuArea) {
+            menuArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
+                <button onclick="renderAdminMenuList()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        console.error('Error loading menu:', error);
+        const menuArea = document.getElementById('adminMenuList');
+        if (menuArea) {
+          menuArea.innerHTML = '<p class="muted">Failed to load menu items</p>';
+        }
+      } finally {
+        isRenderingMenu = false;
+        menuController = null;
+      }
+    }
+
+    async function addMenuItem() {
+      const name = document.getElementById('newItemName')?.value?.trim();
+      const price = parseFloat(document.getElementById('newItemPrice')?.value);
+      const category = document.getElementById('newItemCategory')?.value || 'foods';
+      const quantity = parseInt(document.getElementById('newItemQuantity')?.value || '0') || 0;
+
+      if (!name || !price || price <= 0) {
+        return alert('Please enter a valid name and price.');
+      }
+
+        try {
+          const itemData = { name, price, category, is_available: true, quantity };
+          
+          // If a file is selected, upload it now (one-step add flow)
+          const fileInput = document.getElementById('newItemImage');
+          const hasSelectedFile = fileInput && fileInput.files && fileInput.files.length > 0;
+          if (hasSelectedFile && !window.currentUploadedImageUrl) {
+            const uploadedUrl = await uploadMenuImageFile(fileInput.files[0]);
+            if (uploadedUrl) {
+              window.currentUploadedImageUrl = uploadedUrl;
+            }
+          }
+          
+          // Include image URL if one was uploaded
+          if (window.currentUploadedImageUrl) {
+            itemData.image_url = window.currentUploadedImageUrl;
+          }
+        
+        const response = await fetch('/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemData)
+        });
+
+        // Read response
+        let responseData = null;
+        try {
+          const responseText = await response.text();
+          if (responseText) {
+            responseData = JSON.parse(responseText);
+          }
+        } catch(parseError) {
+          console.log('Response parse note:', parseError);
+        }
+
+        if (response.ok) {
+          alert('✅ Menu item added successfully!');
+          document.getElementById('newItemName').value = '';
+          document.getElementById('newItemPrice').value = '';
+          document.getElementById('newItemQuantity').value = '0';
+          if (document.getElementById('newItemImage')) document.getElementById('newItemImage').value = '';
+          if (document.getElementById('imageUploadStatus')) document.getElementById('imageUploadStatus').innerHTML = '';
+          window.currentUploadedImageUrl = null; // Clear uploaded image
+          await renderAdminMenuList();
+        } else {
+          // Try to get error message
+          let errorMessage = `Server returned ${response.status}: ${response.statusText}`;
+          if (responseData) {
+            if (responseData.detail) {
+              errorMessage = responseData.detail;
+            } else if (responseData.message) {
+              errorMessage = responseData.message;
+            } else if (typeof responseData === 'string') {
+              errorMessage = responseData;
+            }
+          }
+          console.error('Add menu item error:', {
+            status: response.status,
+            statusText: response.statusText,
+            responseData: responseData,
+            fullResponse: response
+          });
+          
+          // Show detailed error
+          let userMessage = `❌ Failed to add menu item:\n\n${errorMessage}`;
+          if (responseData && responseData.detail) {
+            userMessage += `\n\nDetails: ${responseData.detail}`;
+          }
+          userMessage += `\n\nPlease check:\n- Name and price are filled\n- Price is a valid number\n- Check Render logs for database errors`;
+          alert(userMessage);
+        }
+      } catch(error) {
+        console.error('Error adding menu item:', error);
+        alert(`Failed to add menu item: ${error.message || 'Please check your connection and try again.'}`);
+      }
+    }
+
+    // Global variable to store uploaded image URL
+    window.currentUploadedImageUrl = null;
+    
+      async function uploadItemImage() {
+        const fileInput = document.getElementById('newItemImage');
+        const statusDiv = document.getElementById('imageUploadStatus');
+        
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+          statusDiv.innerHTML = '<div style="color: #e74c3c; font-weight: 600;">❌ Please select an image file first.</div>';
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        try {
+          statusDiv.innerHTML = '<div style="color: #2196F3; font-weight: 600;">⏳ Uploading image...</div>';
+          const imageUrl = await uploadMenuImageFile(file);
+          if (!imageUrl) {
+            throw new Error('No image URL returned from server');
+          }
+          window.currentUploadedImageUrl = imageUrl;
+          // Show image preview immediately
+          const previewHtml = `
+            <div style="display: flex; align-items: center; gap: 15px; padding: 12px; background: #e8f5e9; border: 1px solid #4caf50; border-radius: 8px;">
+              <img src="/${imageUrl}" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px;">
+              <div>
+                <div style="color: #2e7d32; font-weight: 600;">✅ Image uploaded!</div>
+                <div style="color: #555; font-size: 0.9rem; margin-top: 4px;">Ready to add item with this image. It will appear immediately after you click "Add Item".</div>
+              </div>
+            </div>
+          `;
+          statusDiv.innerHTML = previewHtml;
+          fileInput.value = ''; // Clear file input
+        } catch(error) {
+          console.error('Image upload error:', error);
+          statusDiv.innerHTML = `<div style="color: #e74c3c; font-weight: 600;">❌ Upload failed: ${error.message}</div>`;
+        }
+      }
+
+      async function uploadMenuImageFile(file) {
+        // Validate file type
+        if (!file || !file.type || !file.type.startsWith('image/')) {
+          throw new Error('Please select a valid image file (JPG or PNG).');
+        }
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024;
+        if (file.size > maxSize) {
+          throw new Error('Image file is too large (max 5MB).');
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch('/upload-menu-image', {
+          method: 'POST',
+          body: formData
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({detail: 'Unknown error'}));
+          throw new Error(errorData.detail || `Upload failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        return result.image_url || null;
+      }
+
+    async function editMenuItem(id, currentName, currentPrice, currentCategory, currentQuantity, currentImageUrl) {
+        const safeName = typeof escapeHtml === 'function' ? escapeHtml(currentName || '') : (currentName || '');
+        const safeImageUrl = typeof escapeHtml === 'function' ? escapeHtml(currentImageUrl || '') : (currentImageUrl || '');
+        const safeCategory = typeof escapeHtml === 'function' ? escapeHtml(currentCategory || '') : (currentCategory || '');
+        // Create a modal for editing
+      const editModal = document.createElement('div');
+      editModal.id = `editModal_${id}`;
+      editModal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); display: flex; align-items: center;
+        justify-content: center; z-index: 5000;
+      `;
+      
+      editModal.innerHTML = `
+        <div style="background: white; border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+          <h2 style="margin: 0 0 25px 0; color: #333;">✏️ Edit Menu Item</h2>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Item Name</label>
+            <input type="text" id="editName_${id}" value="${safeName}" placeholder="e.g., Chicken Adobo" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Price (₱)</label>
+            <input type="number" id="editPrice_${id}" value="${currentPrice}" min="0" step="0.01" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Category</label>
+            <select id="editCategory_${id}" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                <option value="budget" ${currentCategory === 'budget' || currentCategory === 'Budget Meals' ? 'selected' : ''}>Budget Meals</option>
+                <option value="foods" ${currentCategory === 'foods' || currentCategory === 'Foods' ? 'selected' : ''}>Foods</option>
+                <option value="drinks" ${currentCategory === 'drinks' || currentCategory === 'Drinks' ? 'selected' : ''}>Drinks</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">Stock Quantity</label>
+            <input type="number" id="editQuantity_${id}" value="${currentQuantity || 0}" min="0" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+          </div>
+          
+          <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">📸 Image (Optional)</label>
+            <input type="file" id="editImage_${id}" accept="image/jpeg,image/png" style="width: 100%; padding: 10px; border: 2px dashed #8B4513; border-radius: 8px; background: #fff8f1; margin-bottom: 12px; box-sizing: border-box;">
+            <div id="editImagePreview_${id}" style="display: none; margin-bottom: 12px; text-align: center;">
+              <img id="editImagePreviewImg_${id}" src="" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #8B4513;">
+            </div>
+            <div style="text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 12px;">— OR —</div>
+            <input type="text" id="editImageUrl_${id}" value="${safeImageUrl}" placeholder="e.g., static/images/menu_items/pizza.jpg" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+            <p style="font-size: 0.8rem; color: #999; margin: 8px 0 0 0;">Upload a new image or enter URL directly</p>
+          </div>
+
+          <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 12px 0; color: #333; font-size: 0.95rem;">📋 Summary of Changes</h3>
+            <div style="font-size: 0.9rem; color: #555;">
+                <div style="margin-bottom: 8px;"><strong>Name:</strong> <span id="summary_name_${id}">${safeName}</span></div>
+              <div style="margin-bottom: 8px;"><strong>Price:</strong> ₱<span id="summary_price_${id}">${currentPrice}</span></div>
+                <div style="margin-bottom: 8px;"><strong>Category:</strong> <span id="summary_cat_${id}">${safeCategory}</span></div>
+              <div><strong>Stock:</strong> <span id="summary_qty_${id}">${currentQuantity || 0}</span></div>
+            </div>
+          </div>
+          
+          <div style="display: flex; gap: 12px;">
+            <button onclick="saveEditMenuItem(${id})" style="flex: 1; padding: 12px; background: #8B4513; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem;">💾 Save Changes</button>
+            <button onclick="document.getElementById('editModal_${id}').remove()" style="flex: 1; padding: 12px; background: #ddd; color: #333; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem;">✕ Cancel</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(editModal);
+      
+      // Update summary in real-time as user types
+      const updateSummary = () => {
+        const name = document.getElementById(`editName_${id}`)?.value?.trim() || currentName;
+        const price = document.getElementById(`editPrice_${id}`)?.value || currentPrice;
+        const category = document.getElementById(`editCategory_${id}`)?.value || currentCategory;
+        const quantity = document.getElementById(`editQuantity_${id}`)?.value || currentQuantity || 0;
+        
+        document.getElementById(`summary_name_${id}`).textContent = name;
+        document.getElementById(`summary_price_${id}`).textContent = price;
+        document.getElementById(`summary_cat_${id}`).textContent = category;
+        document.getElementById(`summary_qty_${id}`).textContent = quantity;
+      };
+      
+      document.getElementById(`editName_${id}`)?.addEventListener('input', updateSummary);
+      document.getElementById(`editPrice_${id}`)?.addEventListener('input', updateSummary);
+      document.getElementById(`editCategory_${id}`)?.addEventListener('change', updateSummary);
+      document.getElementById(`editQuantity_${id}`)?.addEventListener('input', updateSummary);
+      
+      // Handle image file preview
+      const imageFileInput = document.getElementById(`editImage_${id}`);
+      if (imageFileInput) {
+        imageFileInput.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          const previewDiv = document.getElementById(`editImagePreview_${id}`);
+          const previewImg = document.getElementById(`editImagePreviewImg_${id}`);
+          
+          if (file) {
+            // Show preview immediately with local file reader
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              previewImg.src = event.target.result;
+              previewDiv.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            
+            // Auto-upload the image automatically
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              console.log('Auto-uploading file:', file.name);
+              
+              const uploadResp = await fetch('/upload-menu-image', {
+                method: 'POST',
+                body: formData
+              });
+              
+              console.log('Auto-upload response status:', uploadResp.status);
+              
+              if (uploadResp.ok) {
+                const uploadResult = await uploadResp.json();
+                console.log('Auto-upload successful, image_url:', uploadResult.image_url);
+                // Auto-populate the image URL field with uploaded path
+                document.getElementById(`editImageUrl_${id}`).value = uploadResult.image_url;
+                // Add visual confirmation
+                setTimeout(() => {
+                  const urlField = document.getElementById(`editImageUrl_${id}`);
+                  if (urlField) {
+                    urlField.style.borderColor = '#4caf50';
+                    urlField.style.backgroundColor = '#e8f5e9';
+                  }
+                }, 100);
+              } else {
+                console.error('Auto-upload failed with status:', uploadResp.status);
+                const urlField = document.getElementById(`editImageUrl_${id}`);
+                if (urlField) {
+                  urlField.style.borderColor = '#f44336';
+                }
+              }
+            } catch(error) {
+              console.error('Auto-upload error:', error);
+              const urlField = document.getElementById(`editImageUrl_${id}`);
+              if (urlField) {
+                urlField.style.borderColor = '#f44336';
+              }
+            }
+          } else {
+            previewDiv.style.display = 'none';
+          }
+        });
+      }
+      
+      // Close modal when clicking outside
+      editModal.addEventListener('click', (e) => {
+        if (e.target === editModal) editModal.remove();
+      });
+    }
+
+    async function saveEditMenuItem(id) {
+      const name = document.getElementById(`editName_${id}`)?.value?.trim();
+      const price = parseFloat(document.getElementById(`editPrice_${id}`)?.value);
+      const category = document.getElementById(`editCategory_${id}`)?.value;
+      const quantity = parseInt(document.getElementById(`editQuantity_${id}`)?.value || 0);
+      let imageUrl = document.getElementById(`editImageUrl_${id}`)?.value?.trim();
+      const imageFile = document.getElementById(`editImage_${id}`)?.files?.[0];
+
+      if (!name || !price || price <= 0) {
+        return alert('Invalid name or price.');
+      }
+
+      try {
+        // If user selected a new image file but it wasn't auto-uploaded yet, upload it now
+        if (imageFile && !imageUrl) {
+          console.log('Uploading image file:', imageFile.name);
+          const formData = new FormData();
+          formData.append('file', imageFile);
+          const uploadResp = await fetch('/upload-menu-image', {
+            method: 'POST',
+            body: formData
+          });
+          console.log('Upload response status:', uploadResp.status);
+          
+          if (uploadResp.ok) {
+            const uploadResult = await uploadResp.json();
+            console.log('Upload result:', uploadResult);
+            imageUrl = uploadResult.image_url;
+          } else {
+            const errorText = await uploadResp.text();
+            console.error('Upload error response:', errorText);
+            throw new Error(`Upload failed with status ${uploadResp.status}`);
+          }
+        }
+
+        console.log('Saving menu item ID', id, 'with data:', { name, price, category, quantity, imageUrl });
+        const updateData = { name, price, category, quantity };
+        if (imageUrl) {
+          updateData.image_url = imageUrl;
+          console.log('Including image_url in update:', imageUrl);
+        }
+
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData)
+        });
+
+        console.log('PUT response status:', response.status);
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Update successful, result:', result);
+          alert('✅ Menu item updated successfully!');
+          document.getElementById(`editModal_${id}`)?.remove();
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Update failed:', errorData);
+          alert(`Failed to update item: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating menu item:', error);
+        alert(`Failed to update item: ${error.message}`);
+      }
+    }
+
+    async function toggleMenuItemAvailability(id, newAvailability) {
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_available: newAvailability })
+        });
+
+        if (response.ok) {
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update availability: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating availability:', error);
+        alert('Failed to update availability. Please try again.');
+      }
+    }
+
+    async function updateStockQuantity(id) {
+      const input = document.getElementById(`stock_${id}`);
+      if (!input) return;
+      
+      const rawValue = String(input.value || '').trim();
+      if (rawValue === '') {
+        return alert('Please enter a stock quantity.');
+      }
+      const newQuantity = parseInt(rawValue, 10);
+      if (Number.isNaN(newQuantity)) {
+        return alert('Stock quantity must be a valid number.');
+      }
+      if (newQuantity < 0) {
+        return alert('Stock quantity cannot be negative.');
+      }
+
+      try {
+        input.disabled = true;
+        const updateBtn = input.parentElement?.querySelector('button');
+        const originalText = updateBtn ? updateBtn.textContent : null;
+        if (updateBtn) updateBtn.textContent = 'Updating...';
+
+        const response = await fetch(`/menu/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            quantity: newQuantity,
+            is_available: newQuantity > 0
+          })
+        });
+
+        if (response.ok) {
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to update stock: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error updating stock:', error);
+        alert('Failed to update stock. Please try again.');
+      } finally {
+        input.disabled = false;
+        const updateBtn = input.parentElement?.querySelector('button');
+        if (updateBtn && updateBtn.textContent === 'Updating...') {
+          updateBtn.textContent = 'Update Stock';
+        }
+      }
+    }
+
+    async function deleteMenuItem(id) {
+      if (!confirm(`Delete menu item "${id}"?`)) return;
+      
+      try {
+        const response = await fetch(`/menu/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          alert('✅ Menu item deleted successfully!');
+          await renderAdminMenuList();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to delete item: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error('Error deleting menu item:', error);
+        alert('Failed to delete menu item. Please try again.');
+      }
+    }
+
+    /* -------- User Management Functions -------- */
+    async function renderAdminUsers() {
+      const startTime = performance.now();
+      try {
+        // Use AbortController for timeout (increased to 20 seconds for Render cold starts)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+        
+        const response = await fetch(`/users?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        const users = await response.json();
+        
+        const usersArea = document.getElementById('usersList');
+        if (!usersArea) return;
+
+        // Separate users by approval status
+        const pendingUsers = users.filter(u => (u.is_approved === false || u.is_approved === 0) && u.role !== 'admin');
+        const approvedUsers = users.filter(u => (u.is_approved === true || u.is_approved === 1) && u.role !== 'admin');
+        const adminUsers = users.filter(u => u.role === 'admin');
+
+        // Update badge
+        const badge = document.getElementById('usersBadge');
+        if (badge) badge.textContent = pendingUsers.length;
+
+        const loadTime = performance.now() - startTime;
+        console.log(`[USERS] Loaded in ${loadTime.toFixed(2)}ms`);
+
+        let html = '';
+
+        // Pending Users Section
+        if (pendingUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #ff9800;">
+              <h3 style="margin: 0 0 16px 0; color: #ff9800;">⏳ Pending Approval (${pendingUsers.length})</h3>
+              ${pendingUsers.map(user => {
+                const isApproved = user.is_approved === true || user.is_approved === 1;
+                return `
+                  <div class="item-row" style="border: 1px solid #eee; padding: 16px; margin-bottom: 12px; border-radius: 8px; background: #fff8f1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                      <div style="flex: 1;">
+                        <strong style="font-size: 1.1rem;">${user.name || 'N/A'}</strong>
+                        <div style="color: var(--muted); font-size: 0.95rem; margin: 4px 0;">${user.email || 'N/A'}</div>
+                        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" class="proof-comparison-grid">
+                          ${user.id_proof ? `
+                          <div>
+                            <strong>📷 ID Proof:</strong>
+                            <div style="margin-top: 8px;">
+                              <img src="${user.id_proof}" alt="ID Proof" 
+                                   class="user-id-proof-thumbnail"
+                                   style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #8b4513; cursor: pointer;"
+                                   data-user-id="${user.id}"
+                                   data-proof-type="id">
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                              Click to view full size
+                            </p>
+                          </div>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No ID Proof</div></div>'}
+                          ${user.selfie_proof ? `
+                          <div>
+                            <strong>🤳 Selfie Proof:</strong>
+                            <div style="margin-top: 8px;">
+                              <img src="${user.selfie_proof}" alt="Selfie Proof" 
+                                   class="user-selfie-proof-thumbnail"
+                                   style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #2196F3; cursor: pointer;"
+                                   data-user-id="${user.id}"
+                                   data-proof-type="selfie"
+                                   loading="lazy">
+                            </div>
+                            <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                              Click to view full size
+                            </p>
+                          </div>
+                          ` : '<div><div style="color: #f44336; font-size: 0.9rem;">⚠️ No Selfie Proof</div></div>'}
+                        </div>
+                        <div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 6px; font-size: 0.85rem; color: #1976d2;">
+                          💡 <strong>Compare:</strong> Verify that the ID and selfie belong to the same person
+                        </div>
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end; min-width: 200px;">
+                        <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
+                          <option value="user">👤 User</option>
+                          <option value="admin">👑 Admin</option>
+                          <option value="delivery">🚚 Delivery</option>
+                        </select>
+                        <div style="display: flex; gap: 8px; width: 100%;">
+                          <button class="btn small" onclick="approveUserWithRole(${user.id}, true)" style="background: #4caf50; color: white; flex: 1;">✅ Approve</button>
+                          <button class="btn delete small" onclick="approveUser(${user.id}, false)" style="flex: 1;">❌ Reject</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="card" style="margin-bottom: 20px; text-align: center; padding: 40px; color: var(--muted);">
+              ✅ No pending user approvals
+            </div>
+          `;
+        }
+
+        // Approved Users Section
+        if (approvedUsers.length > 0) {
+          html += `
+            <div class="card" style="margin-bottom: 20px;">
+              <h3 style="margin: 0 0 16px 0;">✅ Approved Users (${approvedUsers.length})</h3>
+              ${approvedUsers.map(user => `
+                <div class="item-row" style="border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 8px; background: #f5f5f5;">
+                  <div style="flex: 1;">
+                    <strong>${user.name || 'N/A'}</strong>
+                    <div style="color: var(--muted); font-size: 0.9rem;">${user.email || 'N/A'}</div>
+                  </div>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">✅ Approved</span>
+                    <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : '#666'}; color: white; border-radius: 12px; font-size: 0.85rem;">
+                      ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                    </span>
+                    <button class="btn delete small" onclick="approveUser(${user.id}, false)">Revoke</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        usersArea.innerHTML = html;
+
+        // Set up ID proof and selfie proof image click handlers
+        document.querySelectorAll('.user-id-proof-thumbnail, .user-selfie-proof-thumbnail').forEach(img => {
+          img.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const proofType = this.dataset.proofType;
+            const user = users.find(u => u.id == userId);
+            if (user) {
+              if (proofType === 'id' && user.id_proof) {
+                showUserProofModal(user.id_proof, user.name, 'ID Proof');
+              } else if (proofType === 'selfie' && user.selfie_proof) {
+                showUserProofModal(user.selfie_proof, user.name, 'Selfie Proof');
+              }
+            }
+          });
+        });
+      } catch(error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[USERS] Request timeout - this may happen on slow connections or cold starts');
+          const usersArea = document.getElementById('usersList');
+          // Only show timeout message if content hasn't been loaded yet
+          if (usersArea && (!usersArea.innerHTML || usersArea.innerHTML.includes('Loading') || usersArea.innerHTML.includes('timeout'))) {
+            usersArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && (error.message.includes('502') || error.message.includes('unavailable'))) {
+          console.error('[USERS] Server error (502):', error);
+          const usersArea = document.getElementById('usersList');
+          if (usersArea) {
+            usersArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
+                <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle other errors
+        console.error('Error loading users:', error);
+        const usersArea = document.getElementById('usersList');
+        if (usersArea) {
+          usersArea.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load users</div>
+              <button onclick="renderAdminUsers()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+      } finally {
+        isRenderingUsers = false;
+        usersController = null;
+      }
+    }
+
+    /* -------- Render Service Ratings (Admin) -------- */
+    let isRenderingRatings = false;
+    let ratingsController = null;
+    async function renderAdminRatings() {
+      // Prevent multiple simultaneous requests
+      if (isRenderingRatings) {
+        console.log('[RATINGS] Already rendering, skipping duplicate call');
+        return;
+      }
+      
+      // Abort any previous request
+      if (ratingsController) {
+        ratingsController.abort();
+      }
+      
+      isRenderingRatings = true;
+      const startTime = performance.now();
+      try {
+        // Use AbortController for timeout and parallel fetching (increased to 20 seconds for Render cold starts)
+        ratingsController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          if (ratingsController) {
+            ratingsController.abort();
+          }
+        }, 20000); // 20 second timeout
+        
+        // Load statistics and ratings in parallel for faster loading
+        const [statsResponse, ratingsResponse] = await Promise.all([
+          fetch(`/ratings/stats?t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: ratingsController.signal
+          }),
+          fetch(`/ratings?t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: ratingsController.signal
+          })
+        ]);
+        
+        clearTimeout(timeoutId);
+        
+        let stats = null;
+        if (statsResponse.ok) {
+          try {
+            stats = await statsResponse.json();
+          } catch (e) {
+            console.error('Failed to parse stats response:', e);
+          }
+        } else {
+          const errorText = await statsResponse.text();
+          console.error('Failed to fetch stats:', statsResponse.status, errorText);
+        }
+        
+        let ratings = [];
+        if (ratingsResponse.ok) {
+          try {
+            ratings = await ratingsResponse.json();
+            if (!Array.isArray(ratings)) {
+              console.error('Invalid ratings response format:', ratings);
+              ratings = [];
+            }
+          } catch (e) {
+            console.error('Failed to parse ratings response:', e);
+            ratings = [];
+          }
+        } else {
+          // Handle 502 Bad Gateway errors gracefully
+          if (ratingsResponse.status === 502) {
+            console.warn('[RATINGS] Ratings endpoint returned 502 - server may be restarting');
+            ratings = []; // Use empty array, will show "No ratings yet" message
+          } else {
+            const errorText = await ratingsResponse.text();
+            console.error('Failed to fetch ratings:', ratingsResponse.status, errorText);
+          }
+        }
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`[RATINGS] Loaded in ${loadTime.toFixed(2)}ms`);
+
+        // Display statistics
+        const statsArea = document.getElementById('ratingsStats');
+        if (statsArea && stats) {
+          const avgRating = parseFloat(stats.average_rating || 0).toFixed(1);
+          const totalRatings = stats.total_ratings || 0;
+          
+          statsArea.innerHTML = `
+            <div class="card" style="background: linear-gradient(135deg, #8B4513 0%, #a0522d 100%); color: white; padding: 24px; border-radius: 12px; margin-bottom: 20px;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; text-align: center;">
+                <div>
+                  <div style="font-size: 2.5rem; font-weight: bold; margin-bottom: 8px;">${avgRating}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">Average Rating</div>
+                  <div style="margin-top: 8px; font-size: 1.2rem;">${getStarDisplay(Math.round(avgRating))}</div>
+                </div>
+                <div>
+                  <div style="font-size: 2.5rem; font-weight: bold; margin-bottom: 8px;">${totalRatings}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">Total Ratings</div>
+                </div>
+                <div>
+                  <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">${stats.rating_5 || 0}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">5 Stars</div>
+                </div>
+                <div>
+                  <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">${stats.rating_4 || 0}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">4 Stars</div>
+                </div>
+                <div>
+                  <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">${stats.rating_3 || 0}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">3 Stars</div>
+                </div>
+                <div>
+                  <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">${stats.rating_2 || 0}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">2 Stars</div>
+                </div>
+                <div>
+                  <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">${stats.rating_1 || 0}</div>
+                  <div style="font-size: 0.9rem; opacity: 0.9;">1 Star</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        // Display ratings list
+        const ratingsArea = document.getElementById('ratingsList');
+        if (ratingsArea) {
+          if (ratings.length === 0) {
+            ratingsArea.innerHTML = `
+              <div class="card" style="text-align: center; padding: 40px; color: var(--muted);">
+                <p style="font-size: 1.2rem; margin-bottom: 8px;">⭐</p>
+                <p>No ratings yet. Encourage customers to rate your service!</p>
+              </div>
+            `;
+          } else {
+            ratingsArea.innerHTML = ratings.map(rating => {
+              const userName = rating.user_name || 'Unknown User';
+              const userEmail = rating.user_email || 'N/A';
+              const ratingValue = rating.rating || 0;
+              const comment = rating.comment || '';
+              const date = rating.created_at ? new Date(rating.created_at).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }) : 'N/A';
+
+              return `
+                <div class="card" style="margin-bottom: 16px; padding: 20px;">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                    <div style="flex: 1;">
+                      <strong style="font-size: 1.1rem;">${escapeHtmlRating(userName)}</strong>
+                      <div style="color: var(--muted); font-size: 0.9rem; margin-top: 4px;">${escapeHtmlRating(userEmail)}</div>
+                    </div>
+                    <div style="text-align: right;">
+                      <div style="font-size: 1.5rem; margin-bottom: 4px;">${getStarDisplay(ratingValue)}</div>
+                      <div style="color: var(--muted); font-size: 0.85rem;">${date}</div>
+                    </div>
+                  </div>
+                  ${comment ? `
+                    <div style="padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513; margin-top: 12px;">
+                      <p style="margin: 0; color: var(--text); font-style: italic;">"${escapeHtmlRating(comment)}"</p>
+                    </div>
+                  ` : '<p style="color: var(--muted); font-style: italic; margin-top: 12px;">No comment provided.</p>'}
+                </div>
+              `;
+            }).join('');
+          }
+        }
+      } catch (error) {
+        // Handle AbortError gracefully
+        if (error.name === 'AbortError') {
+          console.warn('[RATINGS] Request timeout - this may happen on slow connections or cold starts');
+          const ratingsArea = document.getElementById('ratingsList');
+          // Only show timeout message if content hasn't been loaded yet
+          if (ratingsArea && (!ratingsArea.innerHTML || ratingsArea.innerHTML.includes('Loading') || ratingsArea.innerHTML.includes('timeout'))) {
+            ratingsArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #666;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Request took longer than expected</div>
+                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        // Handle 502 Bad Gateway errors
+        if (error.message && (error.message.includes('502') || error.message.includes('unavailable'))) {
+          console.error('[RATINGS] Server error (502):', error);
+          const ratingsArea = document.getElementById('ratingsList');
+          if (ratingsArea) {
+            ratingsArea.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+                <div>Server temporarily unavailable</div>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">The server may be restarting. Please try again in a moment.</div>
+                <button onclick="renderAdminRatings()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+              </div>
+            `;
+          }
+          return;
+        }
+        console.error('Error loading ratings:', error);
+        const ratingsArea = document.getElementById('ratingsList');
+        if (ratingsArea) {
+          ratingsArea.innerHTML = '<p class="muted">Failed to load ratings</p>';
+        }
+      } finally {
+        isRenderingRatings = false;
+        ratingsController = null;
+      }
+    }
+
+    function getStarDisplay(rating) {
+      let html = '';
+      for (let i = 1; i <= 5; i++) {
+        if (i <= rating) {
+          html += '<span style="color: #ffc107;">★</span>';
+        } else {
+          html += '<span style="color: #ddd;">☆</span>';
+        }
+      }
+      return html;
+    }
+
+    function escapeHtmlRating(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function approveUserWithRole(userId, isApproved) {
+      const roleSelect = document.getElementById(`roleSelect_${userId}`);
+      const selectedRole = roleSelect ? roleSelect.value : 'user';
+      
+      const action = isApproved ? 'approve' : 'reject';
+      const roleText = selectedRole === 'admin' ? ' as Admin' : ' as User';
+      if (!confirm(`Are you sure you want to ${action} this user${roleText}?`)) return;
+
+      try {
+        const response = await fetch(`/users/${userId}/approve`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            is_approved: isApproved,
+            role: selectedRole
+          })
+        });
+
+        if (response.ok) {
+          const roleMsg = selectedRole === 'admin' ? ' as Admin' : ' as User';
+          alert(`✅ User ${isApproved ? 'approved' : 'rejected'}${roleMsg} successfully!`);
+          await renderAdminUsers();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to ${action} user: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error(`Error ${action}ing user:`, error);
+        alert(`Failed to ${action} user. Please try again.`);
+      }
+    }
+
+    async function approveUser(userId, isApproved) {
+      const action = isApproved ? 'approve' : 'reject';
+      if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+
+      try {
+        const response = await fetch(`/users/${userId}/approve`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_approved: isApproved })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.deleted) {
+            alert(`✅ User rejected and completely removed from database!`);
+          } else {
+            alert(`✅ User ${isApproved ? 'approved' : 'rejected'} successfully!`);
+          }
+          await renderAdminUsers();
+        } else {
+          const errorData = await response.json();
+          alert(`Failed to ${action} user: ${errorData.detail || 'Unknown error'}`);
+        }
+      } catch(error) {
+        console.error(`Error ${action}ing user:`, error);
+        alert(`Failed to ${action} user. Please try again.`);
+      }
+    }
+
+    function showUserProofModal(imageSrc, userName, proofType) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      `;
+      
+      const borderColor = proofType === 'ID Proof' ? '#8b4513' : '#2196F3';
+      const icon = proofType === 'ID Proof' ? '📷' : '🤳';
+      
+      modal.innerHTML = `
+        <div style="position: relative; max-width: 90%; max-height: 90%; background: white; border-radius: 12px; padding: 20px;">
+          <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" 
+                  style="position: absolute; top: 10px; right: 10px; background: ${borderColor}; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
+          <h3 style="margin: 0 0 16px 0; color: ${borderColor};">${icon} ${proofType} - ${userName}</h3>
+          <img src="${imageSrc}" alt="${proofType}" style="max-width: 100%; max-height: 70vh; border-radius: 8px; border: 2px solid ${borderColor};">
+          <p style="margin-top: 12px; font-size: 0.9rem; color: #666; text-align: center;">Click outside or press × to close</p>
+        </div>
+      `;
+      
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+      
+      document.body.appendChild(modal);
+    }
+
+    /* -------- Real-time Order Notifications -------- */
+    let lastOrderId = 0;
+    let orderPollInterval = null;
+    let notificationSound = null;
+
+    // Create notification sound (optional)
+    function createNotificationSound() {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } catch(e) {
+        console.log('Could not play notification sound:', e);
+      }
+    }
+
+    // Show general notification
+    function showNotification(message, type = 'info') {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        background: ${type === 'success' ? 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)' : type === 'error' ? 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)' : 'linear-gradient(135deg, #8B4513 0%, #A0522D 100%)'};
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid ${type === 'success' ? '#FFD700' : type === 'error' ? '#fff' : '#FFD700'};
+      `;
+
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="flex: 1; font-weight: 500;">${message}</div>
+          <button onclick="this.parentElement.parentElement.remove()" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      container.appendChild(notification);
+
+      // Auto-remove after 5 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 5000);
+    }
+
+    // Show message notification
+    function showMessageNotification(message, order) {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.className = 'message-notification';
+      notification.style.cssText = `
+        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid #FFD700;
+      `;
+
+      const buyerName = order.fullname || order.name || 'Customer';
+      const messageText = (message.message || '').substring(0, 100);
+      const orderNumber = order.id;
+      
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              💬 New Message
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
+              <strong>${buyerName}</strong> (Order #${orderNumber})
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.85; margin-top: 4px;">
+              ${messageText}${messageText.length >= 100 ? '...' : ''}
+            </div>
+          </div>
+          <button onclick="this.parentElement.parentElement.remove(); switchTab('chats');" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      // Click to view chat
+      notification.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          switchTab('chats');
+          notification.remove();
+        }
+      });
+
+      container.appendChild(notification);
+
+      // Play sound
+      if (typeof createNotificationSound === 'function') {
+        createNotificationSound();
+      }
+
+      // Auto-remove after 8 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 8000);
+    }
+
+    // Show notification
+    function showOrderNotification(order) {
+      const container = document.getElementById('notificationContainer');
+      if (!container) return;
+
+      const notification = document.createElement('div');
+      notification.className = 'order-notification';
+      notification.style.cssText = `
+        background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: slideInRight 0.3s ease-out;
+        cursor: pointer;
+        border-left: 4px solid #FFD700;
+      `;
+
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      const itemCount = items.reduce((sum, item) => sum + (item.qty || 1), 0);
+      const total = parseFloat(order.total || 0).toFixed(2);
+
+      // Get sequential order number for notification
+      const orderNumberMap = getOrderNumberMap();
+      const sequentialNumber = orderNumberMap[order.id] || order.id;
+      
+      notification.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              🔔 New Order #${sequentialNumber}
+            </div>
+            <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
+              <strong>${order.fullname || order.name || 'Customer'}</strong>
+            </div>
+            <div style="font-size: 0.85rem; opacity: 0.85;">
+              ${itemCount} item${itemCount !== 1 ? 's' : ''} • ₱${total}
+            </div>
+            <div style="font-size: 0.8rem; opacity: 0.75; margin-top: 4px;">
+              ${order.location || order.address || 'No address'}
+            </div>
+          </div>
+          <button onclick="this.parentElement.parentElement.remove(); switchTab('orders');" 
+                  style="background: rgba(255,255,255,0.2); border: none; color: white; 
+                         width: 28px; height: 28px; border-radius: 50%; cursor: pointer; 
+                         font-size: 18px; line-height: 1; padding: 0;">×</button>
+        </div>
+      `;
+
+      // Click to view order
+      notification.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          switchTab('orders');
+          // Scroll to the order
+          setTimeout(() => {
+            const orderCard = document.querySelector(`[data-order-id="${order.id}"]`);
+            if (orderCard) {
+              orderCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              orderCard.style.animation = 'pulse 1s ease-in-out';
+              setTimeout(() => {
+                orderCard.style.animation = '';
+              }, 1000);
+            }
+          }, 100);
+          notification.remove();
+        }
+      });
+
+      container.appendChild(notification);
+
+      // Play sound
+      createNotificationSound();
+
+      // Auto-remove after 10 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.style.animation = 'slideOutRight 0.3s ease-in';
+          setTimeout(() => notification.remove(), 300);
+        }
+      }, 10000);
+    }
+
+    // Check for new orders
+    async function checkForNewOrders() {
+      try {
+        // Use AbortController for timeout (20 seconds for Render cold starts)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        
+        const response = await fetch(`/orders?t=${Date.now()}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) return;
+        
+        const orders = await response.json();
+        if (!Array.isArray(orders) || orders.length === 0) {
+          // Reset if no orders
+          allOrders = [];
+          filteredOrders = [];
+          displayOrders();
+          return;
+        }
+
+        // Reverse to get newest first, then update allOrders immediately
+        const currentOrders = orders.reverse();
+        
+        // Update global orders cache for sequential numbering (if function exists)
+        if (typeof updateGlobalOrdersCache === 'function') {
+          updateGlobalOrdersCache(orders);
+        }
+        
+        // Check if any orders changed status (for real-time number updates)
+        const ordersChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, status: o.status}))) !== 
+                              JSON.stringify(allOrders.map(o => ({id: o.id, status: o.status})));
+        
+        // Check for payment status changes (especially GCash payments)
+        const paymentStatusChanged = JSON.stringify(currentOrders.map(o => ({id: o.id, payment_status: o.payment_status || 'pending'}))) !== 
+                                    JSON.stringify(allOrders.map(o => ({id: o.id, payment_status: o.payment_status || 'pending'})));
+        
+        // Update allOrders FIRST so sequential numbers are correct
+        allOrders = currentOrders;
+        filteredOrders = [...allOrders];
+
+        // Get the latest order ID AFTER updating allOrders
+        const latestOrderId = currentOrders[0]?.id || 0;
+
+        // If we have a new order (ID greater than last known)
+        if (latestOrderId > lastOrderId && lastOrderId > 0) {
+          // Find all new orders
+          const newOrders = currentOrders.filter(o => o.id > lastOrderId);
+          
+          // Show notification for each new order (most recent first)
+          // Sequential numbers will be correct because allOrders is already updated
+          newOrders.reverse().forEach(order => {
+            showOrderNotification(order);
+          });
+
+          // Update badge count
+          const pendingCount = currentOrders.filter(o => o.status === 'Pending').length;
+          const badge = document.getElementById('ordersBadge');
+          if (badge) {
+            badge.textContent = pendingCount;
+            if (pendingCount > 0) {
+              badge.style.animation = 'pulse 0.5s ease-in-out 3';
+            }
+          }
+        }
+
+        // Update last known order ID
+        if (latestOrderId > lastOrderId) {
+          lastOrderId = latestOrderId;
+        }
+        
+        // Only refresh display if orders actually changed (optimize performance)
+        // This ensures numbering resets when orders are delivered
+        // Also refresh if payment status changed (for GCash payments)
+        const ordersSection = document.getElementById('ordersSection');
+        if ((ordersChanged || paymentStatusChanged) && ordersSection && ordersSection.classList.contains('active')) {
+          displayOrders(); // This will recalculate sequential numbers based on active orders
+        }
+        renderStats();
+      } catch(error) {
+        // Silently handle AbortError for polling (timeouts are expected)
+        if (error.name === 'AbortError') {
+          // Timeout during polling - this is normal, just skip this check
+          return;
+        }
+        // Only log non-timeout errors
+        console.error('Error checking for new orders:', error);
+      }
+    }
+
+    // Real-time ratings polling
+    let ratingsPollInterval = null;
+    
+    function startRatingsPolling() {
+      // Clear any existing interval
+      stopRatingsPolling();
+      // Poll every 20 seconds for real-time updates (reduced frequency for better performance)
+      ratingsPollInterval = setInterval(async () => {
+        try {
+          const [statsResponse, ratingsResponse] = await Promise.all([
+            fetch(`/ratings/stats?t=${Date.now()}`, { cache: 'no-cache' }),
+            fetch(`/ratings?t=${Date.now()}`, { cache: 'no-cache' })
+          ]);
+          
+          if (statsResponse.ok && ratingsResponse.ok) {
+            // Only update if ratings section is visible
+            const ratingsSection = document.getElementById('ratingsSection');
+            if (ratingsSection && ratingsSection.classList.contains('active')) {
+              // Update stats and ratings display
+              await renderAdminRatings();
+            }
+          }
+        } catch (error) {
+          console.error('Error polling ratings:', error);
+        }
+      }, 20000); // Poll every 20 seconds (optimized for performance)
+    }
+    
+    function stopRatingsPolling() {
+      if (ratingsPollInterval) {
+        clearInterval(ratingsPollInterval);
+        ratingsPollInterval = null;
+      }
+    }
+
+    // Start polling for new orders
+    function startOrderPolling() {
+      // Initial load - set lastOrderId
+      renderAdminOrders().then(() => {
+        if (allOrders && allOrders.length > 0) {
+          lastOrderId = allOrders[0].id || 0;
+        }
+      });
+
+      // Poll every 30 seconds (optimized for performance - reduced frequency)
+      orderPollInterval = setInterval(checkForNewOrders, 30000);
+    }
+
+    // Stop polling
+    function stopOrderPolling() {
+      if (orderPollInterval) {
+        clearInterval(orderPollInterval);
+        orderPollInterval = null;
+      }
+    }
+
+    /* -------- Chat Management Functions -------- */
+    let chatFetchController = null;
+    let isRenderingChats = false;
+    let lastChatRenderTime = 0;
+    let renderChatsTimeout = null;
+    const CHAT_RENDER_DEBOUNCE = 3000; // Minimum 3 seconds between renders
+    let lastKnownMessageIds = new Set(); // Track known message IDs to detect new ones
+    window.unreadMessageCount = 0; // Global unread message count
+    
+    async function renderAdminChats() {
+      // Clear any pending debounced call
+      if (renderChatsTimeout) {
+        clearTimeout(renderChatsTimeout);
+        renderChatsTimeout = null;
+      }
+      
+      // Debounce: Skip if called too soon after last render
+      const now = Date.now();
+      const timeSinceLastRender = now - lastChatRenderTime;
+      if (timeSinceLastRender < CHAT_RENDER_DEBOUNCE) {
+        // Schedule a delayed render instead of skipping
+        renderChatsTimeout = setTimeout(() => {
+          renderChatsTimeout = null;
+          renderAdminChats();
+        }, CHAT_RENDER_DEBOUNCE - timeSinceLastRender);
+        return;
+      }
+      
+      // If already rendering, schedule a delayed retry
+      if (isRenderingChats) {
+        if (!renderChatsTimeout) {
+          renderChatsTimeout = setTimeout(() => {
+            renderChatsTimeout = null;
+            renderAdminChats();
+          }, 1000);
+        }
+        return;
+      }
+      
+      isRenderingChats = true;
+      lastChatRenderTime = Date.now();
+      
+      // Don't abort previous requests - let them complete to avoid race conditions
+      // Instead, we'll track render IDs to ignore stale results
+      const currentRenderId = Date.now();
+      chatFetchController = new AbortController();
+      chatFetchController.renderId = currentRenderId;
+      
+      // Show loading state only if we don't already have content
+      const chatsList = document.getElementById('chatsList');
+      if (chatsList) {
+        const hasContent = chatsList.innerHTML && 
+                          !chatsList.innerHTML.includes('Loading chats') && 
+                          !chatsList.innerHTML.includes('loading-spinner') &&
+                          !chatsList.innerHTML.includes('No active chats');
+        if (!hasContent) {
+          chatsList.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="loading-spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color: #666;">Loading chats...</div></div>';
+        }
+      }
+      
+      // Add timeout to prevent infinite loading (increased to 15 seconds to allow messages to load)
+      let timeoutId = setTimeout(() => {
+        // Only show timeout if we're still rendering and haven't displayed messages yet
+        if (!isRenderingChats) {
+          return; // Already finished, don't show timeout
+        }
+        const currentChatsList = document.getElementById('chatsList');
+        if (currentChatsList) {
+          const currentContent = currentChatsList.innerHTML;
+          // Only show timeout if still in loading state (not if messages are already displayed)
+          if (currentContent.includes('Loading chats') || currentContent.includes('loading-spinner')) {
+            currentChatsList.innerHTML = `
+              <div style="text-align: center; padding: 40px; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⏱️</div>
+                <div>Loading is taking longer than expected</div>
+                <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">Retry</button>
+              </div>
+            `;
+            isRenderingChats = false;
+          }
+        }
+      }, 15000); // 15 second timeout to give more time for messages to load
+      
+      try {
+        // Get all orders
+        const controller = chatFetchController;
+        if (!controller) {
+          return; // Request was cancelled
+        }
+        
+        const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          signal: controller.signal
+        });
+        
+        if (!ordersResponse.ok) {
+          throw new Error(`Failed to load orders: ${ordersResponse.status}`);
+        }
+        
+        const orders = await ordersResponse.json();
+        
+        if (!Array.isArray(orders)) {
+          console.error('[CHATS] Invalid orders response format:', orders);
+          throw new Error('Invalid orders response format');
+        }
+        
+        console.log(`[CHATS] Found ${orders.length} orders to check for messages`);
+        
+        // Checking orders for messages
+        
+        // Get messages for all orders (process all in parallel for fastest loading)
+        const chatsWithMessages = [];
+        
+        // Process all orders in parallel (much faster than batches)
+        const allMessagePromises = orders.map(async (order) => {
+            if (!order || !order.id) {
+              return null;
+            }
+            try {
+              // Store controller reference at the start of the promise
+              const controller = chatFetchController;
+              if (!controller) {
+                return null; // Request was cancelled
+              }
+              
+              const messagesResponse = await fetch(`/orders/${order.id}/messages?t=${Date.now()}`, {
+                cache: 'no-cache',
+                signal: controller.signal
+              });
+              
+              // Handle 404 gracefully (order might not exist or have no messages)
+              if (messagesResponse.status === 404) {
+                return null;
+              }
+              
+              if (messagesResponse.ok) {
+                let messages;
+                try {
+                  const responseText = await messagesResponse.text();
+                  if (!responseText || responseText.trim() === '') {
+                    console.warn(`[CHATS] Order ${order.id}: Empty response from server`);
+                    return null;
+                  }
+                  messages = JSON.parse(responseText);
+                } catch (parseError) {
+                  console.error(`[CHATS] Order ${order.id}: Failed to parse messages response:`, parseError);
+                  return null;
+                }
+                
+                // Ensure messages is an array
+                const messagesArray = Array.isArray(messages) ? messages : [];
+                
+                console.log(`[CHATS] Order ${order.id} has ${messagesArray.length} messages`);
+                
+                if (messagesArray.length > 0) {
+                  // Order has messages - backend already returns plain objects, no conversion needed
+                  const plainMessages = messagesArray;
+                  
+                  // Count unread messages (messages from users that admin hasn't read)
+                  const unreadCount = plainMessages.filter(m => 
+                    m && m.sender_role === 'user' && !m.is_read
+                  ).length;
+                  
+                  console.log(`[CHATS] Order ${order.id}: ${unreadCount} unread messages out of ${plainMessages.length} total`);
+                  
+                  // Get last message
+                  const lastMessage = plainMessages[plainMessages.length - 1];
+                  
+                  if (!lastMessage) {
+                    console.warn(`[CHATS] Order ${order.id}: No last message found despite ${plainMessages.length} messages`);
+                    return null;
+                  }
+                  
+                  // Ensure created_at exists, use current time as fallback
+                  if (!lastMessage.created_at) {
+                    console.warn(`[CHATS] Order ${order.id}: Last message missing created_at, using fallback`);
+                    lastMessage.created_at = new Date().toISOString();
+                  }
+                  
+                  console.log(`[CHATS] Order ${order.id}: Returning chat data with last message from ${lastMessage.sender_role || 'unknown'}`);
+                  
+                  return {
+                    order: order,
+                    messageCount: plainMessages.length,
+                    unreadCount: unreadCount,
+                    lastMessage: lastMessage,
+                    lastMessageTime: lastMessage.created_at
+                  };
+                } else {
+                  console.log(`[CHATS] Order ${order.id}: No messages in array`);
+                }
+              } else {
+                const errorText = await messagesResponse.text().catch(() => 'Unknown error');
+                console.warn(`[CHATS] Order ${order.id}: Messages response not OK - ${messagesResponse.status}: ${errorText}`);
+              }
+              return null;
+            } catch (err) {
+              // Silently handle AbortError (request was cancelled)
+              if (err.name === 'AbortError') {
+                return null;
+              }
+              console.error(`[CHATS] Error fetching messages for order ${order.id}:`, err);
+              return null;
+            }
+          });
+        
+        // Process all orders in parallel (much faster)
+        try {
+          const allResults = await Promise.all(allMessagePromises);
+          
+          // Check if this render is still valid (not superseded by a newer one)
+          // Only ignore if we're actually on the chats tab, a newer render has started, AND we already have content displayed
+          // This prevents messages from disappearing when switching tabs, but allows initial renders to complete
+          const chatsSection = document.getElementById('chatsSection');
+          const chatsList = document.getElementById('chatsList');
+          const hasExistingContent = chatsList && !chatsList.innerHTML.includes('Loading chats') && !chatsList.innerHTML.includes('loading-spinner') && !chatsList.innerHTML.includes('No active chats');
+          
+          if (chatFetchController && chatFetchController.renderId !== currentRenderId) {
+            if (chatsSection && chatsSection.classList.contains('active') && hasExistingContent) {
+              console.log(`[CHATS] Render ${currentRenderId} superseded by newer render, ignoring results (content already displayed)`);
+              return;
+            }
+            // If not on chats tab or no content yet, continue anyway to avoid losing data
+            console.log(`[CHATS] Render ${currentRenderId} continuing despite newer render (no content yet or tab switched)`);
+          }
+          
+          console.log(`[CHATS] All results:`, allResults);
+          allResults.forEach((result, index) => {
+            if (result) {
+              console.log(`[CHATS] Adding chat for order ${result.order.id} with ${result.messageCount} messages`);
+              chatsWithMessages.push(result);
+            } else {
+              console.log(`[CHATS] Result ${index} is null`);
+            }
+          });
+          console.log(`[CHATS] Processed ${allResults.length} orders, found ${chatsWithMessages.length} with messages`);
+        } catch (allError) {
+          console.error('[CHATS] Error processing messages:', allError);
+          // Continue with what we have
+        }
+        
+        // Processing chats with messages
+        
+        // Sort by last message time (newest first)
+        chatsWithMessages.sort((a, b) => {
+          try {
+            const timeA = new Date(a.lastMessageTime || 0).getTime();
+            const timeB = new Date(b.lastMessageTime || 0).getTime();
+            return timeB - timeA;
+          } catch (e) {
+            console.warn('[CHATS] Error sorting messages:', e);
+            return 0;
+          }
+        });
+        
+        const chatsList = document.getElementById('chatsList');
+        if (!chatsList) {
+          console.error('[CHATS] chatsList element not found');
+          return;
+        }
+        
+        if (chatsWithMessages.length === 0) {
+          // No chats with messages found
+          clearTimeout(timeoutId);
+          isRenderingChats = false;
+          chatsList.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">💬</div>
+              <div class="empty-state-text">No active chats yet</div>
+              <div style="margin-top: 10px; font-size: 0.85rem; color: #999;">When customers send messages about their orders, they will appear here.</div>
+            </div>
+          `;
+          return;
+        }
+        
+        // Rendering chat cards
+        
+        chatsList.innerHTML = chatsWithMessages.map(chat => {
+          const o = chat.order;
+          const buyerName = o.fullname || o.name || "N/A";
+          const orderDate = new Date(o.created_at || Date.now()).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const lastMsgTime = new Date(chat.lastMessageTime).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          
+          const unreadBadge = chat.unreadCount > 0 ? 
+            `<span style="background: #e74c3c; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; margin-left: 8px;">${chat.unreadCount}</span>` : '';
+          
+          const hasUnread = chat.unreadCount > 0;
+          const cardStyle = hasUnread ? 'border: 2px solid #e74c3c; background: #fff5f5;' : '';
+          
+          return `
+            <div class="order-card" data-order-id="${o.id}" style="${cardStyle}">
+              <div class="order-header">
+                <div>
+                  <div class="order-id">Order #${o.id} - ${buyerName}</div>
+                  <div class="order-date">Order placed: ${orderDate}</div>
+                  <div style="margin-top: 8px; color: #666; font-size: 0.9rem;">
+                    💬 ${chat.messageCount} message${chat.messageCount !== 1 ? 's' : ''}${unreadBadge}
+                  </div>
+                </div>
+                <button class="btn" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                  Open Chat
+                </button>
+              </div>
+              
+              ${chat.lastMessage ? `
+              <div style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #8B4513;">
+                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                  <strong>${escapeHtml(chat.lastMessage.sender_name || 'Unknown')}</strong> • ${lastMsgTime}
+                </div>
+                ${chat.lastMessage.image ? `
+                  <div style="margin-top: 8px;">
+                    <img src="${chat.lastMessage.image}" alt="Message image" style="max-width: 200px; max-height: 200px; border-radius: 8px; cursor: pointer;" onclick="if(typeof openImageModal === 'function') openImageModal('${chat.lastMessage.image}'); else window.open('${chat.lastMessage.image}', '_blank');">
+                    <div style="font-size: 0.75rem; color: #999; margin-top: 4px;">📷 Image</div>
+                  </div>
+                ` : ''}
+                ${chat.lastMessage.message ? `
+                  <div style="color: #333; word-wrap: break-word; margin-top: ${chat.lastMessage.image ? '8px' : '0'};">
+                    ${escapeHtml(chat.lastMessage.message).length > 100 ? 
+                      escapeHtml(chat.lastMessage.message).substring(0, 100) + '...' : 
+                      escapeHtml(chat.lastMessage.message)}
+                  </div>
+                ` : ''}
+              </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+        
+        // Clear timeout on success and mark as not rendering
+        clearTimeout(timeoutId);
+        isRenderingChats = false;
+        console.log(`[CHATS] Successfully rendered ${chatsWithMessages.length} chat cards`);
+      } catch(error) {
+        // Clear timeout on error
+        clearTimeout(timeoutId);
+        
+        if (error.name === 'AbortError') {
+          isRenderingChats = false;
+          return; // Request was cancelled, don't show error
+        }
+        isRenderingChats = false;
+        console.error('Error loading chats:', error);
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        const chatsList = document.getElementById('chatsList');
+        if (chatsList) {
+          chatsList.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #e74c3c;">
+              <div style="font-size: 2rem; margin-bottom: 10px;">⚠️</div>
+              <div>Failed to load chats</div>
+              <div style="font-size: 0.85rem; color: #999; margin-top: 8px;">${error.message || 'Unknown error'}</div>
+              <button onclick="renderAdminChats()" style="margin-top: 15px; padding: 10px 20px; background: #8B4513; color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
+            </div>
+          `;
+        }
+        if (typeof showNotification === 'function') {
+          showNotification('Failed to load chats. Please try again.', 'error');
+        }
+      } finally {
+        isRenderingChats = false;
+        // Clear any pending timeout
+        if (renderChatsTimeout) {
+          clearTimeout(renderChatsTimeout);
+          renderChatsTimeout = null;
+        }
+        // Don't set chatFetchController to null here - let it be cleared on next call
+      }
+    }
+    
+    // Check for unread chat messages
+    async function checkUnreadChats() {
+      try {
+        // Use AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        
+        const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!ordersResponse.ok) {
+          console.warn('[CHATS] Failed to fetch orders for chat check:', ordersResponse.status);
+          return;
+        }
+        
+        const orders = await ordersResponse.json();
+        
+        let totalUnread = 0;
+        const newMessages = []; // Track new messages for notifications
+        
+        for (const order of orders) {
+          if (!order || !order.id) {
+            continue;
+          }
+          try {
+            const messagesResponse = await fetch(`/orders/${order.id}/messages`);
+            if (messagesResponse.ok) {
+              const messages = await messagesResponse.json();
+              if (messages && Array.isArray(messages) && messages.length > 0) {
+                // Process messages to find unread ones
+                const unreadMessages = messages.filter(m => 
+                  m.sender_role === 'user' && !m.is_read
+                );
+                totalUnread += unreadMessages.length;
+                
+                // Check for new messages (not in lastKnownMessageIds)
+                unreadMessages.forEach(msg => {
+                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
+                  if (!lastKnownMessageIds.has(msgId)) {
+                    // New message detected
+                    newMessages.push({
+                      message: msg,
+                      order: order
+                    });
+                    lastKnownMessageIds.add(msgId);
+                  }
+                });
+                
+                // Also add all message IDs to the set (for tracking)
+                messages.forEach(msg => {
+                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
+                  lastKnownMessageIds.add(msgId);
+                });
+              }
+            } else if (messagesResponse.status === 404) {
+              // Order doesn't exist or has no messages - skip silently
+              continue;
+        }
+      } catch (err) {
+        // Skip errors for individual orders (network errors, etc.)
+        if (err.name !== 'AbortError') {
+          console.warn(`Error checking messages for order ${order.id}:`, err);
+        }
+      }
+    }
+    
+    // Update global unread count
+    window.unreadMessageCount = totalUnread;
+    
+    // Update stats if they're displayed
+    renderStats();
+    
+    // Update badge
+    const chatsBadge = document.getElementById('chatsBadge');
+        if (chatsBadge) {
+          chatsBadge.textContent = totalUnread;
+          if (totalUnread > 0) {
+            chatsBadge.style.background = '#e74c3c';
+            chatsBadge.style.animation = 'pulse 0.5s ease-in-out 3';
+          } else {
+            chatsBadge.style.background = '';
+            chatsBadge.style.animation = '';
+          }
+        }
+        
+        // Show notifications for new messages (only if not initial load)
+        // Initial load: lastKnownMessageIds is empty or only contains the new messages
+        const isInitialLoad = lastKnownMessageIds.size <= newMessages.length;
+        if (newMessages.length > 0 && !isInitialLoad) {
+          newMessages.forEach(({message, order}) => {
+            showMessageNotification(message, order);
+          });
+        }
+      } catch(error) {
+        // Silently handle AbortError for polling (timeouts are expected)
+        if (error.name === 'AbortError') {
+          // Timeout during polling - this is normal, just skip this check
+          return;
+        }
+        // Only log non-timeout errors
+        console.warn('[CHATS] Error checking unread chats:', error);
+      }
+    }
+    
+    // Poll for unread chats
+    let chatPollInterval = null;
+    let chatListRefreshInterval = null;
+    
+    function startChatPolling() {
+      // Stop any existing intervals first
+      stopChatPolling();
+      
+      checkUnreadChats();
+      // Poll every 20 seconds (optimized for performance - reduced frequency)
+      chatPollInterval = setInterval(checkUnreadChats, 20000);
+      
+      // Also refresh the chats list if we're on the chats tab
+      // Use a single interval to avoid duplicates
+      chatListRefreshInterval = setInterval(() => {
+        if (document.getElementById('chatsSection')?.classList.contains('active')) {
+          // Only refresh if not currently rendering AND we haven't rendered in the last 5 seconds
+          // This prevents rapid re-renders that clear messages
+          const timeSinceLastRender = Date.now() - lastChatRenderTime;
+          if (!isRenderingChats && timeSinceLastRender > 5000) {
+            renderAdminChats();
+          }
+        }
+      }, 30000); // Refresh every 30 seconds (optimized for performance)
+      
+      // Initial render if on chats tab
+      if (document.getElementById('chatsSection')?.classList.contains('active')) {
+        renderAdminChats();
+      }
+    }
+    
+    function stopChatPolling() {
+      if (chatPollInterval) {
+        clearInterval(chatPollInterval);
+        chatPollInterval = null;
+      }
+      if (chatListRefreshInterval) {
+        clearInterval(chatListRefreshInterval);
+        chatListRefreshInterval = null;
+      }
+    }
+
+
+
+    /* -------- Initialize -------- */
+    
+    // Make critical functions globally accessible
+    window.updateOrderStatus = updateOrderStatus;
+    window.markPaymentAsPaid = markPaymentAsPaid;
+    window.processRefund = processRefund;
+    window.cancelOrder = cancelOrder;
+    window.deleteOrder = deleteOrder;
+    window.printSingleOrder = printSingleOrder;
+    window.showPaymentProofModal = showPaymentProofModal;
+    window.viewUserProfile = viewUserProfile;
+    window.addMenuItem = addMenuItem;
+    window.editMenuItem = editMenuItem;
+    window.saveEditMenuItem = saveEditMenuItem;
+    window.deleteMenuItem = deleteMenuItem;
+    window.toggleMenuItemAvailability = toggleMenuItemAvailability;
+    window.updateStockQuantity = updateStockQuantity;
+    window.approveUser = approveUser;
+    window.approveUserWithRole = approveUserWithRole;
+    window.renderAdminOrders = renderAdminOrders;
+    window.renderAdminChats = renderAdminChats;
+    window.renderAdminMenuList = renderAdminMenuList;
+    window.renderAdminUsers = renderAdminUsers;
+    window.renderAdminRatings = renderAdminRatings;
+    window.switchTab = switchTab;
+    window.filterOrders = filterOrders;
+
+    // Handle logout with proper cleanup
+    function handleLogout(event) {
+      if (event) event.preventDefault();
+      
+      try {
+        // Try to use logoutUser from script.js if available
+        if (typeof logoutUser === 'function') {
+          logoutUser();
+          return;
+        }
+        
+        // Fallback: manual logout
+        if (typeof clearCurrent === 'function') {
+          clearCurrent();
+        } else {
+          // Clear from localStorage directly
+          localStorage.removeItem('canteen_current_v2');
+        }
+        
+        // Clear cart
+        localStorage.removeItem('canteen_cart_v2');
+        
+        // Stop all polling/intervals
+        if (typeof stopOrderPolling === 'function') stopOrderPolling();
+        if (typeof stopChatPolling === 'function') stopChatPolling();
+        stopRatingsPolling();
+        if (orderPollInterval) clearInterval(orderPollInterval);
+        if (chatPollInterval) clearInterval(chatPollInterval);
+        
+        // Redirect to login
+        window.location.href = 'index.html';
+      } catch(error) {
+        console.error('Logout error:', error);
+        // Force redirect even if there's an error
+        localStorage.clear();
+        window.location.href = 'index.html';
+      }
+    }
+    
+    // Initialize admin dashboard
+    function initializeAdminDashboard() {
+      // Check authentication - use fallback method to avoid ensureLoggedIn issues
+      let isAuthenticated = false;
+      let currentRole = null;
+      
+      if (typeof getCurrent === 'function') {
+        const currentUser = getCurrent();
+        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
+          isAuthenticated = true;
+          currentRole = currentUser.role;
+        }
+      } else {
+        // Fallback: check localStorage directly
+        try {
+          const stored = localStorage.getItem('canteen_current_v2');
+          if (stored) {
+            const currentUser = JSON.parse(stored);
+            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
+              isAuthenticated = true;
+              currentRole = currentUser.role;
+            }
+          }
+        } catch(e) {
+          console.error('Error checking authentication:', e);
+        }
+      }
+      
+        if (!isAuthenticated) {
+          alert('Please login as delivery');
+          window.location.href = 'index.html';
+          return;
+        }
+      
+        // Try to call ensureLoggedIn for admins only
+        if (currentRole === 'admin' && typeof ensureLoggedIn === 'function') {
+          try {
+            // Call in isolated scope to avoid variable conflicts
+            (function() {
+              ensureLoggedIn('admin');
+            })();
+          } catch(e) {
+            console.warn('ensureLoggedIn error (continuing anyway):', e);
+          }
+        }
+        
+        // Initialize dashboard components with error handling
+        try {
+          window.isDeliveryUser = currentRole === 'delivery';
+          if (window.isDeliveryUser) {
+            document.getElementById('tabMenu')?.remove();
+            document.getElementById('tabUsers')?.remove();
+            document.getElementById('tabRatings')?.remove();
+            document.getElementById('menuSection')?.remove();
+            document.getElementById('usersSection')?.remove();
+            document.getElementById('ratingsSection')?.remove();
+          }
+          renderStats();
+          renderAdminOrders();
+          if (!window.isDeliveryUser) {
+            renderAdminMenuList(); // Load menu items on page load
+          }
+          
+          // Check unread chats immediately on login (this will populate the message count)
+          checkUnreadChats().then(() => {
+            // After initial check, start polling
+            startChatPolling();
+          }).catch(err => {
+            console.warn('[INIT] Error checking unread chats:', err);
+            // Start polling anyway
+            startChatPolling();
+          });
+        
+        // Start real-time order notifications
+        startOrderPolling();
+      } catch (error) {
+        console.error('[INIT] Error initializing dashboard:', error);
+        if (typeof showNotification === 'function') {
+          showNotification('Error initializing dashboard. Please refresh the page.', 'error');
+        }
+      }
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      // Wait for script.js to load
+      if (window.scriptJsLoaded || typeof getCurrent === 'function') {
+        // Script already loaded
+        initializeAdminDashboard();
+      } else {
+        // Wait a bit for script.js to load
+        setTimeout(() => {
+          initializeAdminDashboard();
+        }, 300);
+      }
+    });
+
+    // Stop polling when page is hidden (save resources)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopOrderPolling();
+        stopChatPolling();
+        stopRatingsPolling();
+      } else {
+        startOrderPolling();
+        startChatPolling();
+      }
+    });
+  </script>
+</body>
+</html>
