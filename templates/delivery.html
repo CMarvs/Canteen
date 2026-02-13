@@ -6,8 +6,62 @@
   <title>Delivery Dashboard — Online Canteen</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/admin.css">
+  <style>
+    html, body { overflow-x: hidden; width: 100%; }
+    body.delivery-booting .topbar,
+    body.delivery-booting main,
+    body.delivery-booting #notificationContainer { visibility: hidden; }
+    #deliveryBootOverlay {
+      position: fixed;
+      inset: 0;
+      background: var(--light, #fffdf9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100000;
+      opacity: 1;
+      transition: opacity 0.18s ease;
+    }
+    body.delivery-ready #deliveryBootOverlay { opacity: 0; pointer-events: none; }
+    .delivery-boot-card {
+      background: #fff;
+      border: 1px solid #e7d8c4;
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      font-weight: 600;
+      color: #8B4513;
+    }
+    main {
+      max-width: 430px !important;
+      margin: 12px auto !important;
+      padding: 10px !important;
+    }
+    .topbar { position: sticky; top: 0; z-index: 2000; padding: 12px 14px; }
+    .brand { font-size: 1rem; }
+    .stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 10px !important;
+      margin-bottom: 12px !important;
+    }
+    .stat-card { padding: 12px !important; }
+    .stat-number { font-size: 1.2rem !important; margin: 4px 0 !important; }
+    .stat-label { font-size: 0.78rem !important; }
+    .content-card { padding: 12px !important; border-radius: 12px !important; }
+    .tab-buttons {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px !important;
+      margin-bottom: 12px !important;
+    }
+    .tab-buttons button { min-width: 0 !important; padding: 10px 8px !important; font-size: 0.9rem !important; }
+    .search-input { min-width: 0 !important; width: 100% !important; }
+  </style>
 </head>
-<body>
+<body class="delivery-booting">
+  <div id="deliveryBootOverlay">
+    <div class="delivery-boot-card">Loading delivery dashboard...</div>
+  </div>
   <header class="topbar">
     <div class="brand">🚚 Online Canteen Delivery</div>
     <nav class="nav">
@@ -4080,6 +4134,15 @@
         window.location.href = 'index.html';
       }
     }
+
+    function markDeliveryReady() {
+      document.body.classList.remove('delivery-booting');
+      document.body.classList.add('delivery-ready');
+      const overlay = document.getElementById('deliveryBootOverlay');
+      if (overlay) {
+        setTimeout(() => overlay.remove(), 220);
+      }
+    }
     
     // Initialize admin dashboard
     function initializeAdminDashboard() {
@@ -4166,11 +4229,13 @@
         
         // Start real-time order notifications
         startOrderPolling();
+        setTimeout(markDeliveryReady, 60);
       } catch (error) {
         console.error('[INIT] Error initializing dashboard:', error);
         if (typeof showNotification === 'function') {
           showNotification('Error initializing dashboard. Please refresh the page.', 'error');
         }
+        markDeliveryReady();
       }
     }
     
