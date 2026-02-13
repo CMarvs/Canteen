@@ -2734,7 +2734,7 @@ async def get_users():
 async def approve_user(user_id: int, request: Request):
     data = await request.json()
     is_approved = data.get("is_approved", True)
-    new_role = data.get("role")  # Optional: 'admin' or 'user'
+    new_role = data.get("role")  # Optional: 'admin', 'user', or 'delivery'
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -2767,7 +2767,7 @@ async def approve_user(user_id: int, request: Request):
             updates.append("is_approved = %s")
             params.append(is_approved)
         
-        if new_role and new_role in ['admin', 'user']:
+        if new_role and new_role in ['admin', 'user', 'delivery']:
             updates.append("role = %s")
             params.append(new_role)
         
@@ -3040,14 +3040,14 @@ async def send_order_message(order_id: int, request: Request):
             sender_name = user.get("name", "Unknown") if isinstance(user, dict) else (user[1] if len(user) > 1 else "Unknown")
         
         # Preserve sender_role from request, but ensure it's valid
-        # If user is admin, they can send as admin; otherwise send as user
+        # Admin and delivery roles can send as admin; others send as user
         user_role = user.get("role", "user") if isinstance(user, dict) else (user[2] if len(user) > 2 else "user")
-        if sender_role == "admin" and user_role != "admin":
-            # Non-admin trying to send as admin - force to user
+        if sender_role == "admin" and user_role not in ["admin", "delivery"]:
+            # Non-admin/non-delivery trying to send as admin - force to user
             sender_role = "user"
         elif not sender_role or sender_role not in ["user", "admin"]:
             # Invalid or missing sender_role - use user's actual role
-            sender_role = user_role
+            sender_role = "admin" if user_role in ["admin", "delivery"] else user_role
         
         # Insert message
         cur.execute("""
@@ -3126,7 +3126,7 @@ async def mark_messages_read(order_id: int, request: Request):
     except Exception:
         data = {}
     
-    reader_role = data.get("reader_role", "admin")  # Who is reading (admin or user)
+    reader_role = data.get("reader_role", "admin")  # Who is reading (admin, delivery, or user)
     
     conn = get_db_connection()
     try:
@@ -3140,7 +3140,7 @@ async def mark_messages_read(order_id: int, request: Request):
         # Mark messages as read based on who is reading
         # If admin is reading, mark user messages as read
         # If user is reading, mark admin messages as read
-        if reader_role == 'admin':
+        if reader_role in ['admin', 'delivery']:
             cur.execute("""
                 UPDATE chat_messages 
                 SET is_read = TRUE, read_at = NOW()

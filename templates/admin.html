@@ -231,6 +231,10 @@
       console.log('[DEBUG] switchTab called with:', tab);
       
       try {
+        if (window.isDeliveryUser && (tab === 'menu' || tab === 'users' || tab === 'ratings')) {
+          showNotification('Access restricted for delivery accounts.', 'error');
+          return;
+        }
         // Remove active from all sections and buttons
         document.querySelectorAll('.tab-content').forEach(section => {
           section.classList.remove('active');
@@ -248,31 +252,31 @@
           document.getElementById('tabChats')?.classList.add('active');
           document.getElementById('chatsSection')?.classList.add('active');
           renderAdminChats();
-        } else if (tab === 'menu') {
-          document.getElementById('tabMenu')?.classList.add('active');
-          document.getElementById('menuSection')?.classList.add('active');
-          console.log('[DEBUG] About to call renderAdminMenuList');
-          if (typeof renderAdminMenuList === 'function') {
-            renderAdminMenuList().catch(err => {
-              console.error('[ERROR] renderAdminMenuList failed:', err);
-            });
-          } else {
-            console.error('[ERROR] renderAdminMenuList is not a function');
+          } else if (tab === 'menu') {
+            document.getElementById('tabMenu')?.classList.add('active');
+            document.getElementById('menuSection')?.classList.add('active');
+            console.log('[DEBUG] About to call renderAdminMenuList');
+            if (typeof renderAdminMenuList === 'function') {
+              renderAdminMenuList().catch(err => {
+                console.error('[ERROR] renderAdminMenuList failed:', err);
+              });
+            } else {
+              console.error('[ERROR] renderAdminMenuList is not a function');
+            }
+          } else if (tab === 'users') {
+            document.getElementById('tabUsers')?.classList.add('active');
+            document.getElementById('usersSection')?.classList.add('active');
+            renderAdminUsers();
+          } else if (tab === 'ratings') {
+            document.getElementById('tabRatings')?.classList.add('active');
+            document.getElementById('ratingsSection')?.classList.add('active');
+            renderAdminRatings();
+            startRatingsPolling();
           }
-        } else if (tab === 'users') {
-          document.getElementById('tabUsers')?.classList.add('active');
-          document.getElementById('usersSection')?.classList.add('active');
-          renderAdminUsers();
-        } else if (tab === 'ratings') {
-          document.getElementById('tabRatings')?.classList.add('active');
-          document.getElementById('ratingsSection')?.classList.add('active');
-          renderAdminRatings();
-          startRatingsPolling();
+        } catch(err) {
+          console.error('[ERROR] in switchTab:', err);
         }
-      } catch(err) {
-        console.error('[ERROR] in switchTab:', err);
       }
-    }
 
     /* -------- Render Orders (API) -------- */
     // Request deduplication for orders
@@ -2745,6 +2749,7 @@
                         <select id="roleSelect_${user.id}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 6px;">
                           <option value="user">👤 User</option>
                           <option value="admin">👑 Admin</option>
+                          <option value="delivery">🚚 Delivery</option>
                         </select>
                         <div style="display: flex; gap: 8px; width: 100%;">
                           <button class="btn small" onclick="approveUserWithRole(${user.id}, true)" style="background: #4caf50; color: white; flex: 1;">✅ Approve</button>
@@ -4158,11 +4163,13 @@
     function initializeAdminDashboard() {
       // Check authentication - use fallback method to avoid ensureLoggedIn issues
       let isAuthenticated = false;
+      let currentRole = null;
       
       if (typeof getCurrent === 'function') {
         const currentUser = getCurrent();
-        if (currentUser && currentUser.role === 'admin') {
+        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
           isAuthenticated = true;
+          currentRole = currentUser.role;
         }
       } else {
         // Fallback: check localStorage directly
@@ -4170,8 +4177,9 @@
           const stored = localStorage.getItem('canteen_current_v2');
           if (stored) {
             const currentUser = JSON.parse(stored);
-            if (currentUser && currentUser.role === 'admin') {
+            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
               isAuthenticated = true;
+              currentRole = currentUser.role;
             }
           }
         } catch(e) {
@@ -4185,33 +4193,44 @@
         return;
       }
       
-      // Try to call ensureLoggedIn if available (but don't fail if it's not)
-      if (typeof ensureLoggedIn === 'function') {
-        try {
-          // Call in isolated scope to avoid variable conflicts
-          (function() {
-            ensureLoggedIn('admin');
-          })();
-        } catch(e) {
-          console.warn('ensureLoggedIn error (continuing anyway):', e);
+        // Try to call ensureLoggedIn for admins only
+        if (currentRole === 'admin' && typeof ensureLoggedIn === 'function') {
+          try {
+            // Call in isolated scope to avoid variable conflicts
+            (function() {
+              ensureLoggedIn('admin');
+            })();
+          } catch(e) {
+            console.warn('ensureLoggedIn error (continuing anyway):', e);
+          }
         }
-      }
-      
-      // Initialize dashboard components with error handling
-      try {
-        renderStats();
-        renderAdminOrders();
-        renderAdminMenuList(); // Load menu items on page load
         
-        // Check unread chats immediately on login (this will populate the message count)
-        checkUnreadChats().then(() => {
-          // After initial check, start polling
-          startChatPolling();
-        }).catch(err => {
-          console.warn('[INIT] Error checking unread chats:', err);
-          // Start polling anyway
-          startChatPolling();
-        });
+        // Initialize dashboard components with error handling
+        try {
+          window.isDeliveryUser = currentRole === 'delivery';
+          if (window.isDeliveryUser) {
+            document.getElementById('tabMenu')?.remove();
+            document.getElementById('tabUsers')?.remove();
+            document.getElementById('tabRatings')?.remove();
+            document.getElementById('menuSection')?.remove();
+            document.getElementById('usersSection')?.remove();
+            document.getElementById('ratingsSection')?.remove();
+          }
+          renderStats();
+          renderAdminOrders();
+          if (!window.isDeliveryUser) {
+            renderAdminMenuList(); // Load menu items on page load
+          }
+          
+          // Check unread chats immediately on login (this will populate the message count)
+          checkUnreadChats().then(() => {
+            // After initial check, start polling
+            startChatPolling();
+          }).catch(err => {
+            console.warn('[INIT] Error checking unread chats:', err);
+            // Start polling anyway
+            startChatPolling();
+          });
         
         // Start real-time order notifications
         startOrderPolling();
