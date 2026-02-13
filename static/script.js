@@ -177,20 +177,21 @@ async function loginUser(){
 
     // Check if response is ok before parsing JSON
     let data;
+    let rawResponseText = '';
     try {
-      const text = await response.text();
-      console.log('[LOGIN] Response text (first 500 chars):', text.substring(0, 500));
+      rawResponseText = await response.text();
+      console.log('[LOGIN] Response text (first 500 chars):', rawResponseText.substring(0, 500));
       
-      if (!text || text.trim() === '') {
+      if (!rawResponseText || rawResponseText.trim() === '') {
         console.error('[LOGIN] Empty response from server');
         throw new Error('Empty response from server');
       }
       
-      data = JSON.parse(text);
+      data = JSON.parse(rawResponseText);
       console.log('[LOGIN] Parsed response data:', data);
     } catch(jsonError) {
       console.error('[LOGIN] Failed to parse response:', jsonError);
-      console.error('[LOGIN] Response was:', text);
+      console.error('[LOGIN] Response was:', rawResponseText);
       const msg = 'Server error. Please check the server logs and try again.';
       if(errorDiv) {
         errorDiv.style.display = 'block';
@@ -266,6 +267,16 @@ async function loginUser(){
       
       saveCurrent(userSession);
       console.log('[LOGIN] User session saved:', userSession);
+
+      // One-time login notice for destination page
+      try {
+        localStorage.setItem('canteen_login_notice_v1', JSON.stringify({
+          role: data.role,
+          ts: Date.now()
+        }));
+      } catch (e) {
+        console.warn('[LOGIN] Could not persist login notice:', e);
+      }
       
       // Small delay to ensure session is saved
       await new Promise(resolve => setTimeout(resolve, 100));

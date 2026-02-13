@@ -75,6 +75,8 @@
         if (currentUser && currentUser.role) {
           if (currentUser.role === 'admin') {
             location.href = 'admin.html';
+          } else if (currentUser.role === 'delivery') {
+            location.href = 'delivery.html';
           } else if (currentUser.role === 'user') {
             location.href = 'order.html';
           }
@@ -244,11 +246,21 @@
           } else {
             localStorage.setItem('canteen_current_v2', JSON.stringify(userData));
           }
+          try {
+            localStorage.setItem('canteen_login_notice_v1', JSON.stringify({
+              role: userData.role,
+              ts: Date.now()
+            }));
+          } catch (e) {
+            console.warn('Could not save login notice:', e);
+          }
           
           // Redirect based on role
           const userRole = userData.role || 'user';
           if (userRole === 'admin') {
             location.href = 'admin.html';
+          } else if (userRole === 'delivery') {
+            location.href = 'delivery.html';
           } else {
             location.href = 'order.html';
           }

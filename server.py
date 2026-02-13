@@ -2736,7 +2736,8 @@ async def get_users():
 async def approve_user(user_id: int, request: Request):
     data = await request.json()
     is_approved = data.get("is_approved", True)
-    new_role = data.get("role")  # Optional: 'admin', 'user', or 'delivery'
+    raw_role = data.get("role")  # Optional: 'admin', 'user', or 'delivery'
+    new_role = raw_role.strip().lower() if isinstance(raw_role, str) else raw_role
     conn = get_db_connection()
     try:
         cur = conn.cursor()

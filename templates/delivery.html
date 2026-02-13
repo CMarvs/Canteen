@@ -4085,13 +4085,17 @@
     function initializeAdminDashboard() {
       // Check authentication - use fallback method to avoid ensureLoggedIn issues
       let isAuthenticated = false;
-      let currentRole = null;
       
       if (typeof getCurrent === 'function') {
         const currentUser = getCurrent();
-        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
+        if (currentUser && currentUser.role === 'delivery') {
           isAuthenticated = true;
-          currentRole = currentUser.role;
+        } else if (currentUser && currentUser.role === 'admin') {
+          window.location.href = 'admin.html';
+          return;
+        } else if (currentUser && currentUser.role === 'user') {
+          window.location.href = 'order.html';
+          return;
         }
       } else {
         // Fallback: check localStorage directly
@@ -4099,9 +4103,14 @@
           const stored = localStorage.getItem('canteen_current_v2');
           if (stored) {
             const currentUser = JSON.parse(stored);
-            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'delivery')) {
+            if (currentUser && currentUser.role === 'delivery') {
               isAuthenticated = true;
-              currentRole = currentUser.role;
+            } else if (currentUser && currentUser.role === 'admin') {
+              window.location.href = 'admin.html';
+              return;
+            } else if (currentUser && currentUser.role === 'user') {
+              window.location.href = 'order.html';
+              return;
             }
           }
         } catch(e) {
@@ -4114,22 +4123,10 @@
           window.location.href = 'index.html';
           return;
         }
-      
-        // Try to call ensureLoggedIn for admins only
-        if (currentRole === 'admin' && typeof ensureLoggedIn === 'function') {
-          try {
-            // Call in isolated scope to avoid variable conflicts
-            (function() {
-              ensureLoggedIn('admin');
-            })();
-          } catch(e) {
-            console.warn('ensureLoggedIn error (continuing anyway):', e);
-          }
-        }
         
         // Initialize dashboard components with error handling
         try {
-          window.isDeliveryUser = currentRole === 'delivery';
+          window.isDeliveryUser = true;
           if (window.isDeliveryUser) {
             document.getElementById('tabMenu')?.remove();
             document.getElementById('tabUsers')?.remove();
@@ -4137,6 +4134,19 @@
             document.getElementById('menuSection')?.remove();
             document.getElementById('usersSection')?.remove();
             document.getElementById('ratingsSection')?.remove();
+          }
+          // Show one-time login notice for delivery users
+          try {
+            const noticeRaw = localStorage.getItem('canteen_login_notice_v1');
+            if (noticeRaw) {
+              const notice = JSON.parse(noticeRaw);
+              if (notice && notice.role === 'delivery') {
+                showNotification('Logged in as Delivery. Orders and chats only.', 'success');
+              }
+              localStorage.removeItem('canteen_login_notice_v1');
+            }
+          } catch (noticeError) {
+            console.warn('Could not read login notice:', noticeError);
           }
           renderStats();
           renderAdminOrders();

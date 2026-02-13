@@ -1838,7 +1838,7 @@
                 <h3 style="margin-top: 0; color: #8B4513;">📋 Profile Information</h3>
                 <p><strong>Name:</strong> ${escapeHtml(user.name || 'N/A')}</p>
                 <p><strong>Email:</strong> ${escapeHtml(user.email || 'N/A')}</p>
-                <p><strong>Role:</strong> <span style="background: ${user.role === 'admin' ? '#8B4513' : '#4CAF50'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">${user.role === 'admin' ? '👑 Admin' : '👤 User'}</span></p>
+                <p><strong>Role:</strong> <span style="background: ${user.role === 'admin' ? '#8B4513' : '#4CAF50'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">${user.role === 'admin' ? '👑 Admin' : (user.role === 'delivery' ? '🚚 Delivery' : '👤 User')}</span></p>
                 <p><strong>Status:</strong> <span style="background: ${user.is_approved ? '#4CAF50' : '#ffc107'}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">${user.is_approved ? '✅ Approved' : '⏳ Pending'}</span></p>
                 <p><strong>Registered:</strong> ${regDate}</p>
                 <p><strong>Total Orders:</strong> ${totalOrders}</p>
@@ -2783,8 +2783,8 @@
                   </div>
                   <div style="display: flex; gap: 8px; align-items: center;">
                     <span style="padding: 4px 12px; background: #4caf50; color: white; border-radius: 12px; font-size: 0.85rem;">✅ Approved</span>
-                    <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : '#666'}; color: white; border-radius: 12px; font-size: 0.85rem;">
-                      ${user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                    <span style="padding: 4px 12px; background: ${user.role === 'admin' ? '#2196F3' : (user.role === 'delivery' ? '#ff9800' : '#666')}; color: white; border-radius: 12px; font-size: 0.85rem;">
+                      ${user.role === 'admin' ? '👑 Admin' : (user.role === 'delivery' ? '🚚 Delivery' : '👤 User')}
                     </span>
                     <button class="btn delete small" onclick="approveUser(${user.id}, false)">Revoke</button>
                   </div>
@@ -3096,10 +3096,12 @@
 
     async function approveUserWithRole(userId, isApproved) {
       const roleSelect = document.getElementById(`roleSelect_${userId}`);
-      const selectedRole = roleSelect ? roleSelect.value : 'user';
+      const selectedRole = roleSelect ? String(roleSelect.value || '').trim().toLowerCase() : 'user';
+      const allowedRoles = ['user', 'admin', 'delivery'];
+      const finalRole = allowedRoles.includes(selectedRole) ? selectedRole : 'user';
       
       const action = isApproved ? 'approve' : 'reject';
-      const roleText = selectedRole === 'admin' ? ' as Admin' : ' as User';
+      const roleText = finalRole === 'admin' ? ' as Admin' : (finalRole === 'delivery' ? ' as Delivery' : ' as User');
       if (!confirm(`Are you sure you want to ${action} this user${roleText}?`)) return;
 
       try {
@@ -3108,12 +3110,12 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             is_approved: isApproved,
-            role: selectedRole
+            role: finalRole
           })
         });
 
         if (response.ok) {
-          const roleMsg = selectedRole === 'admin' ? ' as Admin' : ' as User';
+          const roleMsg = finalRole === 'admin' ? ' as Admin' : (finalRole === 'delivery' ? ' as Delivery' : ' as User');
           alert(`✅ User ${isApproved ? 'approved' : 'rejected'}${roleMsg} successfully!`);
           await renderAdminUsers();
         } else {
@@ -4269,3 +4271,4 @@
   </script>
 </body>
 </html>
+
