@@ -564,6 +564,10 @@
                   qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
                   price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
                 };
+                const imageUrl = item.image_url ? String(item.image_url).trim().substring(0, 300) : '';
+                if (imageUrl) {
+                  cleanedItem.image_url = imageUrl;
+                }
                 
                 // Validate cleaned item size
                 const itemStr = JSON.stringify(cleanedItem);
@@ -691,6 +695,10 @@
               qty: Math.max(1, Math.min(1000, parseInt(item.qty) || 1)),
               price: Math.max(0, Math.min(100000, parseFloat(item.price) || 0))
             };
+            const imageUrl = item.image_url ? String(item.image_url).trim().substring(0, 300) : '';
+            if (imageUrl) {
+              cleanItem.image_url = imageUrl;
+            }
             
             // Final size check
             const itemStr = JSON.stringify(cleanItem);
