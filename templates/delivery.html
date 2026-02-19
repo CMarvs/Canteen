@@ -1709,10 +1709,39 @@
       const order = allOrders.find(o => o.id === orderId);
       if (!order) return;
       
+      const esc = (val) => String(val ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
       const buyerName = order.fullname || order.name || "N/A";
       const buyerContact = order.contact || order.number || "N/A";
       const buyerAddress = order.location || order.address || "N/A";
-      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      let items = [];
+      try {
+        items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+      } catch (e) {
+        items = [];
+      }
+      if (!Array.isArray(items)) items = [];
+      const safeItems = items.map((it, idx) => ({
+        name: esc((it && it.name) ? it.name : `Item ${idx + 1}`),
+        qty: Math.max(1, parseInt(it && it.qty, 10) || 1),
+        price: Math.max(0, Number(it && it.price) || 0)
+      }));
+      const total = Number(order.total || 0);
+      const createdAt = new Date(order.created_at || Date.now()).toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const paymentMethod = esc(order.payment_method || 'cash');
+      const paymentStatus = esc(order.payment_status || 'pending');
+      const statusText = esc(order.status || 'Pending');
       
       const printWindow = window.open('', '_blank');
       printWindow.document.write(`
@@ -1721,36 +1750,120 @@
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Order Receipt</title>
-          <title>Order #${sequentialNumber} - Online Canteen</title>
+          <title>Receipt #${sequentialNumber}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #8B4513; }
-            .info { margin: 10px 0; }
-            .items { margin: 20px 0; border-top: 2px solid #ccc; padding-top: 10px; }
-            .total { font-size: 1.2em; font-weight: bold; margin-top: 20px; }
+            @page {
+              size: 57mm auto;
+              margin: 2mm;
+            }
+            * {
+              box-sizing: border-box;
+            }
+            html, body {
+              width: 57mm;
+              max-width: 2.25in;
+              margin: 0;
+              padding: 0;
+              font-family: "Courier New", Courier, monospace;
+              font-size: 10px;
+              line-height: 1.25;
+              color: #000;
+              background: #fff;
+            }
+            .receipt {
+              width: 100%;
+              padding: 1mm 1.5mm;
+            }
+            .center { text-align: center; }
+            .bold { font-weight: 700; }
+            .muted { color: #333; }
+            .line {
+              border-top: 1px dashed #000;
+              margin: 4px 0;
+            }
+            .row {
+              display: flex;
+              justify-content: space-between;
+              gap: 6px;
+              margin: 1px 0;
+              align-items: baseline;
+            }
+            .label {
+              white-space: nowrap;
+              margin-right: 6px;
+            }
+            .value {
+              text-align: right;
+              word-break: break-word;
+            }
+            .item {
+              margin: 2px 0 3px;
+            }
+            .item-top {
+              display: flex;
+              justify-content: space-between;
+              gap: 6px;
+            }
+            .item-name {
+              flex: 1;
+              word-break: break-word;
+            }
+            .item-total {
+              white-space: nowrap;
+              text-align: right;
+            }
+            .item-sub {
+              font-size: 9px;
+              color: #333;
+            }
+            .big-total {
+              font-size: 12px;
+              font-weight: 700;
+            }
           </style>
         </head>
         <body>
-          <h1>🍽️ Online Canteen - Order Receipt</h1>
-          <div class="info"><strong>Order #:</strong> ${sequentialNumber}</div>
-          <div class="info"><strong>Date:</strong> ${new Date(order.created_at || Date.now()).toLocaleString()}</div>
-          <div class="info"><strong>Status:</strong> ${order.status}</div>
-          <hr>
-          <h3>Customer Information</h3>
-          <div class="info"><strong>Name:</strong> ${buyerName}</div>
-          <div class="info"><strong>Contact:</strong> ${buyerContact}</div>
-          <div class="info"><strong>Address:</strong> ${buyerAddress}</div>
-          <div class="items">
-            <h3>Order Items</h3>
-            ${items.map(it => `<div>• ${it.name} × ${it.qty} - ₱${(Number(it.price) * Number(it.qty)).toFixed(2)}</div>`).join('')}
+          <div class="receipt">
+            <div class="center bold">ONLINE CANTEEN</div>
+            <div class="center">MALL-STYLE RECEIPT</div>
+            <div class="center muted">57mm / 2.25in Thermal</div>
+            <div class="line"></div>
+
+            <div class="row"><span class="label">RECEIPT#</span><span class="value bold">${sequentialNumber}</span></div>
+            <div class="row"><span class="label">DATE</span><span class="value">${createdAt}</span></div>
+            <div class="row"><span class="label">STATUS</span><span class="value">${statusText}</span></div>
+            <div class="row"><span class="label">PAYMENT</span><span class="value">${paymentMethod.toUpperCase()} / ${paymentStatus.toUpperCase()}</span></div>
+
+            <div class="line"></div>
+            <div class="bold">CUSTOMER</div>
+            <div>${esc(buyerName)}</div>
+            <div>${esc(buyerContact)}</div>
+            <div>${esc(buyerAddress)}</div>
+
+            <div class="line"></div>
+            <div class="bold">ITEMS</div>
+            ${safeItems.length > 0 ? safeItems.map(it => `
+              <div class="item">
+                <div class="item-top">
+                  <div class="item-name">${it.name}</div>
+                  <div class="item-total bold">P${(it.price * it.qty).toFixed(2)}</div>
+                </div>
+                <div class="item-sub">${it.qty} x P${it.price.toFixed(2)}</div>
+              </div>
+            `).join('') : '<div>No items</div>'}
+
+            <div class="line"></div>
+            <div class="row big-total"><span>TOTAL</span><span>P${total.toFixed(2)}</span></div>
+            <div class="line"></div>
+            <div class="center">Thank you!</div>
+            <div class="center muted">For rider and dispatch copy</div>
           </div>
-          <div class="total">Total Amount: ₱${Number(order.total).toFixed(2)}</div>
         </body>
         </html>
       `);
       printWindow.document.close();
-      printWindow.print();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 150);
     }
 
     /* -------- View User Profile -------- */
