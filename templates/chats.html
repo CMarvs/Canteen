@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Online Canteen - Chats</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/chats.css">
+</head>
+<body class="user-mobile-lock">
+  <header class="topbar">
+    <div class="brand">Online Canteen</div>
+    <nav class="nav">
+      <a href="order.html">Menu</a>
+      <a href="chats.html" class="active">Chats</a>
+      <a href="orders.html">My Orders</a>
+      <a href="profile.html">Profile</a>
+      <a href="#" onclick="logoutUser()">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="chats-wrap">
+      <div class="chats-toolbar">
+        <h2 class="headline" style="margin: 0;">Chat with the Rider</h2>
+        <button class="btn small" id="refreshChatsBtn" type="button">Refresh</button>
+      </div>
+      <div id="chatSummaryList" class="chat-summary-list">
+        <div class="card muted center">Loading chats...</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function loadScript() {
+      if (window.scriptJsLoaded || window.scriptJsLoading) return;
+      window.scriptJsLoading = true;
+      const script = document.createElement('script');
+      script.src = '/static/script.js?v=' + Date.now();
+      script.onload = function() {
+        window.scriptJsLoaded = true;
+        window.scriptJsLoading = false;
+        initializeChatsPage();
+      };
+      script.onerror = function() {
+        window.scriptJsLoading = false;
+        alert('Failed to load scripts. Please refresh.');
+      };
+      document.head.appendChild(script);
+    })();
+
+    if (window.scriptJsLoaded) {
+      initializeChatsPage();
+    }
+
+    let chatsPollInterval = null;
+
+    function getCurrentUserSafe() {
+      if (typeof getCurrent === 'function') {
+        try {
+          const cur = getCurrent();
+          if (cur) return cur;
+        } catch (e) {}
+      }
+      try {
+        const raw = localStorage.getItem('canteen_current_v2');
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatDateTime(dateStr) {
+      if (!dateStr) return 'No timestamp';
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return 'No timestamp';
+      return d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    async function renderChatsSummary() {
+      const listEl = document.getElementById('chatSummaryList');
+      const cur = getCurrentUserSafe();
+      if (!listEl) return;
+
+      if (!cur || cur.role !== 'user') {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      try {
+        const ordersRes = await fetch(`${API_BASE}/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!ordersRes.ok) {
+          listEl.innerHTML = '<div class="card muted center">Failed to load chats.</div>';
+          return;
+        }
+
+        const allOrders = await ordersRes.json();
+        const myOrders = Array.isArray(allOrders) ? allOrders.filter(o => Number(o.user_id) === Number(cur.id)) : [];
+
+        if (myOrders.length === 0) {
+          listEl.innerHTML = '<div class="card muted center">No chats yet. Place an order first.</div>';
+          return;
+        }
+
+        const summaries = await Promise.all(myOrders.map(async (o) => {
+          try {
+            const msgRes = await fetch(`${API_BASE}/orders/${o.id}/messages?t=${Date.now()}`, {
+              cache: 'no-cache',
+              headers: { 'Cache-Control': 'no-cache' }
+            });
+            if (!msgRes.ok) {
+              return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0 };
+            }
+            const msgs = await msgRes.json();
+            const arr = Array.isArray(msgs) ? msgs : [];
+            const unread = arr.filter(m => m && m.sender_role === 'admin' && !m.is_read).length;
+            const last = arr.length > 0 ? arr[arr.length - 1] : null;
+            const lastText = last
+              ? (last.message ? String(last.message) : (last.image ? 'Image sent' : 'New message'))
+              : 'No messages yet.';
+            const lastAt = last && last.created_at ? new Date(last.created_at).getTime() : 0;
+            return { order: o, unread, lastText, lastAt, lastCreatedAt: last ? last.created_at : null };
+          } catch (e) {
+            return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0, lastCreatedAt: null };
+          }
+        }));
+
+        summaries.sort((a, b) => b.lastAt - a.lastAt);
+
+        listEl.innerHTML = summaries.map((s) => {
+          const unreadBadge = s.unread > 0 ? `<span class="chat-unread-badge">${s.unread}</span>` : '';
+          return `
+            <div class="chat-summary-card">
+              <div class="chat-summary-head">
+                <div class="chat-summary-order">Order #${Number(s.order.id)}</div>
+                ${unreadBadge}
+              </div>
+              <div class="chat-summary-meta">
+                Status: ${escapeHtml(s.order.status || 'Pending')} • ${formatDateTime(s.lastCreatedAt)}
+              </div>
+              <div class="chat-summary-preview">${escapeHtml(s.lastText)}</div>
+              <div class="chat-summary-actions">
+                <button class="btn small" type="button" onclick="openChatBox(${Number(s.order.id)}, 'user')">Open Chat</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        listEl.innerHTML = '<div class="card muted center">Failed to load chats.</div>';
+      }
+    }
+
+    function initializeChatsPage() {
+      const cur = getCurrentUserSafe();
+      if (!cur || cur.role !== 'user') {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      if (typeof ensureLoggedIn === 'function') {
+        try { ensureLoggedIn('user'); } catch (e) {}
+      }
+
+      const refreshBtn = document.getElementById('refreshChatsBtn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', renderChatsSummary);
+      }
+
+      renderChatsSummary();
+      if (chatsPollInterval) clearInterval(chatsPollInterval);
+      chatsPollInterval = setInterval(renderChatsSummary, 20000);
+      window.addEventListener('beforeunload', () => {
+        if (chatsPollInterval) clearInterval(chatsPollInterval);
+      });
+    }
+  </script>
+</body>
+</html>

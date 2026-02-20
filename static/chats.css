@@ -1,0 +1,106 @@
+/* ===== User Chats Page ===== */
+
+.chats-wrap {
+  max-width: 430px;
+  margin: 0 auto;
+}
+
+.chats-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.chat-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-summary-card {
+  background: var(--card);
+  border: 1px solid #ead9c8;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.chat-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chat-summary-order {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.chat-unread-badge {
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+}
+
+.chat-summary-meta {
+  font-size: 0.82rem;
+  color: #6d6058;
+  margin-bottom: 6px;
+}
+
+.chat-summary-preview {
+  font-size: 0.88rem;
+  color: #3b2f2f;
+  background: #fff8f1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Mobile lock */
+body.user-mobile-lock {
+  overflow-x: hidden;
+}
+
+body.user-mobile-lock .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 3000;
+  padding: 12px 14px;
+}
+
+body.user-mobile-lock .brand {
+  font-size: 1rem;
+}
+
+body.user-mobile-lock .nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+body.user-mobile-lock .nav a {
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+body.user-mobile-lock main.container {
+  max-width: 430px;
+  margin: 10px auto 16px auto;
+  padding: 10px;
+}

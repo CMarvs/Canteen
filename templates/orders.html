@@ -12,6 +12,7 @@
     <div class="brand">🍽️ Online Canteen</div>
     <nav class="nav">
       <a href="order.html">Menu</a>
+      <a href="chats.html">Chats</a>
       <a href="orders.html" class="active">My Orders</a>
       <a href="profile.html">Profile</a>
       <a href="#" onclick="logoutUser()">Logout</a>
@@ -39,16 +40,6 @@
     <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
   </main>
   
-  <div id="userChatDock" class="user-chat-dock">
-    <button id="userChatToggle" class="user-chat-toggle" type="button">
-      <span>💬 Chat with the Rider</span>
-      <span id="userChatUnreadBadge" class="user-chat-badge">0</span>
-    </button>
-    <div id="userChatPanel" class="user-chat-panel">
-      <div id="userChatList" class="user-chat-empty">Loading chats...</div>
-    </div>
-  </div>
-
   <script>
     // Load script.js with cache-busting and wait for it to load
     (function() {
@@ -465,7 +456,6 @@
       if (typeof startChatNotificationPolling === 'function') {
         startChatNotificationPolling();
       }
-      initUserChatDock();
       // Define checkRefundNotifications function (before calling it)
       async function checkRefundNotifications() {
         try {
