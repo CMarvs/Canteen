@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/orders.css">
 </head>
-<body>
+<body class="user-mobile-lock">
   <header class="topbar">
     <div class="brand">🍽️ Online Canteen</div>
     <nav class="nav">
@@ -38,6 +38,16 @@
     <div id="ordersList" class="orders-list"></div>
     <div id="noOrders" class="muted center" style="display:none">You have no orders yet.</div>
   </main>
+  
+  <div id="userChatDock" class="user-chat-dock">
+    <button id="userChatToggle" class="user-chat-toggle" type="button">
+      <span>💬 Chat with the Rider</span>
+      <span id="userChatUnreadBadge" class="user-chat-badge">0</span>
+    </button>
+    <div id="userChatPanel" class="user-chat-panel">
+      <div id="userChatList" class="user-chat-empty">Loading chats...</div>
+    </div>
+  </div>
 
   <script>
     // Load script.js with cache-busting and wait for it to load
@@ -80,6 +90,7 @@
     // Define initialization function that will be called after script.js loads
     function initializeOrdersPage() {
       let userOrderPollInterval = null;
+      let userChatDockPollInterval = null;
       
       // Check for order updates in real-time
       async function checkUserOrderUpdates() {
@@ -217,7 +228,7 @@
         <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
           <div style="flex: 1;">
             <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-              💬 New Message from Admin
+              💬 New Message from Rider
             </div>
             <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
               Order #${orderNumber}
@@ -266,6 +277,113 @@
           clearInterval(chatNotificationInterval);
           chatNotificationInterval = null;
         }
+      }
+
+      function escapeChatText(text) {
+        return String(text || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function toggleUserChatPanel() {
+        const panel = document.getElementById('userChatPanel');
+        if (!panel) return;
+        panel.classList.toggle('open');
+        if (panel.classList.contains('open')) {
+          refreshUserChatDock();
+        }
+      }
+
+      async function refreshUserChatDock() {
+        try {
+          if (typeof getCurrent !== 'function') return;
+          const cur = getCurrent();
+          const listEl = document.getElementById('userChatList');
+          const badgeEl = document.getElementById('userChatUnreadBadge');
+          if (!cur || !cur.id || !listEl || !badgeEl) return;
+
+          const ordersRes = await fetch(`${API_BASE}/orders?t=${Date.now()}`, {
+            cache: 'no-cache',
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          if (!ordersRes.ok) {
+            listEl.innerHTML = '<div class="user-chat-empty">Failed to load chats.</div>';
+            return;
+          }
+
+          const allOrders = await ordersRes.json();
+          const myOrders = Array.isArray(allOrders) ? allOrders.filter(o => Number(o.user_id) === Number(cur.id)) : [];
+          if (myOrders.length === 0) {
+            badgeEl.textContent = '0';
+            listEl.innerHTML = '<div class="user-chat-empty">No order chats yet.</div>';
+            return;
+          }
+
+          const summaries = await Promise.all(myOrders.map(async (o) => {
+            try {
+              const msgRes = await fetch(`${API_BASE}/orders/${o.id}/messages?t=${Date.now()}`, {
+                cache: 'no-cache',
+                headers: { 'Cache-Control': 'no-cache' }
+              });
+              if (!msgRes.ok) return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0 };
+              const msgs = await msgRes.json();
+              const arr = Array.isArray(msgs) ? msgs : [];
+              const unread = arr.filter(m => m && m.sender_role === 'admin' && !m.is_read).length;
+              const last = arr.length > 0 ? arr[arr.length - 1] : null;
+              const lastText = last ? (last.message ? String(last.message) : (last.image ? 'Image sent' : 'New message')) : 'No messages yet.';
+              const lastAt = last && last.created_at ? new Date(last.created_at).getTime() : 0;
+              return { order: o, unread, lastText, lastAt };
+            } catch (e) {
+              return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0 };
+            }
+          }));
+
+          summaries.sort((a, b) => b.lastAt - a.lastAt);
+          const totalUnread = summaries.reduce((sum, s) => sum + Number(s.unread || 0), 0);
+          badgeEl.textContent = String(totalUnread);
+
+          listEl.innerHTML = summaries.map((s) => {
+            const orderNo = Number(s.order.id);
+            const unreadBadge = s.unread > 0 ? `<span class="user-chat-item-unread">${s.unread}</span>` : '';
+            return `
+              <div class="user-chat-item" data-order-id="${orderNo}">
+                <div class="user-chat-item-top">
+                  <div class="user-chat-item-order">Order #${orderNo}</div>
+                  ${unreadBadge}
+                </div>
+                <div class="user-chat-item-preview">${escapeChatText(s.lastText)}</div>
+              </div>
+            `;
+          }).join('');
+
+          document.querySelectorAll('.user-chat-item').forEach((el) => {
+            el.addEventListener('click', () => {
+              const oid = Number(el.getAttribute('data-order-id'));
+              if (oid && typeof openChatBox === 'function') {
+                openChatBox(oid, 'user');
+                document.getElementById('userChatPanel')?.classList.remove('open');
+                setTimeout(refreshUserChatDock, 1200);
+              }
+            });
+          });
+        } catch (e) {
+          const listEl = document.getElementById('userChatList');
+          if (listEl) listEl.innerHTML = '<div class="user-chat-empty">Failed to load chats.</div>';
+        }
+      }
+
+      function initUserChatDock() {
+        const toggleBtn = document.getElementById('userChatToggle');
+        if (toggleBtn && !toggleBtn.dataset.bound) {
+          toggleBtn.addEventListener('click', toggleUserChatPanel);
+          toggleBtn.dataset.bound = '1';
+        }
+        refreshUserChatDock();
+        if (userChatDockPollInterval) clearInterval(userChatDockPollInterval);
+        userChatDockPollInterval = setInterval(refreshUserChatDock, 20000);
       }
     
       // Check authentication - use fallback to avoid ensureLoggedIn issues
@@ -347,6 +465,7 @@
       if (typeof startChatNotificationPolling === 'function') {
         startChatNotificationPolling();
       }
+      initUserChatDock();
       // Define checkRefundNotifications function (before calling it)
       async function checkRefundNotifications() {
         try {
@@ -428,6 +547,7 @@
         if (typeof checkUnreadChatMessages === 'function') {
           checkUnreadChatMessages();
         }
+        refreshUserChatDock();
         startChatNotificationPolling();
       } else {
         stopUserOrderPolling();
@@ -446,6 +566,7 @@
       if (typeof checkUnreadChatMessages === 'function') {
         checkUnreadChatMessages();
       }
+      refreshUserChatDock();
       if (typeof startChatNotificationPolling === 'function') {
         startChatNotificationPolling();
       }
@@ -455,6 +576,10 @@
       window.addEventListener('blur', () => {
         stopUserOrderPolling();
         stopChatNotificationPolling();
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (userChatDockPollInterval) clearInterval(userChatDockPollInterval);
       });
     }
   </script>

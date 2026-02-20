@@ -95,4 +95,141 @@
   }
 }
 
+/* ===== User Mobile Lock ===== */
+body.user-mobile-lock {
+  overflow-x: hidden;
+}
+
+body.user-mobile-lock .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 3000;
+  padding: 12px 14px;
+}
+
+body.user-mobile-lock .brand {
+  font-size: 1rem;
+}
+
+body.user-mobile-lock .nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+body.user-mobile-lock .nav a {
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+body.user-mobile-lock main.container {
+  max-width: 430px;
+  margin: 10px auto 84px auto;
+  padding: 10px;
+}
+
+/* ===== User Chat Dock ===== */
+.user-chat-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 10px;
+  width: min(430px, calc(100vw - 20px));
+  z-index: 5000;
+}
+
+.user-chat-toggle {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+  color: #fff;
+  padding: 12px 14px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.user-chat-badge {
+  background: #e74c3c;
+  color: #fff;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  padding: 0 8px;
+}
+
+.user-chat-panel {
+  margin-top: 8px;
+  background: #fff;
+  border: 1px solid #e9d7c3;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  max-height: 52vh;
+  overflow: auto;
+  display: none;
+}
+
+.user-chat-panel.open {
+  display: block;
+}
+
+.user-chat-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0e3d4;
+  cursor: pointer;
+}
+
+.user-chat-item:last-child {
+  border-bottom: none;
+}
+
+.user-chat-item:hover {
+  background: #fff8f1;
+}
+
+.user-chat-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.user-chat-item-order {
+  font-weight: 700;
+  color: #5a2c0e;
+}
+
+.user-chat-item-unread {
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+}
+
+.user-chat-item-preview {
+  font-size: 0.82rem;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-chat-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: #777;
+  font-size: 0.88rem;
+}
+
 

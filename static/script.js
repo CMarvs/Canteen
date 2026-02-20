@@ -1701,7 +1701,7 @@ function orderCardHtmlForUser(o){
           ${o.status === 'Delivered' ? `
           <button class="btn small" onclick="openRatingModal()" style="background: #ffc107; color: #333; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">⭐ Rate Service</button>
           ` : ''}
-          <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with Admin</button>
+          <button class="btn small" onclick="openChatBox(${o.id}, 'user')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat with the Rider</button>
         </div>
       </div>
     </div>
@@ -2605,7 +2605,7 @@ async function openChatBox(orderId, userType) {
     <div style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
         <strong>💬 Chat - Order #${displayOrderNumber}</strong>
-        <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Admin Support'}</div>
+        <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Rider Support'}</div>
       </div>
       <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
     </div>
