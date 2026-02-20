@@ -6,8 +6,81 @@
   <title>Admin Dashboard — Online Canteen</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/admin.css">
+  <style>
+    /* Admin page mobile lock (phone-width layout) */
+    body.admin-mobile-lock {
+      overflow-x: hidden;
+    }
+    body.admin-mobile-lock main {
+      max-width: 430px !important;
+      margin: 12px auto !important;
+      padding: 10px !important;
+    }
+    body.admin-mobile-lock .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 2000;
+      padding: 12px 14px;
+    }
+    body.admin-mobile-lock .brand {
+      font-size: 1rem;
+    }
+    body.admin-mobile-lock #notificationContainer {
+      right: 10px !important;
+      top: 72px !important;
+      max-width: calc(100vw - 20px) !important;
+    }
+    body.admin-mobile-lock .stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 10px !important;
+      margin-bottom: 12px !important;
+    }
+    body.admin-mobile-lock .stat-card {
+      padding: 12px !important;
+    }
+    body.admin-mobile-lock .stat-number {
+      font-size: 1.2rem !important;
+      margin: 4px 0 !important;
+    }
+    body.admin-mobile-lock .stat-label {
+      font-size: 0.78rem !important;
+    }
+    body.admin-mobile-lock .content-card {
+      padding: 12px !important;
+      border-radius: 12px !important;
+    }
+    body.admin-mobile-lock .tab-buttons {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px !important;
+      margin-bottom: 12px !important;
+    }
+    body.admin-mobile-lock .tab-buttons button {
+      min-width: 0 !important;
+      padding: 10px 8px !important;
+      font-size: 0.9rem !important;
+    }
+    body.admin-mobile-lock .search-input {
+      min-width: 0 !important;
+      width: 100% !important;
+    }
+    body.admin-mobile-lock .filter-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    body.admin-mobile-lock .filter-select {
+      width: 100%;
+    }
+    /* Force wide inline grids into single-column on admin page */
+    body.admin-mobile-lock div[style*="grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr"] {
+      grid-template-columns: 1fr !important;
+    }
+    body.admin-mobile-lock div[style*="grid-template-columns: 1fr 1fr; gap: 20px"] {
+      grid-template-columns: 1fr !important;
+    }
+  </style>
 </head>
-<body>
+<body class="admin-mobile-lock">
   <header class="topbar">
     <div class="brand">🍽️ Online Canteen Admin</div>
     <nav class="nav">
