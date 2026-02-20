@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/order.css">
 </head>
-<body>
+<body class="user-mobile-lock">
   <header class="topbar">
     <div class="brand">🍽️ Online Canteen</div>
     <nav class="nav">
@@ -90,6 +90,16 @@
       </div>
     </section>
   </main>
+
+  <div id="userChatDock" class="user-chat-dock">
+    <button id="userChatToggle" class="user-chat-toggle" type="button">
+      <span>💬 Order Chats</span>
+      <span id="userChatUnreadBadge" class="user-chat-badge">0</span>
+    </button>
+    <div id="userChatPanel" class="user-chat-panel">
+      <div id="userChatList" class="user-chat-empty">Loading chats...</div>
+    </div>
+  </div>
 
   <script>
     // Load script.js with better error handling - prevent duplicate loads
@@ -367,6 +377,143 @@
           console.warn('Error checking cart:', e);
         }
       }
+
+      // Initialize quick chat dock for all user orders
+      initUserChatDock();
+    }
+
+    let userChatPollInterval = null;
+
+    function getSessionUserSafe() {
+      if (typeof getCurrent === 'function') {
+        try {
+          const cur = getCurrent();
+          if (cur && cur.id) return cur;
+        } catch (e) {}
+      }
+      try {
+        const raw = localStorage.getItem('canteen_current_v2');
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function escapeChatText(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function toggleUserChatPanel() {
+      const panel = document.getElementById('userChatPanel');
+      if (!panel) return;
+      panel.classList.toggle('open');
+      if (panel.classList.contains('open')) {
+        refreshUserChatDock();
+      }
+    }
+
+    async function refreshUserChatDock() {
+      const cur = getSessionUserSafe();
+      const listEl = document.getElementById('userChatList');
+      const badgeEl = document.getElementById('userChatUnreadBadge');
+      if (!cur || !cur.id || !listEl || !badgeEl || typeof API_BASE === 'undefined') return;
+
+      try {
+        const ordersRes = await fetch(`${API_BASE}/orders?t=${Date.now()}`, {
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!ordersRes.ok) {
+          listEl.innerHTML = '<div class="user-chat-empty">Failed to load chats.</div>';
+          return;
+        }
+        const allOrders = await ordersRes.json();
+        const myOrders = Array.isArray(allOrders)
+          ? allOrders.filter(o => Number(o.user_id) === Number(cur.id))
+          : [];
+
+        if (myOrders.length === 0) {
+          badgeEl.textContent = '0';
+          listEl.innerHTML = '<div class="user-chat-empty">No order chats yet.</div>';
+          return;
+        }
+
+        const summaries = await Promise.all(myOrders.map(async (o) => {
+          try {
+            const msgRes = await fetch(`${API_BASE}/orders/${o.id}/messages?t=${Date.now()}`, {
+              cache: 'no-cache',
+              headers: { 'Cache-Control': 'no-cache' }
+            });
+            if (!msgRes.ok) {
+              return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0 };
+            }
+            const msgs = await msgRes.json();
+            const arr = Array.isArray(msgs) ? msgs : [];
+            const unread = arr.filter(m => m && m.sender_role === 'admin' && !m.is_read).length;
+            const last = arr.length > 0 ? arr[arr.length - 1] : null;
+            const lastText = last
+              ? (last.message ? String(last.message) : (last.image ? 'Image sent' : 'New message'))
+              : 'No messages yet.';
+            const lastAt = last && last.created_at ? new Date(last.created_at).getTime() : 0;
+            return { order: o, unread, lastText, lastAt };
+          } catch (e) {
+            return { order: o, unread: 0, lastText: 'No messages yet.', lastAt: 0 };
+          }
+        }));
+
+        summaries.sort((a, b) => b.lastAt - a.lastAt);
+        const totalUnread = summaries.reduce((sum, s) => sum + Number(s.unread || 0), 0);
+        badgeEl.textContent = String(totalUnread);
+
+        listEl.innerHTML = summaries.map((s) => {
+          const orderNo = Number(s.order.id);
+          const unreadBadge = s.unread > 0
+            ? `<span class="user-chat-item-unread">${s.unread}</span>`
+            : '';
+          return `
+            <div class="user-chat-item" data-order-id="${orderNo}">
+              <div class="user-chat-item-top">
+                <div class="user-chat-item-order">Order #${orderNo}</div>
+                ${unreadBadge}
+              </div>
+              <div class="user-chat-item-preview">${escapeChatText(s.lastText)}</div>
+            </div>
+          `;
+        }).join('');
+
+        document.querySelectorAll('.user-chat-item').forEach((el) => {
+          el.addEventListener('click', () => {
+            const oid = Number(el.getAttribute('data-order-id'));
+            if (oid && typeof openChatBox === 'function') {
+              openChatBox(oid, 'user');
+              document.getElementById('userChatPanel')?.classList.remove('open');
+              setTimeout(refreshUserChatDock, 1200);
+            }
+          });
+        });
+      } catch (e) {
+        listEl.innerHTML = '<div class="user-chat-empty">Failed to load chats.</div>';
+      }
+    }
+
+    function initUserChatDock() {
+      const toggleBtn = document.getElementById('userChatToggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', toggleUserChatPanel);
+      }
+      refreshUserChatDock();
+      if (userChatPollInterval) {
+        clearInterval(userChatPollInterval);
+      }
+      userChatPollInterval = setInterval(refreshUserChatDock, 20000);
+      window.addEventListener('beforeunload', () => {
+        if (userChatPollInterval) clearInterval(userChatPollInterval);
+      });
     }
     
     // Handle payment method selection
