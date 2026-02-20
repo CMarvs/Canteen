@@ -76,7 +76,7 @@ body.user-mobile-lock {
   overflow-x: hidden;
 }
 
-body.user-mobile-lock .topbar {
+body.chats-page .topbar {
   position: fixed;
   top: 0;
   left: 0;
@@ -84,34 +84,46 @@ body.user-mobile-lock .topbar {
   z-index: 4000;
   padding: 10px 12px;
   background: var(--card);
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
 }
 
-body.user-mobile-lock .brand {
+body.chats-page .brand {
   font-size: 1rem;
+  flex: 0 0 auto;
+  margin-right: 10px;
 }
 
-body.user-mobile-lock .nav {
+body.chats-page .nav {
   display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  white-space: nowrap;
+  max-width: 72vw;
 }
 
-body.user-mobile-lock .nav::-webkit-scrollbar {
+body.chats-page .nav::-webkit-scrollbar {
   display: none;
 }
 
-body.user-mobile-lock .nav a {
+body.chats-page .nav a {
   text-align: center;
   padding: 8px 10px;
   font-size: 0.84rem;
   flex: 0 0 auto;
   white-space: nowrap;
+  margin-left: 0 !important;
 }
 
-body.user-mobile-lock main.container {
+body.chats-page main.container {
   max-width: 430px;
   margin: 86px auto 16px auto;
   padding: 10px;
