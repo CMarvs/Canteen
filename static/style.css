@@ -500,6 +500,19 @@ input:focus, textarea:focus, select:focus {
     font-size: 14px;
     padding: 4px 0;
   }
+  body.user-mobile-lock .topbar {
+    align-items: center;
+  }
+  body.user-mobile-lock .brand {
+    width: 100%;
+    text-align: center;
+  }
+  body.user-mobile-lock .topbar .nav {
+    justify-content: center;
+  }
+  body.user-mobile-lock .topbar .nav a {
+    margin-right: 0;
+  }
   .container { 
     padding: 12px; 
   }
@@ -552,6 +565,19 @@ input:focus, textarea:focus, select:focus {
   .topbar .nav a { 
     margin-left: 0; 
     margin-right: 16px; 
+  }
+  body.user-mobile-lock .topbar {
+    align-items: center;
+  }
+  body.user-mobile-lock .brand {
+    width: 100%;
+    text-align: center;
+  }
+  body.user-mobile-lock .topbar .nav {
+    justify-content: center;
+  }
+  body.user-mobile-lock .topbar .nav a {
+    margin-right: 0;
   }
   .container { 
     padding: 16px; 
