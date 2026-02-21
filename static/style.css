@@ -39,6 +39,62 @@ body { background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; 
 .nav a { margin-left:18px; text-decoration:none; color:var(--text); transition:0.2s; font-weight:500; white-space: nowrap; }
 .nav a:hover, .nav a.active { color:var(--primary); text-shadow: 0 0 6px rgba(212,163,115,0.35); }
 
+/* Unified user navbar lock across user pages */
+body.user-mobile-lock {
+  overflow-x: hidden;
+}
+
+body.user-mobile-lock .topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4000;
+  padding: 10px 12px;
+  background: var(--card);
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+}
+
+body.user-mobile-lock .brand {
+  font-size: 1rem;
+  flex: 0 0 auto;
+  margin-right: 10px;
+}
+
+body.user-mobile-lock .nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  white-space: nowrap;
+  max-width: 72vw;
+}
+
+body.user-mobile-lock .nav::-webkit-scrollbar {
+  display: none;
+}
+
+body.user-mobile-lock .nav a {
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-left: 0;
+}
+
+body.user-mobile-lock main.container {
+  margin-top: 86px;
+}
+
 .container { flex:1; padding:24px; max-width:900px; margin:0 auto; width:100%; box-sizing:border-box; }
 .headline { font-size:22px; font-weight:600; margin-bottom:16px; color:var(--primary); }
 .card { background:var(--card); padding:20px; border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; }

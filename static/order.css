@@ -200,10 +200,12 @@ body.user-mobile-lock {
 }
 
 body.user-mobile-lock .topbar {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 3000;
-  padding: 12px 14px;
+  left: 0;
+  right: 0;
+  z-index: 4000;
+  padding: 10px 12px;
 }
 
 body.user-mobile-lock .brand {
@@ -211,20 +213,25 @@ body.user-mobile-lock .brand {
 }
 
 body.user-mobile-lock .nav {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  max-width: 72vw;
 }
 
 body.user-mobile-lock .nav a {
   text-align: center;
   padding: 8px 10px;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
+  flex: 0 0 auto;
 }
 
 body.user-mobile-lock main.container {
   max-width: 430px;
-  margin: 10px auto 16px auto;
+  margin: 86px auto 16px auto;
   padding: 10px;
   display: flex;
   flex-direction: column;
