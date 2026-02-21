@@ -82,49 +82,47 @@ body.chats-page .topbar {
   left: 0;
   right: 0;
   z-index: 4000;
-  padding: 10px 12px;
+  padding: 10px 12px 12px;
   background: var(--card);
   display: flex !important;
-  flex-wrap: nowrap !important;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
+  justify-content: center;
+  gap: 8px;
+  min-height: 98px;
+  border-bottom: 1px solid #f0e4d6;
 }
 
 body.chats-page .brand {
   font-size: 1rem;
-  flex: 0 0 auto;
-  margin-right: 10px;
+  margin: 0;
+  text-align: center;
 }
 
 body.chats-page .nav {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  white-space: nowrap;
-  max-width: 72vw;
-}
-
-body.chats-page .nav::-webkit-scrollbar {
-  display: none;
+  width: 100%;
+  max-width: 460px;
 }
 
 body.chats-page .nav a {
   text-align: center;
-  padding: 8px 10px;
-  font-size: 0.84rem;
-  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 0.83rem;
+  line-height: 1.2;
   white-space: nowrap;
   margin-left: 0 !important;
+  border: 1px solid #ead9c8;
+  border-radius: 999px;
+  background: #fffaf3;
 }
 
 body.chats-page main.container {
   max-width: 430px;
-  margin: 86px auto 16px auto;
+  margin: 122px auto 16px auto;
   padding: 10px;
 }
