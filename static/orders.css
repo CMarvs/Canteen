@@ -101,50 +101,14 @@ body.user-mobile-lock {
 }
 
 body.user-mobile-lock .topbar {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  z-index: 4000;
-  padding: 10px 12px 12px;
-  display: flex !important;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 98px;
-}
-
-body.user-mobile-lock .brand {
-  font-size: 1rem;
-  margin: 0;
-  text-align: center;
-}
-
-body.user-mobile-lock .nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  max-width: 460px;
-}
-
-body.user-mobile-lock .nav a {
-  text-align: center;
-  padding: 7px 12px;
-  font-size: 0.83rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  border: 1px solid #ead9c8;
-  border-radius: 999px;
-  background: #fffaf3;
+  z-index: 100;
 }
 
 body.user-mobile-lock main.container {
   max-width: 430px;
-  margin: 122px auto 16px auto;
+  margin: 16px auto;
   padding: 10px;
 }
 

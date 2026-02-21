@@ -77,52 +77,13 @@ body.user-mobile-lock {
 }
 
 body.chats-page .topbar {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  z-index: 4000;
-  padding: 10px 12px 12px;
-  background: var(--card);
-  display: flex !important;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 98px;
-  border-bottom: 1px solid #f0e4d6;
-}
-
-body.chats-page .brand {
-  font-size: 1rem;
-  margin: 0;
-  text-align: center;
-}
-
-body.chats-page .nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  max-width: 460px;
-}
-
-body.chats-page .nav a {
-  text-align: center;
-  padding: 7px 12px;
-  font-size: 0.83rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  margin-left: 0 !important;
-  border: 1px solid #ead9c8;
-  border-radius: 999px;
-  background: #fffaf3;
+  z-index: 100;
 }
 
 body.chats-page main.container {
   max-width: 430px;
-  margin: 122px auto 16px auto;
+  margin: 16px auto;
   padding: 10px;
 }

@@ -1628,11 +1628,7 @@ let userAllOrders = [];
 }
 
 function orderCardHtmlForUser(o){
-  // Get sequential order number using global function (consistent with admin view)
-  const sequentialNumber = getOrderNumber(o.id);
-  const isActive = o.status !== 'Delivered' && o.status !== 'Cancelled';
-  const displayOrderNumber = isActive ? sequentialNumber : o.id;
-  const orderNumberLabel = isActive ? `Order #${sequentialNumber}` : `Order #${o.id} (Completed)`;
+  const orderTitle = 'Order details';
   
   // Get payment information
   const paymentMethod = o.payment_method || 'cash';
@@ -1676,7 +1672,7 @@ function orderCardHtmlForUser(o){
     <div class="order-card" ${isRefunded ? 'style="border: 2px solid #4CAF50; background: #f0fdf4;"' : ''}>
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <strong>${orderNumberLabel}</strong>
+          <strong>${orderTitle}</strong>
           <div class="muted small">${new Date(o.created_at).toLocaleString()}</div>
           <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">
             ${paymentMethodIcon} ${paymentMethodName} ${paymentStatusBadge}
@@ -1769,7 +1765,7 @@ async function editUserOrder(orderId) {
         <button onclick="document.getElementById('editUserOrderModal').remove()" 
                 style="position: absolute; top: 12px; right: 12px; background: #f44336; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-size: 18px; font-weight: bold;">×</button>
         
-        <h2 style="margin: 0 0 20px 0; color: #8b4513;">✏️ Edit Order #${orderId}</h2>
+        <h2 style="margin: 0 0 20px 0; color: #8b4513;">✏️ Edit Order</h2>
         
         <form id="editUserOrderForm" onsubmit="saveUserOrderEdit(event, ${orderId})">
           <div style="margin-bottom: 16px;">
@@ -2034,7 +2030,7 @@ async function cancelUserOrder(orderId) {
     return;
   }
 
-  if (!confirm(`⚠️ Are you sure you want to cancel Order #${orderId}?\n\nThis action cannot be undone and your items will be restocked.`)) {
+  if (!confirm(`⚠️ Are you sure you want to cancel this order?\n\nThis action cannot be undone and your items will be restocked.`)) {
     return;
   }
 
@@ -2595,16 +2591,10 @@ async function openChatBox(orderId, userType) {
     overflow: hidden;
   `;
 
-  // Get sequential order number for display
-  const orderNumber = getOrderNumber(orderId);
-  const isActive = globalAllOrders.find(o => o.id === orderId)?.status !== 'Delivered' && 
-                   globalAllOrders.find(o => o.id === orderId)?.status !== 'Cancelled';
-  const displayOrderNumber = isActive ? orderNumber : orderId;
-  
   chatBox.innerHTML = `
     <div style="background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%); color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <strong>💬 Chat - Order #${displayOrderNumber}</strong>
+        <strong>💬 Chat with Rider</strong>
         <div style="font-size: 0.85rem; opacity: 0.9; margin-top: 4px;">${userType === 'admin' ? 'Customer Support' : 'Rider Support'}</div>
       </div>
       <button onclick="closeChatBox(${orderId})" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; font-weight: bold; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">×</button>
@@ -2666,14 +2656,10 @@ async function openChatBox(orderId, userType) {
       // Only poll if chat box is visible (saves resources)
       if (chatBox && chatBox.style.display !== 'none') {
         loadChatMessages(orderId, userType);
-        // Update chat box title with current order number (in case order status changed)
-        const orderNumber = getOrderNumber(orderId);
-        const order = globalAllOrders.find(o => o.id === orderId);
-        const isActive = order && order.status !== 'Delivered' && order.status !== 'Cancelled';
-        const displayOrderNumber = isActive ? orderNumber : orderId;
+        // Keep a consistent, generic user-facing chat title
         const header = chatBox.querySelector('div > div > strong');
         if (header) {
-          header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
+          header.textContent = '💬 Chat with Rider';
         }
       }
     }, 15000); // Poll every 15 seconds (reduced frequency to prevent timeout spam)
@@ -2733,16 +2719,12 @@ async function loadChatMessages(orderId, userType, retryCount = 0) {
   // Maximum retries for 502 errors
   const MAX_RETRIES = 3;
   
-  // Update chat box title with current order number
+  // Keep a consistent, generic user-facing chat title
   const chatBox = document.getElementById(`chatBox_${orderId}`);
   if (chatBox) {
-    const orderNumber = getOrderNumber(orderId);
-    const order = globalAllOrders.find(o => o.id === orderId);
-    const isActive = order && order.status !== 'Delivered' && order.status !== 'Cancelled';
-    const displayOrderNumber = isActive ? orderNumber : orderId;
     const header = chatBox.querySelector('div > div > strong');
     if (header) {
-      header.textContent = `💬 Chat - Order #${displayOrderNumber}`;
+      header.textContent = '💬 Chat with Rider';
     }
   }
   

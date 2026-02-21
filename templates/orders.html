@@ -213,7 +213,6 @@
       `;
 
       const messageText = (message.message || '').substring(0, 100);
-      const orderNumber = order.id;
       
       notification.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
@@ -222,7 +221,7 @@
               💬 New Message from Rider
             </div>
             <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
-              Order #${orderNumber}
+              Recent rider message
             </div>
             <div style="font-size: 0.85rem; opacity: 0.85; margin-top: 4px;">
               ${messageText}${messageText.length >= 100 ? '...' : ''}
@@ -342,7 +341,7 @@
             return `
               <div class="user-chat-item" data-order-id="${orderNo}">
                 <div class="user-chat-item-top">
-                  <div class="user-chat-item-order">Order #${orderNo}</div>
+                  <div class="user-chat-item-order">Chat with Rider</div>
                   ${unreadBadge}
                 </div>
                 <div class="user-chat-item-preview">${escapeChatText(s.lastText)}</div>
@@ -491,13 +490,11 @@
               })[0];
               
               const refundAmount = Number(latestRefund.total || 0).toFixed(2);
-              const orderNumberMap = getUserOrderNumberMap ? getUserOrderNumberMap() : {};
-              const sequentialNumber = orderNumberMap[latestRefund.id] || latestRefund.id;
               const banner = document.getElementById('refundNotificationBanner');
               const message = document.getElementById('refundNotificationMessage');
               
               if (banner && message) {
-                message.textContent = `Your refund of ₱${refundAmount} for Order #${sequentialNumber} has been processed. The amount will be credited to your account within 3-5 business days.`;
+                message.textContent = `Your refund of ₱${refundAmount} has been processed. The amount will be credited to your account within 3-5 business days.`;
                 banner.style.display = 'block';
                 banner.style.animation = 'slideInRight 0.3s ease-out';
                 
