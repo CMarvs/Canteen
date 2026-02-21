@@ -1,15 +1,15 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Online Canteen â€” Order</title>
+  <title>Online Canteen - Order</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/order.css">
 </head>
 <body class="user-mobile-lock">
   <header class="topbar">
-    <div class="brand">ðŸ½ï¸ Online Canteen</div>
+    <div class="brand">&#x1F37D;&#xFE0F; Online Canteen</div>
     <nav class="nav">
       <a href="order.html" class="active">Menu</a>
       <a href="chats.html">Chats</a>
@@ -24,25 +24,25 @@
       <h2 class="headline">Menu</h2>
 
       <div class="card">
-        <h4>ðŸ› Student Budget Meals</h4>
+        <h4>&#x1F35B; Student Budget Meals</h4>
         <div id="budgetContainer" class="items-grid"></div>
 
-        <h4 style="margin-top:16px;">ðŸ” Foods</h4>
+        <h4 style="margin-top:16px;">&#x1F354; Foods</h4>
         <div id="foodsContainer" class="items-grid"></div>
 
-        <h4 style="margin-top:16px;">ðŸ¥¤ Drinks</h4>
+        <h4 style="margin-top:16px;">&#x1F964; Drinks</h4>
         <div id="drinksContainer" class="items-grid"></div>
       </div>
     </section>
 
     <section class="cart-section card">
-      <h3>ðŸ›’ Cart</h3>
+      <h3>&#x1F6D2; Cart</h3>
       <div id="cartList" class="cart-list"></div>
 
       <div class="cart-total">
-        <div>Subtotal: â‚±<span id="subtotal">0.00</span></div>
-        <div>Delivery Fee: â‚±<span id="deliveryFee">10.00</span></div>
-        <div style="margin-top:8px;font-weight:700;">Grand Total: â‚±<span id="grandTotal">0.00</span></div>
+        <div>Subtotal: &#8369;<span id="subtotal">0.00</span></div>
+        <div>Delivery Fee: &#8369;<span id="deliveryFee">10.00</span></div>
+        <div style="margin-top:8px;font-weight:700;">Grand Total: &#8369;<span id="grandTotal">0.00</span></div>
       </div>
 
       <h4 style="margin-top:12px;">Delivery Details</h4>
@@ -56,23 +56,23 @@
       <label class="input-label" for="delAddress">Address / Location</label>
       <textarea id="delAddress" name="delAddress" placeholder="Block, Building (Inside the Main Campus)"></textarea>
 
-      <h4 style="margin-top:16px;">ðŸ’³ Payment Method</h4>
+      <h4 style="margin-top:16px;">&#x1F4B3; Payment Method</h4>
       <div style="margin-bottom: 10px;">
         <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer; margin-bottom: 8px;">
           <input type="radio" name="paymentMethod" value="cod" id="paymentCOD" checked style="margin: 0;">
-          <span style="font-size: 1.2rem;">ðŸ’µ</span>
+          <span style="font-size: 1.2rem;">&#x1F4B5;</span>
           <span><strong>Cash on Delivery (COD)</strong></span>
         </label>
         <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer;">
           <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" style="margin: 0;">
-          <span style="font-size: 1.2rem;">ðŸ“±</span>
+          <span style="font-size: 1.2rem;">&#x1F4F1;</span>
           <span><strong>GCash</strong></span>
         </label>
       </div>
       <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: none;">
         <div id="codDetails" style="display: none;">
           <p style="font-size: 0.9rem; color: #666; margin: 0;">
-            ðŸ’¡ Payment will be collected when your order is delivered. No upfront payment required.
+            &#x1F4A1; Payment will be collected when your order is delivered. No upfront payment required.
           </p>
         </div>
         <div id="gcashDetails" style="display: none;">
@@ -80,7 +80,7 @@
           <input type="tel" id="gcashNumber" name="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
                  oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
           <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-            ðŸ’¡ You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
+            &#x1F4A1; You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
           </p>
         </div>
       </div>
@@ -117,12 +117,12 @@
             renderCart: hasRenderCart
           });
           if (!hasAPIBase) {
-            console.error('âŒ script.js did not execute - API_BASE not defined. Check for syntax errors.');
+            console.error('❌ script.js did not execute - API_BASE not defined. Check for syntax errors.');
             if (window.scriptJsError) {
               console.error('Error details:', window.scriptJsError);
             }
           } else if (!hasGetCurrent || !hasLoadMenu || !hasRenderCart) {
-            console.error('âš ï¸ script.js executed but functions not available - possible error during execution');
+            console.error('⚠️ script.js executed but functions not available - possible error during execution');
             console.error('Available functions check:', {
               getCurrent: typeof getCurrent,
               loadMenuToPage: typeof loadMenuToPage,
@@ -155,7 +155,7 @@
       // Add error handler to catch syntax errors and runtime errors
       window.addEventListener('error', function(e) {
         if (e.filename && e.filename.includes('script.js')) {
-          console.error('âŒ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
+          console.error('❌ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
           console.error('Error details:', e.error);
           window.scriptJsSyntaxError = true;
           window.scriptJsError = {
@@ -170,7 +170,7 @@
       // Also catch unhandled promise rejections
       window.addEventListener('unhandledrejection', function(e) {
         if (e.reason && e.reason.stack && e.reason.stack.includes('script.js')) {
-          console.error('âŒ Unhandled promise rejection in script.js:', e.reason);
+          console.error('❌ Unhandled promise rejection in script.js:', e.reason);
           window.scriptJsSyntaxError = true;
         }
       });
@@ -196,7 +196,7 @@
         const hasRenderCart = typeof renderCart === 'function';
         
         if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
-          console.log('âœ… All script.js functions loaded successfully');
+          console.log('✅ All script.js functions loaded successfully');
           if (checkInterval) clearInterval(checkInterval);
           hasCalledCallback = true;
           callback();
@@ -207,11 +207,11 @@
             console.log('Status:', {getCurrent: hasGetCurrent, loadMenu: hasLoadMenu, renderCart: hasRenderCart});
             // Check for syntax errors
             if (window.scriptJsSyntaxError) {
-              console.error('âš ï¸ Syntax error detected in script.js - functions may not be available');
+              console.error('⚠️ Syntax error detected in script.js - functions may not be available');
             }
           }
         } else {
-          console.error('âŒ script.js functions not fully available after waiting');
+          console.error('❌ script.js functions not fully available after waiting');
           console.error('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
           console.error('scriptJsLoaded flag:', window.scriptJsLoaded);
           console.error('Possible causes:');
@@ -777,9 +777,9 @@
         <div><strong>Payment:</strong> ${paymentMethodName}</div>
         <div style="margin-bottom: 8px; color: #555;">${paymentNote}</div>
         <hr style="border: none; border-top: 1px dashed #d8bfa7; margin: 8px 0;">
-        <div><strong>Subtotal:</strong> ₱${subtotal.toFixed(2)}</div>
-        <div><strong>Delivery:</strong> ₱${DELIVERY_FEE.toFixed(2)}</div>
-        <div style="margin-top: 4px;"><strong>Grand Total:</strong> ₱${grand.toFixed(2)}</div>
+        <div><strong>Subtotal:</strong> &#8369;${subtotal.toFixed(2)}</div>
+        <div><strong>Delivery:</strong> &#8369;${DELIVERY_FEE.toFixed(2)}</div>
+        <div style="margin-top: 4px;"><strong>Grand Total:</strong> &#8369;${grand.toFixed(2)}</div>
       `;
 
       showOrderConfirmModal(orderSummary, () => {
