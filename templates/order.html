@@ -1,15 +1,15 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Online Canteen — Order</title>
+  <title>Online Canteen â€” Order</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/order.css">
 </head>
 <body class="user-mobile-lock">
   <header class="topbar">
-    <div class="brand">🍽️ Online Canteen</div>
+    <div class="brand">ðŸ½ï¸ Online Canteen</div>
     <nav class="nav">
       <a href="order.html" class="active">Menu</a>
       <a href="chats.html">Chats</a>
@@ -24,25 +24,25 @@
       <h2 class="headline">Menu</h2>
 
       <div class="card">
-        <h4>🍛 Student Budget Meals</h4>
+        <h4>ðŸ› Student Budget Meals</h4>
         <div id="budgetContainer" class="items-grid"></div>
 
-        <h4 style="margin-top:16px;">🍔 Foods</h4>
+        <h4 style="margin-top:16px;">ðŸ” Foods</h4>
         <div id="foodsContainer" class="items-grid"></div>
 
-        <h4 style="margin-top:16px;">🥤 Drinks</h4>
+        <h4 style="margin-top:16px;">ðŸ¥¤ Drinks</h4>
         <div id="drinksContainer" class="items-grid"></div>
       </div>
     </section>
 
     <section class="cart-section card">
-      <h3>🛒 Cart</h3>
+      <h3>ðŸ›’ Cart</h3>
       <div id="cartList" class="cart-list"></div>
 
       <div class="cart-total">
-        <div>Subtotal: ₱<span id="subtotal">0.00</span></div>
-        <div>Delivery Fee: ₱<span id="deliveryFee">10.00</span></div>
-        <div style="margin-top:8px;font-weight:700;">Grand Total: ₱<span id="grandTotal">0.00</span></div>
+        <div>Subtotal: â‚±<span id="subtotal">0.00</span></div>
+        <div>Delivery Fee: â‚±<span id="deliveryFee">10.00</span></div>
+        <div style="margin-top:8px;font-weight:700;">Grand Total: â‚±<span id="grandTotal">0.00</span></div>
       </div>
 
       <h4 style="margin-top:12px;">Delivery Details</h4>
@@ -56,23 +56,23 @@
       <label class="input-label" for="delAddress">Address / Location</label>
       <textarea id="delAddress" name="delAddress" placeholder="Block, Building (Inside the Main Campus)"></textarea>
 
-      <h4 style="margin-top:16px;">💳 Payment Method</h4>
+      <h4 style="margin-top:16px;">ðŸ’³ Payment Method</h4>
       <div style="margin-bottom: 10px;">
         <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer; margin-bottom: 8px;">
           <input type="radio" name="paymentMethod" value="cod" id="paymentCOD" checked style="margin: 0;">
-          <span style="font-size: 1.2rem;">💵</span>
+          <span style="font-size: 1.2rem;">ðŸ’µ</span>
           <span><strong>Cash on Delivery (COD)</strong></span>
         </label>
         <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid #8B4513; border-radius: 8px; background: #fff8f1; cursor: pointer;">
           <input type="radio" name="paymentMethod" value="gcash" id="paymentGCash" style="margin: 0;">
-          <span style="font-size: 1.2rem;">📱</span>
+          <span style="font-size: 1.2rem;">ðŸ“±</span>
           <span><strong>GCash</strong></span>
         </label>
       </div>
       <div id="paymentDetails" style="margin-top: 10px; padding: 12px; background: #f9f9f9; border-radius: 8px; display: none;">
         <div id="codDetails" style="display: none;">
           <p style="font-size: 0.9rem; color: #666; margin: 0;">
-            💡 Payment will be collected when your order is delivered. No upfront payment required.
+            ðŸ’¡ Payment will be collected when your order is delivered. No upfront payment required.
           </p>
         </div>
         <div id="gcashDetails" style="display: none;">
@@ -80,7 +80,7 @@
           <input type="tel" id="gcashNumber" name="gcashNumber" placeholder="09XXXXXXXXX" maxlength="11" 
                  oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)">
           <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-            💡 You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
+            ðŸ’¡ You will receive payment instructions after placing your order. You can upload your payment screenshot in the payment page.
           </p>
         </div>
       </div>
@@ -117,12 +117,12 @@
             renderCart: hasRenderCart
           });
           if (!hasAPIBase) {
-            console.error('❌ script.js did not execute - API_BASE not defined. Check for syntax errors.');
+            console.error('âŒ script.js did not execute - API_BASE not defined. Check for syntax errors.');
             if (window.scriptJsError) {
               console.error('Error details:', window.scriptJsError);
             }
           } else if (!hasGetCurrent || !hasLoadMenu || !hasRenderCart) {
-            console.error('⚠️ script.js executed but functions not available - possible error during execution');
+            console.error('âš ï¸ script.js executed but functions not available - possible error during execution');
             console.error('Available functions check:', {
               getCurrent: typeof getCurrent,
               loadMenuToPage: typeof loadMenuToPage,
@@ -155,7 +155,7 @@
       // Add error handler to catch syntax errors and runtime errors
       window.addEventListener('error', function(e) {
         if (e.filename && e.filename.includes('script.js')) {
-          console.error('❌ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
+          console.error('âŒ Error in script.js:', e.message, 'at line', e.lineno, 'column', e.colno);
           console.error('Error details:', e.error);
           window.scriptJsSyntaxError = true;
           window.scriptJsError = {
@@ -170,7 +170,7 @@
       // Also catch unhandled promise rejections
       window.addEventListener('unhandledrejection', function(e) {
         if (e.reason && e.reason.stack && e.reason.stack.includes('script.js')) {
-          console.error('❌ Unhandled promise rejection in script.js:', e.reason);
+          console.error('âŒ Unhandled promise rejection in script.js:', e.reason);
           window.scriptJsSyntaxError = true;
         }
       });
@@ -196,7 +196,7 @@
         const hasRenderCart = typeof renderCart === 'function';
         
         if (hasGetCurrent && hasLoadMenu && hasRenderCart) {
-          console.log('✅ All script.js functions loaded successfully');
+          console.log('âœ… All script.js functions loaded successfully');
           if (checkInterval) clearInterval(checkInterval);
           hasCalledCallback = true;
           callback();
@@ -207,11 +207,11 @@
             console.log('Status:', {getCurrent: hasGetCurrent, loadMenu: hasLoadMenu, renderCart: hasRenderCart});
             // Check for syntax errors
             if (window.scriptJsSyntaxError) {
-              console.error('⚠️ Syntax error detected in script.js - functions may not be available');
+              console.error('âš ï¸ Syntax error detected in script.js - functions may not be available');
             }
           }
         } else {
-          console.error('❌ script.js functions not fully available after waiting');
+          console.error('âŒ script.js functions not fully available after waiting');
           console.error('getCurrent:', hasGetCurrent, 'loadMenuToPage:', hasLoadMenu, 'renderCart:', hasRenderCart);
           console.error('scriptJsLoaded flag:', window.scriptJsLoaded);
           console.error('Possible causes:');
@@ -599,6 +599,90 @@
       });
     }
 
+    function showOrderConfirmModal(orderSummary, onConfirm) {
+      const existing = document.getElementById('orderConfirmModal');
+      if (existing) existing.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'orderConfirmModal';
+      modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 16px;
+      `;
+
+      modal.innerHTML = `
+        <div style="
+          width: min(520px, 100%);
+          background: #fff;
+          border-radius: 14px;
+          padding: 18px;
+          box-shadow: 0 14px 30px rgba(0,0,0,0.22);
+          text-align: center;
+          border: 2px solid #e8d6c4;
+        ">
+          <h3 style="margin: 0 0 10px; color: #5a2c0e;">Confirm Order</h3>
+          <p style="margin: 0 0 14px; color: #444; font-size: 0.92rem;">
+            Review details below and proceed to payment.
+          </p>
+          <div style="
+            background: #fff8f1;
+            border: 1px solid #efd8c4;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 14px;
+            text-align: center;
+            line-height: 1.45;
+            font-size: 0.9rem;
+            color: #333;
+          ">
+            ${orderSummary}
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <button id="cancelOrderConfirmBtn" style="
+              border: 1px solid #bbb;
+              background: #fff;
+              color: #333;
+              border-radius: 10px;
+              padding: 10px 12px;
+              cursor: pointer;
+              font-weight: 600;
+            ">Cancel</button>
+            <button id="proceedOrderConfirmBtn" style="
+              border: none;
+              background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+              color: #fff;
+              border-radius: 10px;
+              padding: 10px 12px;
+              cursor: pointer;
+              font-weight: 700;
+            ">Proceed</button>
+          </div>
+        </div>
+      `;
+
+      const closeModal = () => modal.remove();
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      document.body.appendChild(modal);
+
+      const cancelBtn = document.getElementById('cancelOrderConfirmBtn');
+      const proceedBtn = document.getElementById('proceedOrderConfirmBtn');
+
+      cancelBtn?.addEventListener('click', closeModal);
+      proceedBtn?.addEventListener('click', () => {
+        closeModal();
+        onConfirm();
+      });
+    }
+
     function showConfirmBox(){
       const name = document.getElementById('delName')?.value.trim() || '';
       const contact = document.getElementById('delContact')?.value.trim() || '';
@@ -682,12 +766,28 @@
       const grand = subtotal + DELIVERY_FEE;
       
       const paymentMethodName = paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'GCash';
-      const paymentNote = paymentMethod === 'cod' ? '\n💵 Payment will be collected upon delivery.' : '\n📱 You will receive payment instructions after placing your order.';
-      if(!confirm(`Confirm order and proceed to payment?\n\nName: ${name}\nContact: ${validContact}\nAddress: ${address}\nPayment: ${paymentMethodName}${paymentNote}\n\nSubtotal: ₱${subtotal.toFixed(2)}\nDelivery: ₱${DELIVERY_FEE.toFixed(2)}\nGrand Total: ₱${grand.toFixed(2)}\n\nProceed to payment?`)) return;
-      
-      placeOrder(name, validContact, address, paymentMethod);
+      const paymentNote = paymentMethod === 'cod'
+        ? 'Payment will be collected upon delivery.'
+        : 'You will receive payment instructions after placing your order.';
+
+      const orderSummary = `
+        <div><strong>Name:</strong> ${name}</div>
+        <div><strong>Contact:</strong> ${validContact}</div>
+        <div><strong>Address:</strong> ${address}</div>
+        <div><strong>Payment:</strong> ${paymentMethodName}</div>
+        <div style="margin-bottom: 8px; color: #555;">${paymentNote}</div>
+        <hr style="border: none; border-top: 1px dashed #d8bfa7; margin: 8px 0;">
+        <div><strong>Subtotal:</strong> ₱${subtotal.toFixed(2)}</div>
+        <div><strong>Delivery:</strong> ₱${DELIVERY_FEE.toFixed(2)}</div>
+        <div style="margin-top: 4px;"><strong>Grand Total:</strong> ₱${grand.toFixed(2)}</div>
+      `;
+
+      showOrderConfirmModal(orderSummary, () => {
+        placeOrder(name, validContact, address, paymentMethod);
+      });
     }
   </script>
 </body>
 </html>
+
 
