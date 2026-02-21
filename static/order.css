@@ -194,41 +194,43 @@ input.qty {
   }
 }
 
-/* ===== User Mobile Lock ===== */
-body.user-mobile-lock {
-  overflow-x: hidden;
-}
+/* ===== User Mobile Lock (mobile only) ===== */
+@media (max-width: 768px) {
+  body.user-mobile-lock {
+    overflow-x: hidden;
+  }
 
-body.user-mobile-lock .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
+  body.user-mobile-lock .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
 
-body.user-mobile-lock main.container {
-  max-width: 430px;
-  margin: 16px auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+  body.user-mobile-lock main.container {
+    max-width: 430px;
+    margin: 16px auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-body.user-mobile-lock .menu-section,
-body.user-mobile-lock .cart-section {
-  width: 100%;
-}
+  body.user-mobile-lock .menu-section,
+  body.user-mobile-lock .cart-section {
+    width: 100%;
+  }
 
-body.user-mobile-lock .cart-section {
-  position: static;
-}
+  body.user-mobile-lock .cart-section {
+    position: static;
+  }
 
-body.user-mobile-lock .items-grid {
-  grid-template-columns: 1fr;
-}
+  body.user-mobile-lock .items-grid {
+    grid-template-columns: 1fr;
+  }
 
-body.user-mobile-lock .item.card {
-  padding: 12px;
+  body.user-mobile-lock .item.card {
+    padding: 12px;
+  }
 }
 
 /* ===== User Chat Bar ===== */
@@ -333,5 +335,6 @@ body.user-mobile-lock .item.card {
   color: #777;
   font-size: 0.88rem;
 }
+
 
 
