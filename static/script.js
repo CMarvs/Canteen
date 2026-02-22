@@ -718,7 +718,8 @@ async function placeOrder(name, contact, address, paymentMethod){
   }
 
   try {
-    // Handle COD payment - create order immediately and mark as paid
+    // Handle COD payment - create order immediately.
+    // Payment stays pending until order is marked Delivered by admin/rider.
     if (paymentMethod === 'cod') {
       const orderData = {
         user_id: cur.id,
@@ -728,7 +729,7 @@ async function placeOrder(name, contact, address, paymentMethod){
         items: cart,
         total: total,
         payment_method: 'cod',
-        payment_status: 'paid',
+        payment_status: 'pending',
         payment_details: paymentDetails
       };
 

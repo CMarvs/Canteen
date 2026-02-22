@@ -991,17 +991,18 @@ async def place_order(request: Request):
         
         # Insert order with payment information
         payment_method = data.get("payment_method", "cash")
-        # COD orders are automatically marked as paid (payment on delivery)
-        if payment_method == "cod":
-            payment_status = "paid"
-        else:
-            payment_status = data.get("payment_status", "pending")
+        # Default all new orders to pending.
+        # COD becomes paid only when status is Delivered.
+        # GCash becomes paid only when proof exists.
+        payment_status = "pending"
         
         # Get payment proof if provided (for GCash payments)
         payment_proof = None
         payment_details = data.get("payment_details", {})
         if payment_method == "gcash" and payment_details:
             payment_proof = payment_details.get("payment_proof")
+            if payment_proof:
+                payment_status = "paid"
         
         # Check if payment_proof column exists before inserting
         # This check happens right before the insert to ensure accuracy
@@ -1412,7 +1413,7 @@ async def process_payment(request: Request):
         if payment_success and payment_method == "cod":
             cur.execute("""
                 UPDATE orders 
-                SET payment_status = 'paid', payment_method = %s
+                SET payment_status = 'pending', payment_method = %s
                 WHERE id = %s
             """, (payment_method, order_id))
             conn.commit()
@@ -1423,7 +1424,7 @@ async def process_payment(request: Request):
                 "order_id": order_id,
                 "payment_method": payment_method,
                 "amount": amount,
-                "status": "paid"
+                "status": "pending"
             }
         else:
             # Payment failed
@@ -2407,9 +2408,20 @@ async def update_order(oid: int, request: Request):
         
         # If only updating status
         if "status" in data:
-            # Optimized: Only return needed columns for faster response
-            cur.execute("UPDATE orders SET status=%s WHERE id=%s RETURNING id, status, payment_status, refund_status",
-                        (data.get("status"), oid))
+            new_status = data.get("status")
+            # Business rule:
+            # - COD: auto-mark as paid only when delivered
+            # - Other methods: keep existing payment status
+            cur.execute("""
+                UPDATE orders
+                SET status = %s,
+                    payment_status = CASE
+                        WHEN LOWER(COALESCE(payment_method, '')) = 'cod' AND %s = 'Delivered' THEN 'paid'
+                        ELSE payment_status
+                    END
+                WHERE id = %s
+                RETURNING id, status, payment_status, refund_status
+            """, (new_status, new_status, oid))
             conn.commit()
             result = cur.fetchone()
             if not result:
@@ -2456,8 +2468,18 @@ async def update_payment_proof(oid: int, request: Request):
             cur.execute("ALTER TABLE orders ADD COLUMN payment_proof TEXT;")
             conn.commit()
         
-        # Update payment proof
-        cur.execute("UPDATE orders SET payment_proof = %s WHERE id = %s RETURNING *", (payment_proof, oid))
+        # Update payment proof.
+        # Business rule: if GCash proof is uploaded, mark as paid.
+        cur.execute("""
+            UPDATE orders
+            SET payment_proof = %s,
+                payment_status = CASE
+                    WHEN LOWER(COALESCE(payment_method, '')) = 'gcash' THEN 'paid'
+                    ELSE payment_status
+                END
+            WHERE id = %s
+            RETURNING *
+        """, (payment_proof, oid))
         result = cur.fetchone()
         conn.commit()
         
@@ -2494,7 +2516,34 @@ async def update_payment_status(oid: int, request: Request):
     try:
         cur = conn.cursor()
         
-        # Optimized: Single query to verify and update (uses FOR UPDATE for consistency)
+        # Validate payment rules before updating:
+        # - COD can be marked paid only when Delivered
+        # - GCash can be marked paid only when payment proof exists
+        cur.execute("""
+            SELECT id, status, payment_method, payment_proof, payment_status
+            FROM orders
+            WHERE id = %s
+        """, (oid,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(404, f"Order {oid} not found")
+
+        if isinstance(existing, dict):
+            existing_status = existing.get("status")
+            existing_method = (existing.get("payment_method") or "").lower()
+            existing_proof = existing.get("payment_proof")
+        else:
+            existing_status = existing[1] if len(existing) > 1 else None
+            existing_method = (existing[2] if len(existing) > 2 else "" or "").lower()
+            existing_proof = existing[3] if len(existing) > 3 else None
+
+        if payment_status == "paid":
+            if existing_method == "cod" and existing_status != "Delivered":
+                raise HTTPException(400, "COD payment can only be marked as paid when order status is Delivered")
+            if existing_method == "gcash" and not existing_proof:
+                raise HTTPException(400, "GCash payment can only be marked as paid after payment proof is uploaded")
+
+        # Optimized: Single query to update
         cur.execute("""
             UPDATE orders 
             SET payment_status = %s 

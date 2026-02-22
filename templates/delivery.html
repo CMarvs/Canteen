@@ -796,6 +796,7 @@
                   <strong style="color: #856404;">⏳ GCash Payment Pending</strong><br>
                   <span style="font-size: 0.85rem; color: #856404;">Reference: <code style="background: white; padding: 2px 6px; border-radius: 4px;">${o.payment_intent_id || 'N/A'}</code></span>
                 </div>
+                ${o.payment_proof ? `
                 <button class="btn" onclick="markPaymentAsPaid(${o.id})" style="
                   background: #28a745;
                   color: white;
@@ -806,6 +807,9 @@
                   font-weight: bold;
                   white-space: nowrap;
                 ">✅ Mark as Paid</button>
+                ` : `
+                <span style="font-size: 0.85rem; color: #856404; font-weight: 600;">Waiting for screenshot proof</span>
+                `}
               </div>
               ${o.payment_proof ? `
               <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ffc107;">
@@ -940,24 +944,37 @@
 
     /* -------- Mark Payment as Paid (GCash) with Optimistic Update -------- */
     async function markPaymentAsPaid(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found.');
+        return;
+      }
+      const paymentMethod = (order.payment_method || '').toLowerCase();
+      if (paymentMethod === 'gcash' && !order.payment_proof) {
+        alert('Cannot mark as paid yet. Upload/verify payment proof screenshot first.');
+        return;
+      }
+      if (paymentMethod === 'cod' && order.status !== 'Delivered') {
+        alert('COD can only be marked as paid when order is Delivered.');
+        return;
+      }
+
       if (!confirm(`Mark payment as received for Order #${orderId}?\n\nPlease verify the payment in your GCash app before confirming.`)) {
         return;
       }
       
       // OPTIMISTIC UPDATE: Update UI immediately
       const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+      let pendingSection = null;
       if (orderCard) {
         // Hide payment pending section immediately
-        const pendingSection = orderCard.querySelector('[style*="background: #fff3cd"]');
+        pendingSection = orderCard.querySelector('[style*="background: #fff3cd"]');
         if (pendingSection) {
           pendingSection.style.display = 'none';
         }
         
         // Update order in local cache
-        const order = allOrders.find(o => o.id === orderId);
-        if (order) {
-          order.payment_status = 'paid';
-        }
+        order.payment_status = 'paid';
       }
       
       try {
@@ -991,9 +1008,7 @@
           if (orderCard && pendingSection) {
             pendingSection.style.display = '';
           }
-          if (order) {
-            order.payment_status = 'pending';
-          }
+          order.payment_status = 'pending';
           
           const error = await response.json();
           alert(`❌ Failed to update payment status: ${error.detail || 'Unknown error'}`);
@@ -1004,9 +1019,7 @@
         if (orderCard && pendingSection) {
           pendingSection.style.display = '';
         }
-        if (order) {
-          order.payment_status = 'pending';
-        }
+        order.payment_status = 'pending';
         
         console.error('Error marking payment as paid:', error);
         if (error.name === 'AbortError') {
