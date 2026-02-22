@@ -1687,6 +1687,17 @@ function orderCardHtmlForUser(o){
         <div>${statusBadge}</div>
       </div>
       <div style="margin-top:12px; border-top: 1px solid #eee; padding-top: 12px;">${itemsHtml}</div>
+      ${o.delivery_proof ? `
+      <div style="margin-top: 12px; padding: 12px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4CAF50;">
+        <strong style="color: #2e7d32;">📦 Delivery Done Proof</strong>
+        <div style="margin-top: 8px; text-align: center;">
+          <a href="${o.delivery_proof}" target="_blank" rel="noopener noreferrer">
+            <img src="${o.delivery_proof}" alt="Delivery Proof" style="max-width: 100%; max-height: 260px; border-radius: 8px; border: 2px solid #4CAF50; cursor: zoom-in;" loading="lazy">
+          </a>
+          <p style="font-size: 0.75rem; color: #2e7d32; margin-top: 4px;">Tap image to view full size</p>
+        </div>
+      </div>
+      ` : ''}
       <div class="muted small" style="margin-top:8px">Delivery: ${o.fullname} • ${o.contact} • ${o.location}</div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div><strong>Total:</strong> ₱${Number(o.total).toFixed(2)}</div>

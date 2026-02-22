@@ -1470,7 +1470,7 @@ async def get_orders():
         
         # Build SELECT query with only existing columns
         base_columns = ['id', 'user_id', 'fullname', 'contact', 'location', 'items', 'total', 'status', 'created_at']
-        optional_columns = ['payment_method', 'payment_status', 'payment_proof', 'payment_intent_id', 'refund_status']
+        optional_columns = ['payment_method', 'payment_status', 'payment_proof', 'delivery_proof', 'payment_intent_id', 'refund_status']
         
         select_columns = [col for col in base_columns if col in existing_columns_set]
         select_columns.extend([col for col in optional_columns if col in existing_columns_set])
@@ -1546,6 +1546,8 @@ async def get_orders():
                     order_dict['payment_status'] = 'pending'
                 if 'payment_proof' not in order_dict:
                     order_dict['payment_proof'] = None
+                if 'delivery_proof' not in order_dict:
+                    order_dict['delivery_proof'] = None
                 if 'payment_intent_id' not in order_dict:
                     order_dict['payment_intent_id'] = None
                 if 'refund_status' not in order_dict:
@@ -2569,6 +2571,62 @@ async def update_payment_status(oid: int, request: Request):
     except Exception as e:
         print(f"[ERROR] Update payment status error: {e}")
         raise HTTPException(500, f"Failed to update payment status: {str(e)}")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception as close_error:
+            print(f"[WARNING] Error closing database connection: {close_error}")
+
+# --- Update Delivery Done Proof ---
+@app.put("/orders/{oid}/delivery-proof")
+async def update_delivery_proof(oid: int, request: Request):
+    """Update delivery done proof screenshot for an order"""
+    data = await request.json()
+    delivery_proof = data.get("delivery_proof")
+
+    if not delivery_proof:
+        raise HTTPException(400, "Delivery proof is required")
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        # Check if delivery_proof column exists
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'orders' AND column_name = 'delivery_proof'
+        """)
+        has_delivery_proof = cur.fetchone() is not None
+
+        if not has_delivery_proof:
+            print("[INFO] Adding delivery_proof column to orders table...")
+            cur.execute("ALTER TABLE orders ADD COLUMN delivery_proof TEXT;")
+            conn.commit()
+
+        # Update delivery proof
+        cur.execute("""
+            UPDATE orders
+            SET delivery_proof = %s
+            WHERE id = %s
+            RETURNING id, status, delivery_proof
+        """, (delivery_proof, oid))
+        result = cur.fetchone()
+        conn.commit()
+
+        if not result:
+            raise HTTPException(404, f"Order {oid} not found")
+
+        print(f"[INFO] Delivery proof updated for order {oid}")
+        return {"ok": True, "message": "Delivery proof updated successfully", "order": serialize_datetime(result)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Update delivery proof error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to update delivery proof: {str(e)}")
     finally:
         try:
             if conn:

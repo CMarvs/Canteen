@@ -828,6 +828,19 @@
               ` : ''}
             </div>
             ` : ''}
+            ${o.delivery_proof ? `
+            <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #4CAF50;">
+              <strong style="color: #2e7d32; font-size: 0.9rem;">📦 Delivery Done Proof:</strong>
+              <div style="margin-top: 8px; text-align: center;">
+                <img src="${o.delivery_proof}" 
+                     alt="Delivery Proof" 
+                     onclick="showPaymentProofModal('${o.delivery_proof}')"
+                     style="max-width: 100%; max-height: 300px; border-radius: 8px; border: 2px solid #4CAF50; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
+                     loading="lazy">
+                <p style="font-size: 0.75rem; color: #2e7d32; margin-top: 4px;">Visible to customer and admin</p>
+              </div>
+            </div>
+            ` : ''}
             <div class="status-buttons">
               <select class="status-select" name="orderStatus_${o.id}" id="orderStatus_${o.id}" onchange="updateOrderStatus(${o.id}, this.value)" value="${o.status || 'Pending'}">
                 <option value="Pending" ${(!o.status || o.status === 'Pending') ? 'selected' : ''}>⏳ Pending</option>
@@ -838,6 +851,11 @@
                 <button class="btn small print" onclick="printSingleOrder(${o.id})">🖨️ Print</button>
               <button class="btn small" onclick="openChatBox(${o.id}, 'admin')" style="background: #8B4513; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">💬 Chat</button>
               ${(o.user_id || o.userId) ? `<button class="btn small" onclick="viewUserProfile(${o.user_id || o.userId})" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">👤 View Profile</button>` : '<span style="color: #999; font-size: 0.85rem; padding: 8px 16px;">No user ID</span>'}
+              ${(o.status === 'Out for Delivery' || o.status === 'Delivered') ? `
+                <button class="btn small" onclick="uploadDeliveryProof(${o.id})" style="background: #2e7d32; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                  ${o.delivery_proof ? '📷 Update Delivery Proof' : '📷 Upload Delivery Proof'}
+                </button>
+              ` : ''}
               ${isRefunded ? `
                 <span style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; display: inline-block;">✅ Refunded</span>
                 <button class="btn delete small" onclick="deleteOrder(${o.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">🗑️ Delete</button>
@@ -1029,6 +1047,66 @@
         }
         await renderAdminOrders();
       }
+    }
+
+    async function uploadDeliveryProof(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) {
+        alert('Order not found.');
+        return;
+      }
+
+      if (order.status !== 'Out for Delivery' && order.status !== 'Delivered') {
+        alert('Delivery proof can only be uploaded for orders that are Out for Delivery or Delivered.');
+        return;
+      }
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/jpeg,image/png,image/webp';
+
+      fileInput.onchange = async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          alert('Please upload a JPG, PNG, or WebP image.');
+          return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Image is too large. Maximum size is 5MB.');
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const response = await fetch(`/orders/${orderId}/delivery-proof`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ delivery_proof: reader.result })
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.detail || 'Failed to upload delivery proof');
+            }
+
+            order.delivery_proof = reader.result;
+            alert('✅ Delivery proof uploaded successfully.');
+            await renderAdminOrders();
+          } catch (error) {
+            console.error('Error uploading delivery proof:', error);
+            alert(`❌ ${error.message || 'Failed to upload delivery proof.'}`);
+          }
+        };
+
+        reader.readAsDataURL(file);
+      };
+
+      fileInput.click();
     }
 
     /* -------- Update Status (API) with Optimistic Updates -------- */
@@ -4212,6 +4290,7 @@
     // Make critical functions globally accessible
     window.updateOrderStatus = updateOrderStatus;
     window.markPaymentAsPaid = markPaymentAsPaid;
+    window.uploadDeliveryProof = uploadDeliveryProof;
     window.processRefund = processRefund;
     window.cancelOrder = cancelOrder;
     window.deleteOrder = deleteOrder;
