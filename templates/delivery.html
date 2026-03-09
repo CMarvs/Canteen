@@ -32,33 +32,33 @@
       font-weight: 600;
       color: #8B4513;
     }
-    main {
+    body.delivery-mobile-layout main {
       max-width: 430px !important;
       margin: 12px auto !important;
       padding: 10px !important;
     }
-    .topbar { position: sticky; top: 0; z-index: 2000; padding: 12px 14px; }
-    .brand { font-size: 1rem; }
-    .stats-grid {
+    body.delivery-mobile-layout .topbar { position: sticky; top: 0; z-index: 2000; padding: 12px 14px; }
+    body.delivery-mobile-layout .brand { font-size: 1rem; }
+    body.delivery-mobile-layout .stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       gap: 10px !important;
       margin-bottom: 12px !important;
     }
-    .stat-card { padding: 12px !important; }
-    .stat-number { font-size: 1.2rem !important; margin: 4px 0 !important; }
-    .stat-label { font-size: 0.78rem !important; }
-    .content-card { padding: 12px !important; border-radius: 12px !important; }
-    .tab-buttons {
+    body.delivery-mobile-layout .stat-card { padding: 12px !important; }
+    body.delivery-mobile-layout .stat-number { font-size: 1.2rem !important; margin: 4px 0 !important; }
+    body.delivery-mobile-layout .stat-label { font-size: 0.78rem !important; }
+    body.delivery-mobile-layout .content-card { padding: 12px !important; border-radius: 12px !important; }
+    body.delivery-mobile-layout .tab-buttons {
       display: grid !important;
       grid-template-columns: 1fr 1fr;
       gap: 8px !important;
       margin-bottom: 12px !important;
     }
-    .tab-buttons button { min-width: 0 !important; padding: 10px 8px !important; font-size: 0.9rem !important; }
-    .search-input { min-width: 0 !important; width: 100% !important; }
+    body.delivery-mobile-layout .tab-buttons button { min-width: 0 !important; padding: 10px 8px !important; font-size: 0.9rem !important; }
+    body.delivery-mobile-layout .search-input { min-width: 0 !important; width: 100% !important; }
   </style>
 </head>
-<body class="delivery-booting">
+<body class="delivery-booting delivery-desktop-layout">
   <div id="deliveryBootOverlay">
     <div class="delivery-boot-card">Loading delivery dashboard...</div>
   </div>
@@ -125,6 +125,23 @@
 
   <script src="/static/script.js?v=2.2" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js'); window.scriptJsLoaded = false;"></script>
   <script>
+    const DELIVERY_MOBILE_BREAKPOINT = 768;
+    function applyDeliveryLayoutMode() {
+      const isMobile = window.matchMedia(`(max-width: ${DELIVERY_MOBILE_BREAKPOINT}px)`).matches;
+      document.body.classList.toggle('delivery-mobile-layout', isMobile);
+      document.body.classList.toggle('delivery-desktop-layout', !isMobile);
+    }
+
+    let deliveryResizeTicking = false;
+    window.addEventListener('resize', () => {
+      if (deliveryResizeTicking) return;
+      deliveryResizeTicking = true;
+      requestAnimationFrame(() => {
+        applyDeliveryLayoutMode();
+        deliveryResizeTicking = false;
+      });
+    });
+
     // Wait for script.js to fully load before using its functions
     // Fallback for openChatBox if script.js fails to load
     if (typeof openChatBox === 'undefined') {
@@ -4457,6 +4474,7 @@
     }
     
     window.addEventListener('DOMContentLoaded', () => {
+      applyDeliveryLayoutMode();
       // Wait for script.js to load
       if (window.scriptJsLoaded || typeof getCurrent === 'function') {
         // Script already loaded

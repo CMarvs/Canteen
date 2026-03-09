@@ -7,80 +7,80 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/admin.css">
   <style>
-    /* Admin page mobile lock (phone-width layout) */
-    body.admin-mobile-lock {
+    /* Admin page mobile layout (applied dynamically) */
+    body.admin-mobile-layout {
       overflow-x: hidden;
     }
-    body.admin-mobile-lock main {
+    body.admin-mobile-layout main {
       max-width: 430px !important;
       margin: 12px auto !important;
       padding: 10px !important;
     }
-    body.admin-mobile-lock .topbar {
+    body.admin-mobile-layout .topbar {
       position: sticky;
       top: 0;
       z-index: 2000;
       padding: 12px 14px;
     }
-    body.admin-mobile-lock .brand {
+    body.admin-mobile-layout .brand {
       font-size: 1rem;
     }
-    body.admin-mobile-lock #notificationContainer {
+    body.admin-mobile-layout #notificationContainer {
       right: 10px !important;
       top: 72px !important;
       max-width: calc(100vw - 20px) !important;
     }
-    body.admin-mobile-lock .stats-grid {
+    body.admin-mobile-layout .stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       gap: 10px !important;
       margin-bottom: 12px !important;
     }
-    body.admin-mobile-lock .stat-card {
+    body.admin-mobile-layout .stat-card {
       padding: 12px !important;
     }
-    body.admin-mobile-lock .stat-number {
+    body.admin-mobile-layout .stat-number {
       font-size: 1.2rem !important;
       margin: 4px 0 !important;
     }
-    body.admin-mobile-lock .stat-label {
+    body.admin-mobile-layout .stat-label {
       font-size: 0.78rem !important;
     }
-    body.admin-mobile-lock .content-card {
+    body.admin-mobile-layout .content-card {
       padding: 12px !important;
       border-radius: 12px !important;
     }
-    body.admin-mobile-lock .tab-buttons {
+    body.admin-mobile-layout .tab-buttons {
       display: grid !important;
       grid-template-columns: 1fr 1fr;
       gap: 8px !important;
       margin-bottom: 12px !important;
     }
-    body.admin-mobile-lock .tab-buttons button {
+    body.admin-mobile-layout .tab-buttons button {
       min-width: 0 !important;
       padding: 10px 8px !important;
       font-size: 0.9rem !important;
     }
-    body.admin-mobile-lock .search-input {
+    body.admin-mobile-layout .search-input {
       min-width: 0 !important;
       width: 100% !important;
     }
-    body.admin-mobile-lock .filter-bar {
+    body.admin-mobile-layout .filter-bar {
       flex-direction: column;
       align-items: stretch;
     }
-    body.admin-mobile-lock .filter-select {
+    body.admin-mobile-layout .filter-select {
       width: 100%;
     }
     /* Force wide inline grids into single-column on admin page */
-    body.admin-mobile-lock div[style*="grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr"] {
+    body.admin-mobile-layout div[style*="grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr"] {
       grid-template-columns: 1fr !important;
     }
-    body.admin-mobile-lock div[style*="grid-template-columns: 1fr 1fr; gap: 20px"] {
+    body.admin-mobile-layout div[style*="grid-template-columns: 1fr 1fr; gap: 20px"] {
       grid-template-columns: 1fr !important;
     }
   </style>
 </head>
-<body class="admin-mobile-lock">
+<body class="admin-desktop-layout">
   <header class="topbar">
     <div class="brand">🍽️ Online Canteen Admin</div>
     <nav class="nav">
@@ -222,6 +222,23 @@
 
   <script src="/static/script.js?v=2.2" onload="window.scriptJsLoaded = true;" onerror="console.error('Failed to load script.js'); window.scriptJsLoaded = false;"></script>
   <script>
+    const DASHBOARD_MOBILE_BREAKPOINT = 768;
+    function applyAdminLayoutMode() {
+      const isMobile = window.matchMedia(`(max-width: ${DASHBOARD_MOBILE_BREAKPOINT}px)`).matches;
+      document.body.classList.toggle('admin-mobile-layout', isMobile);
+      document.body.classList.toggle('admin-desktop-layout', !isMobile);
+    }
+
+    let adminResizeTicking = false;
+    window.addEventListener('resize', () => {
+      if (adminResizeTicking) return;
+      adminResizeTicking = true;
+      requestAnimationFrame(() => {
+        applyAdminLayoutMode();
+        adminResizeTicking = false;
+      });
+    });
+
     // Wait for script.js to fully load before using its functions
     // Fallback for openChatBox if script.js fails to load
     if (typeof openChatBox === 'undefined') {
@@ -4461,6 +4478,7 @@
     }
     
     window.addEventListener('DOMContentLoaded', () => {
+      applyAdminLayoutMode();
       // Wait for script.js to load
       if (window.scriptJsLoaded || typeof getCurrent === 'function') {
         // Script already loaded
