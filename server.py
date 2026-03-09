@@ -911,6 +911,57 @@ async def place_order(request: Request):
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        items = data.get("items", [])
+        if not isinstance(items, list) or len(items) == 0:
+            raise HTTPException(400, "Order must contain at least one item")
+
+        item_qty_map = {}
+        normalized_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise HTTPException(400, "Invalid order item format")
+            try:
+                item_id = int(item.get("id"))
+                qty_ordered = int(item.get("qty"))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "Each order item must have a valid id and qty")
+            if qty_ordered <= 0:
+                raise HTTPException(400, f"Invalid quantity for item {item_id}. Quantity must be at least 1.")
+
+            item_qty_map[item_id] = item_qty_map.get(item_id, 0) + qty_ordered
+
+            normalized_item = dict(item)
+            normalized_item["id"] = item_id
+            normalized_item["qty"] = qty_ordered
+            normalized_items.append(normalized_item)
+
+        # Validate stock availability first, then deduct exact quantities.
+        for item_id, qty_ordered in item_qty_map.items():
+            cur.execute("SELECT quantity, is_available FROM menu_items WHERE id = %s FOR UPDATE", (item_id,))
+            menu_row = cur.fetchone()
+            if not menu_row:
+                raise HTTPException(400, f"Menu item {item_id} not found")
+
+            current_qty = int(menu_row.get("quantity") or 0)
+            is_available = bool(menu_row.get("is_available"))
+            if (not is_available) or current_qty <= 0:
+                raise HTTPException(400, f"Item {item_id} is out of stock")
+            if qty_ordered > current_qty:
+                raise HTTPException(
+                    400,
+                    f"Insufficient stock for item {item_id}. Available: {current_qty}, requested: {qty_ordered}"
+                )
+
+        for item_id, qty_ordered in item_qty_map.items():
+            cur.execute("SELECT quantity FROM menu_items WHERE id = %s FOR UPDATE", (item_id,))
+            row = cur.fetchone()
+            current_qty = int((row or {}).get("quantity") or 0)
+            new_qty = current_qty - qty_ordered
+            cur.execute(
+                "UPDATE menu_items SET quantity = %s, is_available = %s WHERE id = %s",
+                (new_qty, new_qty > 0, item_id)
+            )
+
         # Check if id_proof column exists, if not add it
         try:
             cur.execute("""
@@ -926,28 +977,6 @@ async def place_order(request: Request):
                 conn.commit()
         except Exception as col_error:
             print(f"[WARNING] Could not check/add id_proof column: {col_error}")
-        
-        # Decrement stock for ordered items
-        items = data.get("items", [])
-        for item in items:
-            item_id = item.get("id")
-            qty_ordered = item.get("qty", 0)
-            if item_id and qty_ordered > 0:
-                try:
-                    # Get current quantity
-                    cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
-                    result = cur.fetchone()
-                    if result:
-                        current_qty = result.get("quantity") or 0
-                        new_qty = max(0, current_qty - qty_ordered)  # Don't go below 0
-                        # Update quantity
-                        cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
-                        # If quantity reaches 0, mark as unavailable
-                        if new_qty == 0:
-                            cur.execute("UPDATE menu_items SET is_available = FALSE WHERE id = %s", (item_id,))
-                except Exception as stock_error:
-                    print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
-                    # Continue with order placement even if stock update fails
         
         # Check and add payment columns if they don't exist
         try:
@@ -1037,7 +1066,7 @@ async def place_order(request: Request):
                     RETURNING *;
                 """, (
                     data.get("user_id"), data.get("fullname"), data.get("contact"),
-                    data.get("location"), json.dumps(items), data.get("total"),
+                    data.get("location"), json.dumps(normalized_items), data.get("total"),
                     payment_method, payment_status, payment_proof
                 ))
             else:
@@ -1049,7 +1078,7 @@ async def place_order(request: Request):
                     RETURNING *;
                 """, (
                     data.get("user_id"), data.get("fullname"), data.get("contact"),
-                    data.get("location"), json.dumps(items), data.get("total"),
+                    data.get("location"), json.dumps(normalized_items), data.get("total"),
                     payment_method, payment_status
                 ))
         except psycopg2_errors.UndefinedColumn as col_error:
@@ -1067,7 +1096,7 @@ async def place_order(request: Request):
                         RETURNING *;
                     """, (
                         data.get("user_id"), data.get("fullname"), data.get("contact"),
-                        data.get("location"), json.dumps(items), data.get("total"),
+                        data.get("location"), json.dumps(normalized_items), data.get("total"),
                         payment_method, payment_status, payment_proof
                     ))
                 except Exception as retry_error:
@@ -1079,7 +1108,7 @@ async def place_order(request: Request):
                         RETURNING *;
                     """, (
                         data.get("user_id"), data.get("fullname"), data.get("contact"),
-                        data.get("location"), json.dumps(items), data.get("total"),
+                        data.get("location"), json.dumps(normalized_items), data.get("total"),
                         payment_method, payment_status
                     ))
             else:
@@ -1833,6 +1862,8 @@ async def add_menu_item(request: Request):
             quantity = int(quantity)
         except (ValueError, TypeError):
             quantity = 0
+        if quantity < 0:
+            raise HTTPException(400, "Quantity cannot be negative")
         
         # Build INSERT statement based on available columns
         has_quantity = 'quantity' in existing_columns
@@ -2139,8 +2170,14 @@ async def update_menu_item(item_id: int, request: Request):
             updates.append("is_available = %s")
             params.append(data.get("is_available"))
         if "quantity" in data:
+            try:
+                qty = int(data.get("quantity"))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "Quantity must be a valid whole number")
+            if qty < 0:
+                raise HTTPException(400, "Quantity cannot be negative")
             updates.append("quantity = %s")
-            params.append(data.get("quantity"))
+            params.append(qty)
         if "image_url" in data:
             updates.append("image_url = %s")
             params.append(data.get("image_url"))
@@ -2335,13 +2372,39 @@ async def update_order(oid: int, request: Request):
             
             # Handle stock updates if items are being changed
             if "items" in data:
+                new_items = data.get("items", [])
+                if not isinstance(new_items, list) or len(new_items) == 0:
+                    raise HTTPException(400, "Updated order must contain at least one item")
+
+                normalized_new_items = []
+                for item in new_items:
+                    if not isinstance(item, dict):
+                        raise HTTPException(400, "Invalid order item format")
+                    try:
+                        item_id = int(item.get("id"))
+                        qty_ordered = int(item.get("qty"))
+                    except (TypeError, ValueError):
+                        raise HTTPException(400, "Each order item must have a valid id and qty")
+                    if qty_ordered <= 0:
+                        raise HTTPException(400, f"Invalid quantity for item {item_id}. Quantity must be at least 1.")
+
+                    normalized_item = dict(item)
+                    normalized_item["id"] = item_id
+                    normalized_item["qty"] = qty_ordered
+                    normalized_new_items.append(normalized_item)
+
+                data["items"] = normalized_new_items
+
                 # Restore stock from old items
                 if old_items:
                     try:
                         old_items_list = json.loads(old_items) if isinstance(old_items, str) else old_items
                         for item in old_items_list:
-                            item_id = item.get("id")
-                            qty_ordered = item.get("qty", 0)
+                            try:
+                                item_id = int(item.get("id"))
+                                qty_ordered = int(item.get("qty", 0))
+                            except (TypeError, ValueError):
+                                continue
                             if item_id and qty_ordered > 0:
                                 try:
                                     cur.execute("SELECT quantity FROM menu_items WHERE id = %s", (item_id,))
@@ -2357,7 +2420,7 @@ async def update_order(oid: int, request: Request):
                     except Exception as items_error:
                         print(f"[WARNING] Could not parse old items for stock restoration: {items_error}")
                 
-                # Deduct stock for new items
+                # Deduct stock for new items (strict validation against available stock)
                 new_items = data.get("items", [])
                 for item in new_items:
                     item_id = item.get("id")
@@ -2368,11 +2431,22 @@ async def update_order(oid: int, request: Request):
                             result = cur.fetchone()
                             if result:
                                 current_qty = result.get("quantity") if isinstance(result, dict) else (result[0] if result else 0)
-                                new_qty = max(0, current_qty - qty_ordered)  # Deduct
+                                if qty_ordered > current_qty:
+                                    raise HTTPException(
+                                        400,
+                                        f"Insufficient stock for item {item_id}. Available: {current_qty}, requested: {qty_ordered}"
+                                    )
+                                new_qty = current_qty - qty_ordered
                                 cur.execute("UPDATE menu_items SET quantity = %s WHERE id = %s", (new_qty, item_id))
                                 if new_qty == 0:
                                     cur.execute("UPDATE menu_items SET is_available = FALSE WHERE id = %s", (item_id,))
+                                else:
+                                    cur.execute("UPDATE menu_items SET is_available = TRUE WHERE id = %s", (item_id,))
+                            else:
+                                raise HTTPException(400, f"Menu item {item_id} not found")
                         except Exception as stock_error:
+                            if isinstance(stock_error, HTTPException):
+                                raise
                             print(f"[WARNING] Could not update stock for item {item_id}: {stock_error}")
             
             # Build update query for order details

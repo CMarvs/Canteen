@@ -377,6 +377,11 @@ function saveCart(c){ writeLocal(KEY_CART, c); }
 function clearCart(){ saveCart([]); renderCart(); }
 
 async function addToCartById(id, qty = 1){
+  qty = Number(qty);
+  if(!Number.isInteger(qty) || qty <= 0) {
+    return alert('Please enter a valid quantity (minimum 1).');
+  }
+
   // Ensure menu is loaded
   if (!MENU_CACHE) {
     await fetchMenuItems();
@@ -425,6 +430,11 @@ async function addToCartById(id, qty = 1){
 }
 
 async function updateCartQty(id, newQty){
+  newQty = Number(newQty);
+  if(!Number.isInteger(newQty)) {
+    return alert('Please enter a valid whole number quantity.');
+  }
+
   // Ensure menu is loaded to check stock
   if (!MENU_CACHE) {
     await fetchMenuItems();
@@ -489,8 +499,12 @@ function renderCart(){
     // Validate and filter cart items
     const validCart = cart.filter(item => {
       if (!item || !item.id) return false;
+      const qty = Number(item.qty);
+      if (!Number.isInteger(qty) || qty <= 0) return false;
       const menuItem = getMenuById(item.id);
-      return menuItem && menuItem.is_available !== false;
+      if (!menuItem || menuItem.is_available === false) return false;
+      const stock = Number(menuItem.quantity) || 0;
+      return qty <= stock;
     });
     
     // Update cart if items were filtered
@@ -646,7 +660,12 @@ function itemCardHtml(i){
 async function addToCartWithQty(id){
   try {
     const qEl = document.getElementById('q_' + id);
-    const qty = qEl ? Number(qEl.value) || 1 : 1;
+    const qty = qEl ? Number(qEl.value) : 1;
+    if(!Number.isInteger(qty) || qty <= 0) {
+      alert('Please enter a valid quantity (minimum 1).');
+      if (qEl) qEl.value = '1';
+      return;
+    }
     await addToCartById(id, qty);
   } catch(error) {
     console.error('Error adding to cart:', error);
@@ -693,6 +712,27 @@ async function placeOrder(name, contact, address, paymentMethod){
   });
   if(blocked.length > 0) {
     alert('Some items in your cart are sold out or out of stock. Please remove them or adjust quantities first.');
+    return;
+  }
+
+  const invalidQty = cart.find(cartItem => {
+    const qty = Number(cartItem.qty);
+    return !Number.isInteger(qty) || qty <= 0;
+  });
+  if (invalidQty) {
+    alert('One or more cart items has an invalid quantity. Please update your cart and try again.');
+    return;
+  }
+
+  const overStockItem = cart.find(cartItem => {
+    const menuItem = getMenuById(cartItem.id);
+    if (!menuItem) return true;
+    const qty = Number(cartItem.qty);
+    const available = Number(menuItem.quantity) || 0;
+    return qty > available;
+  });
+  if (overStockItem) {
+    alert('One or more cart items exceeds available stock. Please update your cart and try again.');
     return;
   }
 
