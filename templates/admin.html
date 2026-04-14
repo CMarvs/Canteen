@@ -78,6 +78,15 @@
     body.admin-mobile-layout div[style*="grid-template-columns: 1fr 1fr; gap: 20px"] {
       grid-template-columns: 1fr !important;
     }
+    /* Admin page desktop lock layout */
+    body.admin-desktop-layout {
+      overflow-x: hidden;
+    }
+    body.admin-desktop-layout main {
+      max-width: 1100px !important;
+      margin: 20px auto !important;
+      padding: 16px !important;
+    }
   </style>
 </head>
 <body class="admin-desktop-layout">
@@ -224,10 +233,9 @@
   <script>
     const DASHBOARD_MOBILE_BREAKPOINT = 768;
     function applyAdminLayoutMode() {
-      // Keep admin page in locked layout on both laptop and mobile,
-      // matching the fixed behavior used on user pages.
-      document.body.classList.add('admin-mobile-layout');
-      document.body.classList.remove('admin-desktop-layout');
+      const isMobile = window.matchMedia(`(max-width: ${DASHBOARD_MOBILE_BREAKPOINT}px)`).matches;
+      document.body.classList.toggle('admin-mobile-layout', isMobile);
+      document.body.classList.toggle('admin-desktop-layout', !isMobile);
     }
 
     let adminResizeTicking = false;
