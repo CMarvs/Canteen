@@ -56,6 +56,161 @@ const KEY_CART = 'canteen_cart_v2';
 const KEY_SOLDOUT = 'canteen_soldout_v1';
 const DELIVERY_FEE = 10;
 
+/* ---------- Centered Message Box UI ---------- */
+const NATIVE_ALERT = window.alert ? window.alert.bind(window) : null;
+
+function ensureMessageBoxStyles() {
+  if (document.getElementById('customMessageBoxStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'customMessageBoxStyles';
+  style.textContent = `
+    .message-box-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 120000;
+      background: rgba(20, 13, 7, 0.55);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      animation: messageOverlayFadeIn 0.18s ease-out;
+    }
+
+    .message-box-card {
+      width: min(92vw, 620px);
+      max-width: 620px;
+      background: linear-gradient(180deg, #fffdf8 0%, #fff7ef 100%);
+      border: 1px solid #ead8c4;
+      border-radius: 18px;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+      padding: 26px 24px 22px;
+      color: #3b2f2f;
+      animation: messageCardPopIn 0.2s ease-out;
+    }
+
+    .message-box-title {
+      margin: 0 0 12px;
+      color: #8b4513;
+      font-size: clamp(1.18rem, 2.7vw, 1.5rem);
+      line-height: 1.3;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .message-box-text {
+      margin: 0;
+      font-size: clamp(1rem, 2.3vw, 1.14rem);
+      line-height: 1.7;
+      color: #3d2f2a;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .message-box-actions {
+      margin-top: 22px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .message-box-btn {
+      min-width: 130px;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, #8b4513 0%, #a0522d 100%);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 7px 16px rgba(139, 69, 19, 0.28);
+    }
+
+    .message-box-btn:hover {
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+    }
+
+    @keyframes messageOverlayFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes messageCardPopIn {
+      from { opacity: 0; transform: translateY(14px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function showCenteredMessageBox(message) {
+  if (!document?.body) {
+    if (NATIVE_ALERT) NATIVE_ALERT(message);
+    return;
+  }
+
+  ensureMessageBoxStyles();
+  const existing = document.getElementById('customMessageBoxOverlay');
+  if (existing) existing.remove();
+
+  const text = String(message ?? '');
+  const lowered = text.toLowerCase();
+  const escapedText = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  const isError = lowered.includes('error') || lowered.includes('failed') || lowered.includes('cannot');
+  const isWarning = lowered.includes('warning') || lowered.includes('please') || lowered.includes('invalid');
+  const isSuccess = lowered.includes('success') || lowered.includes('done') || lowered.includes('completed');
+  const icon = isError ? 'x' : isWarning ? '!' : isSuccess ? 'ok' : 'i';
+  const title = isError ? 'Action Failed' : isWarning ? 'Attention' : isSuccess ? 'Success' : 'Message';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'customMessageBoxOverlay';
+  overlay.className = 'message-box-overlay';
+  overlay.innerHTML = `
+    <div class="message-box-card" role="alertdialog" aria-live="assertive" aria-modal="true">
+      <h3 class="message-box-title"><span>${icon}</span><span>${title}</span></h3>
+      <p class="message-box-text">${escapedText}</p>
+      <div class="message-box-actions">
+        <button type="button" class="message-box-btn" id="messageBoxOkayBtn">OK</button>
+      </div>
+    </div>
+  `;
+
+  function escHandler(e) {
+    if (e.key === 'Escape' || e.key === 'Enter') {
+      closeBox();
+    }
+  }
+
+  const closeBox = () => {
+    document.removeEventListener('keydown', escHandler);
+    if (overlay.parentElement) overlay.remove();
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeBox();
+  });
+
+  document.body.appendChild(overlay);
+  const okBtn = document.getElementById('messageBoxOkayBtn');
+  okBtn?.addEventListener('click', closeBox);
+  okBtn?.focus();
+
+  document.addEventListener('keydown', escHandler);
+}
+
+window.alert = function customAlert(message) {
+  showCenteredMessageBox(message);
+};
+
 /* ---------- Local Storage Helpers (for session only) ---------- */
 function readLocal(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }

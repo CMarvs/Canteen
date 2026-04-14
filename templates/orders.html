@@ -20,7 +20,7 @@
   </header>
 
   <!-- Notification Container -->
-  <div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 10000; max-width: 400px;"></div>
+  <div id="notificationContainer" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; width: min(92vw, 640px); max-width: min(92vw, 640px); pointer-events: none;"></div>
 
   <main class="container">
     <h2 class="headline">My Orders <span id="chatNotificationBadge" style="display:none; background: #e74c3c; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; margin-left: 8px;">0</span></h2>
@@ -203,13 +203,14 @@
       notification.style.cssText = `
         background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
         color: white;
-        padding: 16px 20px;
-        border-radius: 12px;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        animation: slideInRight 0.3s ease-out;
+        padding: 20px 24px;
+        border-radius: 16px;
+        margin: 0 0 14px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+        animation: slideIn 0.25s ease-out;
         cursor: pointer;
-        border-left: 4px solid #FFD700;
+        border-left: 6px solid #FFD700;
+        pointer-events: auto;
       `;
 
       const messageText = (message.message || '').substring(0, 100);
@@ -217,13 +218,13 @@
       notification.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px;">
           <div style="flex: 1;">
-            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+            <div style="font-weight: 700; font-size: 1.24rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
               💬 New Message from Rider
             </div>
-            <div style="font-size: 0.9rem; opacity: 0.95; margin-bottom: 4px;">
+            <div style="font-size: 1rem; opacity: 0.95; margin-bottom: 6px;">
               Recent rider message
             </div>
-            <div style="font-size: 0.85rem; opacity: 0.85; margin-top: 4px;">
+            <div style="font-size: 0.97rem; opacity: 0.92; margin-top: 6px; line-height: 1.5;">
               ${messageText}${messageText.length >= 100 ? '...' : ''}
             </div>
           </div>
