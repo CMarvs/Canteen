@@ -224,9 +224,10 @@
   <script>
     const DASHBOARD_MOBILE_BREAKPOINT = 768;
     function applyAdminLayoutMode() {
-      const isMobile = window.matchMedia(`(max-width: ${DASHBOARD_MOBILE_BREAKPOINT}px)`).matches;
-      document.body.classList.toggle('admin-mobile-layout', isMobile);
-      document.body.classList.toggle('admin-desktop-layout', !isMobile);
+      // Keep admin page in locked layout on both laptop and mobile,
+      // matching the fixed behavior used on user pages.
+      document.body.classList.add('admin-mobile-layout');
+      document.body.classList.remove('admin-desktop-layout');
     }
 
     let adminResizeTicking = false;

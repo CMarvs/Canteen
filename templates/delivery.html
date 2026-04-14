@@ -127,9 +127,10 @@
   <script>
     const DELIVERY_MOBILE_BREAKPOINT = 768;
     function applyDeliveryLayoutMode() {
-      const isMobile = window.matchMedia(`(max-width: ${DELIVERY_MOBILE_BREAKPOINT}px)`).matches;
-      document.body.classList.toggle('delivery-mobile-layout', isMobile);
-      document.body.classList.toggle('delivery-desktop-layout', !isMobile);
+      // Keep rider page in locked layout on both laptop and mobile,
+      // matching the fixed behavior used on user pages.
+      document.body.classList.add('delivery-mobile-layout');
+      document.body.classList.remove('delivery-desktop-layout');
     }
 
     let deliveryResizeTicking = false;
