@@ -2619,6 +2619,19 @@ async function openChatBox(orderId, userType) {
     existingChat.style.display = 'flex';
     // Reload messages to ensure all messages are displayed
     await loadChatMessages(orderId, userType);
+    // Restart polling if chat was previously closed (interval cleared)
+    if (!chatPollIntervals[orderId]) {
+      chatPollIntervals[orderId] = setInterval(() => {
+        const activeChatBox = document.getElementById(`chatBox_${orderId}`);
+        if (activeChatBox && activeChatBox.style.display !== 'none') {
+          loadChatMessages(orderId, userType);
+          const header = activeChatBox.querySelector('div > div > strong');
+          if (header) {
+            header.textContent = 'ðŸ’¬ Chat with Rider';
+          }
+        }
+      }, 15000);
+    }
     return;
   }
 
@@ -2955,16 +2968,6 @@ function renderChatMessages(messages, messagesContainer, cur, orderId) {
         const textColor = isMe ? 'white' : '#333';
         const isUnread = !msg.is_read && !isMe;
         const unreadIndicator = isUnread ? '<span style="background: #e74c3c; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 4px;"></span>' : '';
-        
-        // Log each message for debugging
-        console.log(`[CHAT] Message ${index + 1}/${messages.length}:`, {
-          sender: msg.sender_name,
-          role: msg.sender_role,
-          isMe: isMe,
-          hasMessage: !!msg.message,
-          hasImage: !!msg.image,
-          created_at: msg.created_at
-        });
         
         // Add animation delay for smooth staggered appearance
         const animationDelay = Math.min(index * 0.03, 0.5); // Cap at 0.5s

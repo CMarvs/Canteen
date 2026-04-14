@@ -3678,8 +3678,8 @@
           return;
         }
 
-        // Reverse to get newest first, then update allOrders immediately
-        const currentOrders = orders.reverse();
+        // Keep backend order as-is (already newest first)
+        const currentOrders = [...orders];
         
         // Update global orders cache for sequential numbering (if function exists)
         if (typeof updateGlobalOrdersCache === 'function') {
@@ -3784,6 +3784,8 @@
 
     // Start polling for new orders
     function startOrderPolling() {
+      // Prevent duplicate intervals when this is triggered multiple times
+      stopOrderPolling();
       // Initial load - set lastOrderId
       renderAdminOrders().then(() => {
         if (allOrders && allOrders.length > 0) {
@@ -3809,8 +3811,10 @@
     let lastChatRenderTime = 0;
     let renderChatsTimeout = null;
     const CHAT_RENDER_DEBOUNCE = 3000; // Minimum 3 seconds between renders
+    const MAX_CHAT_SCAN_ORDERS = 50; // Limit chat scanning to newest orders
     let lastKnownMessageIds = new Set(); // Track known message IDs to detect new ones
     window.unreadMessageCount = 0; // Global unread message count
+    let lastUnreadMessageCount = -1;
     
     async function renderAdminChats() {
       // Clear any pending debounced call
@@ -3909,7 +3913,8 @@
           throw new Error('Invalid orders response format');
         }
         
-        console.log(`[CHATS] Found ${orders.length} orders to check for messages`);
+        const ordersToScan = orders.slice(0, MAX_CHAT_SCAN_ORDERS);
+        console.log(`[CHATS] Scanning ${ordersToScan.length}/${orders.length} orders for messages`);
         
         // Checking orders for messages
         
@@ -3917,7 +3922,7 @@
         const chatsWithMessages = [];
         
         // Process all orders in parallel (much faster than batches)
-        const allMessagePromises = orders.map(async (order) => {
+        const allMessagePromises = ordersToScan.map(async (order) => {
             if (!order || !order.id) {
               return null;
             }
@@ -4189,80 +4194,82 @@
     // Check for unread chat messages
     async function checkUnreadChats() {
       try {
-        // Use AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-        
-        const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
-          signal: controller.signal
-        });
-        
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        let orders = Array.isArray(allOrders) ? allOrders : [];
+
+        if (!orders.length) {
+          const ordersResponse = await fetch(`/orders?t=${Date.now()}`, {
+            cache: 'no-cache',
+            signal: controller.signal
+          });
+
+          if (!ordersResponse.ok) {
+            clearTimeout(timeoutId);
+            console.warn('[CHATS] Failed to fetch orders for chat check:', ordersResponse.status);
+            return;
+          }
+          orders = await ordersResponse.json();
+        }
+
         clearTimeout(timeoutId);
-        
-        if (!ordersResponse.ok) {
-          console.warn('[CHATS] Failed to fetch orders for chat check:', ordersResponse.status);
+
+        if (!Array.isArray(orders) || orders.length === 0) {
           return;
         }
-        
-        const orders = await ordersResponse.json();
-        
+
+        const ordersToCheck = orders.slice(0, MAX_CHAT_SCAN_ORDERS);
         let totalUnread = 0;
-        const newMessages = []; // Track new messages for notifications
-        
-        for (const order of orders) {
-          if (!order || !order.id) {
-            continue;
-          }
-          try {
-            const messagesResponse = await fetch(`/orders/${order.id}/messages`);
-            if (messagesResponse.ok) {
+        const newMessages = [];
+
+        const messageResults = await Promise.all(
+          ordersToCheck.map(async (order) => {
+            if (!order || !order.id) return null;
+            try {
+              const messagesResponse = await fetch(`/orders/${order.id}/messages?t=${Date.now()}`, {
+                cache: 'no-cache',
+                signal: controller.signal
+              });
+              if (!messagesResponse.ok) return null;
               const messages = await messagesResponse.json();
-              if (messages && Array.isArray(messages) && messages.length > 0) {
-                // Process messages to find unread ones
-                const unreadMessages = messages.filter(m => 
-                  m.sender_role === 'user' && !m.is_read
-                );
-                totalUnread += unreadMessages.length;
-                
-                // Check for new messages (not in lastKnownMessageIds)
-                unreadMessages.forEach(msg => {
-                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
-                  if (!lastKnownMessageIds.has(msgId)) {
-                    // New message detected
-                    newMessages.push({
-                      message: msg,
-                      order: order
-                    });
-                    lastKnownMessageIds.add(msgId);
-                  }
-                });
-                
-                // Also add all message IDs to the set (for tracking)
-                messages.forEach(msg => {
-                  const msgId = msg.id || `${order.id}-${msg.created_at}`;
-                  lastKnownMessageIds.add(msgId);
-                });
+              return { order, messages: Array.isArray(messages) ? messages : [] };
+            } catch (err) {
+              if (err.name !== 'AbortError') {
+                console.warn(`Error checking messages for order ${order.id}:`, err);
               }
-            } else if (messagesResponse.status === 404) {
-              // Order doesn't exist or has no messages - skip silently
-              continue;
+              return null;
+            }
+          })
+        );
+
+        for (const result of messageResults) {
+          if (!result || result.messages.length === 0) continue;
+          const { order, messages } = result;
+          const unreadMessages = messages.filter(m => m.sender_role === 'user' && !m.is_read);
+          totalUnread += unreadMessages.length;
+
+          unreadMessages.forEach(msg => {
+            const msgId = msg.id || `${order.id}-${msg.created_at}`;
+            if (!lastKnownMessageIds.has(msgId)) {
+              newMessages.push({ message: msg, order });
+              lastKnownMessageIds.add(msgId);
+            }
+          });
+
+          messages.forEach(msg => {
+            const msgId = msg.id || `${order.id}-${msg.created_at}`;
+            lastKnownMessageIds.add(msgId);
+          });
         }
-      } catch (err) {
-        // Skip errors for individual orders (network errors, etc.)
-        if (err.name !== 'AbortError') {
-          console.warn(`Error checking messages for order ${order.id}:`, err);
+
+        window.unreadMessageCount = totalUnread;
+
+        if (lastUnreadMessageCount !== totalUnread) {
+          lastUnreadMessageCount = totalUnread;
+          renderStats();
         }
-      }
-    }
-    
-    // Update global unread count
-    window.unreadMessageCount = totalUnread;
-    
-    // Update stats if they're displayed
-    renderStats();
-    
-    // Update badge
-    const chatsBadge = document.getElementById('chatsBadge');
+
+        const chatsBadge = document.getElementById('chatsBadge');
         if (chatsBadge) {
           chatsBadge.textContent = totalUnread;
           if (totalUnread > 0) {
@@ -4273,9 +4280,7 @@
             chatsBadge.style.animation = '';
           }
         }
-        
-        // Show notifications for new messages (only if not initial load)
-        // Initial load: lastKnownMessageIds is empty or only contains the new messages
+
         const isInitialLoad = lastKnownMessageIds.size <= newMessages.length;
         if (newMessages.length > 0 && !isInitialLoad) {
           newMessages.forEach(({message, order}) => {
@@ -4283,12 +4288,9 @@
           });
         }
       } catch(error) {
-        // Silently handle AbortError for polling (timeouts are expected)
         if (error.name === 'AbortError') {
-          // Timeout during polling - this is normal, just skip this check
           return;
         }
-        // Only log non-timeout errors
         console.warn('[CHATS] Error checking unread chats:', error);
       }
     }
